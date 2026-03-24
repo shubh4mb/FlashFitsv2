@@ -1,0 +1,90 @@
+import api from './axiosConfig';
+
+export interface AddToCartParams {
+  productId: string;
+  variantId: string;
+  size: string;
+  quantity: number;
+  merchantId: string;
+  image: string;
+}
+
+/**
+ * Adds an item to the user's cart.
+ */
+export const addToCart = async (params: AddToCartParams) => {
+  try {
+    const res = await api.post('user/cart/add', params);
+    return res as any;
+  } catch (error) {
+    console.error('Axios error in addToCart:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches the user's cart details.
+ * Optionally includes addressId for delivery calculation.
+ */
+export const getCart = async (addressId?: string, serviceable?: boolean) => {
+  try {
+    const res = await api.post('user/cart', { addressId, serviceable });
+    return res as any;
+  } catch (error) {
+    console.error('Axios error in getCart:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetches the quick cart summary/count.
+ */
+export const getCartCount = async () => {
+  try {
+    const res = await api.get('user/cartCount');
+    return res as any;
+  } catch (error) {
+    console.error('Axios error in getCartCount:', error);
+    throw error;
+  }
+};
+
+/**
+ * Updates the quantity of a specific item in the cart.
+ * cartId is the _id of the item in the items array.
+ */
+export const updateCartQuantity = async (cartId: string, quantity: number) => {
+  try {
+    const res = await api.put('user/cart/updatequantity', { cartId, quantity });
+    return res as any;
+  } catch (error) {
+    console.error('Axios error in updateCartQuantity:', error);
+    throw error;
+  }
+};
+
+/**
+ * Removes a specific item from the cart.
+ */
+export const deleteCartItem = async (itemId: string) => {
+  try {
+    const res = await api.delete(`user/cart/delete/${itemId}`);
+    return res as any;
+  } catch (error) {
+    console.error('Axios error in deleteCartItem:', error);
+    throw error;
+  }
+};
+
+/**
+ * Clears the entire cart for the logged-in user.
+ */
+export const clearCart = async () => {
+  try {
+    const res = await api.delete('user/cart/clear');
+    return res as any;
+  } catch (error) {
+    console.error('Axios error in clearCart:', error);
+    throw error;
+  }
+};
