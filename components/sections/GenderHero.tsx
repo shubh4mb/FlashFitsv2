@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Dimensions } from 'react-native';
+import Loader from '../common/Loader';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp, FadeInRight } from 'react-native-reanimated';
 import { useGender } from '../../context/GenderContext';
-import { GenderThemes } from '../../constants/Theme';
+import { GenderThemes } from '../../constants/theme';
 import { fetchBanners } from '../../api/products';
 
 const { width } = Dimensions.get('window');
@@ -41,7 +42,7 @@ const GenderHero = () => {
     if (loading) {
         return (
             <View style={{ height: 220, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator color={theme.primary} />
+                <Loader size={50} />
             </View>
         );
     }

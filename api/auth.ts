@@ -22,5 +22,6 @@ export const verifyOtpToken = async (data: {
 
 export const checkDeliveryAvailability = async (lat: number, lng: number) => {
     const response = await api.post('/user/checkDeliveryAvailability', { lat, lng });
+    console.log(response.data, "response.data");
     return response.data;
 }

@@ -4,11 +4,11 @@ import {
   View, 
   ScrollView, 
   TouchableOpacity, 
-  ActivityIndicator, 
   SafeAreaView,
   Platform,
   Text
 } from 'react-native';
+import Loader from '@/components/common/Loader';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { useCart } from '@/context/CartContext';
@@ -38,7 +38,7 @@ export default function CartScreen() {
   if (loading && !cart) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={theme.primary} />
+        <Loader size={60} />
       </View>
     );
   }

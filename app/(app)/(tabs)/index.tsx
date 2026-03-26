@@ -6,7 +6,17 @@ import SubCategorySection from '@/components/sections/SubCategorySection';
 import { useAuth } from '@/context/AuthContext';
 import { Typography } from '@/constants/theme';
 import React, { useState } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { 
+  Animated, 
+  StyleSheet, 
+  Text, 
+  TouchableOpacity, 
+  View, 
+  NativeSyntheticEvent, 
+  NativeScrollEvent,
+  Image,
+} from 'react-native';
+import logo from '@/assets/images/logo/logo.png';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 
 export default function HomeScreen() {
@@ -57,18 +67,14 @@ export default function HomeScreen() {
         {/* <GenderHero /> */}
 
         <View style={{ padding: 20 }}>
-          <View style={styles.welcomeContainer}>
-            <Text style={styles.welcomeTitle}>Welcome to FlashFits!</Text>
-            <Text style={styles.welcomeSubTitle}>Your premium fashion destination</Text>
-          </View>
 
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={() => signOut()}
-          >
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
+          <View style={styles.footer}>
+            <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
+            <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+            <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+          </View>
         </View>
+        <View style={{ height: 100 }} />
       </Animated.ScrollView>
     </View>
   );
@@ -79,31 +85,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  welcomeContainer: {
-    marginVertical: 24,
-    alignItems: 'center', // This is wrong, should be alignItems: 'center'
-  },
-  welcomeTitle: {
-    fontSize: 20,
-    fontFamily: Typography.fontFamily.serifBold,
-    color: '#0f172a',
-    marginBottom: 4,
-  },
-  welcomeSubTitle: {
-    fontSize: 14,
-    color: '#64748b',
-    fontFamily: Typography.fontFamily.medium,
-  },
-  logoutButton: {
-    marginTop: 24,
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 16,
-    borderRadius: 16,
+  footer: {
     alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 40,
   },
-  logoutText: {
-    color: '#0f172a',
-    fontSize: 16,
+  versionText: {
+    fontSize: 8,
     fontFamily: Typography.fontFamily.bold,
+    color: '#d1d5db',
+    letterSpacing: 2.5,
+    marginTop: 4,
+  },
+  taglineText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#d1d5db',
+    letterSpacing: 2.5,
+    marginTop: 4,
+    opacity: 0.6,
+    textShadowColor: 'rgba(209, 213, 219, 0.4)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  },
+  footerLogo: {
+    width: 140,
+    height: 60,
+    opacity: 0.25,
   },
 });

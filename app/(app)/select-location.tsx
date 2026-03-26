@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, TextInput, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, TextInput } from "react-native";
+import Loader from "@/components/common/Loader";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 import * as Location from "expo-location";
@@ -179,7 +180,7 @@ export default function SelectLocationScreen() {
                 disabled={locating}
             >
                 {locating ? (
-                    <ActivityIndicator size="small" color="#0F0F0F" />
+                    <Loader size={24} />
                 ) : (
                     <Ionicons name="navigate-outline" size={24} color="#0F0F0F" />
                 )}

@@ -5,7 +5,6 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity, 
-  ActivityIndicator, 
   Dimensions, 
   FlatList,
   Platform

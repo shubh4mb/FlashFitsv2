@@ -5,7 +5,6 @@ import {
   TextInput, 
   TouchableOpacity, 
   FlatList, 
-  ActivityIndicator, 
   Keyboard,
   Text,
   SafeAreaView,
@@ -13,6 +12,7 @@ import {
   Dimensions,
   ScrollView
 } from 'react-native';
+import Loader from '@/components/common/Loader';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
@@ -135,7 +135,7 @@ export default function SearchScreen() {
 
       {loading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={theme.primary} />
+          <Loader size={60} />
           <Text style={styles.loadingText}>Searching for "{query}"...</Text>
         </View>
       ) : query.length === 0 ? (

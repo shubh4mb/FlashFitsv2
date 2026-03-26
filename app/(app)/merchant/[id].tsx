@@ -12,7 +12,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Dimensions,
   Platform,
   ScrollView,
@@ -21,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Loader from '@/components/common/Loader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
@@ -135,7 +135,7 @@ export default function MerchantDetailScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.primary} />
+        <Loader size={60} />
       </View>
     );
   }

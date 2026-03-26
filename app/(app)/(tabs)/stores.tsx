@@ -5,10 +5,10 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity, 
-  ActivityIndicator,
   Dimensions,
   RefreshControl
 } from 'react-native';
+import Loader from '@/components/common/Loader';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
@@ -19,7 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { ThemedView } from '@/components/common/themed-view';
 
 const { width } = Dimensions.get('window');
-const COLUMN_WIDTH = (width - 64) / 4; // 4 columns with padding and gap
+const COLUMN_WIDTH = (width - 100) / 4; // 4 columns with 20px horizontal padding and 20px gap
 
 interface Merchant {
   _id: string;
@@ -76,7 +76,7 @@ export default function StoresScreen() {
   if (loading && !refreshing) {
     return (
       <ThemedView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.primary} />
+        <Loader size={60} />
       </ThemedView>
     );
   }
@@ -155,7 +155,8 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 20,
   },
   merchantCard: {
     width: COLUMN_WIDTH,
@@ -166,9 +167,6 @@ const styles = StyleSheet.create({
     width: COLUMN_WIDTH,
     height: COLUMN_WIDTH, // Make it a perfect square
     borderRadius: 2, // As requested: borderRadius 2 (curved)
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,

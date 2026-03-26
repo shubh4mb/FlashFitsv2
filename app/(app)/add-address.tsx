@@ -7,9 +7,9 @@ import {
   ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator
+  Platform
 } from 'react-native';
+import Loader from '@/components/common/Loader';
 import * as SecureStore from 'expo-secure-store';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -174,7 +174,7 @@ export default function AddAddressScreen() {
                         disabled={submitting}
                     >
                         {submitting ? (
-                            <ActivityIndicator color="#fff" />
+                            <Loader size={24} />
                         ) : (
                             <Text style={styles.submitText}>Save Address</Text>
                         )}

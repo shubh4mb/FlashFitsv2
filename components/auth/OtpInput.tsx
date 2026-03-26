@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import * as SecureStore from 'expo-secure-store';
 
 interface OtpInputProps {
   phone: string;
@@ -172,6 +173,9 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
         shakeInputs();
         return;
       }
+
+      // Save phone number for profile display
+      await SecureStore.setItemAsync('phoneNumber', phone);
 
       // Using props for verification
       await signIn(preFetchedToken || "mock-token", preFetchedUserId || "mock-user", isNewUser);

@@ -1,4 +1,4 @@
-import { AntDesign, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
@@ -42,8 +42,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
 
     const cartCount = cart?.totalItems || 0;
     const router = useRouter();
-    const { selectedAddress, openAddressModal } = useAddress();
-    console.log(selectedAddress, "selectedAddress");
+    const { locationAddress, deliveryAvailable, locationLoading, detectLocation, locationPermission } = useAddress();
 
     const insets = useSafeAreaInsets();
 
@@ -210,22 +209,35 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                     <TouchableOpacity
                         style={styles.locationContainer}
                         activeOpacity={0.7}
-                        onPress={openAddressModal}
+                        onPress={() => router.push("/(app)/select-location" as any)}
                     >
                         <View style={styles.locationPin}>
                             <Ionicons name="location" size={18} color={theme.text} />
                         </View>
                         <View style={styles.addressInfo}>
-                            <View style={styles.addressRow}>
-                                <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
-                                    {selectedAddress ? capitalize(selectedAddress.addressType) : 'Select Address'}
-                                </Text>
-                                <AntDesign name="down" size={9} color={theme.text} style={{ opacity: 0.7, marginLeft: 2 }} />
+                            {/* Top row: Status */}
+                            <View style={styles.statusRow}>
+                                {!locationLoading && locationPermission === 'granted' && deliveryAvailable !== null ? (
+                                    <>
+                                        <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} />
+                                        <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
+                                            {deliveryAvailable ? 'Try & Buy Now' : 'Not available'}
+                                        </Text>
+                                    </>
+                                ) : (
+                                    <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
+                                        {locationLoading || (locationPermission === 'granted' && deliveryAvailable === null) ? 'Locating...' : 'FlashFits Delivery'}
+                                    </Text>
+                                )}
                             </View>
+                            
+                            {/* Bottom row: Address */}
                             <Text style={[styles.subText, { color: theme.text }]} numberOfLines={1}>
-                                {selectedAddress
-                                    ? `${capitalize(selectedAddress.addressLine1)}, ${capitalize(selectedAddress.addressLine2)}, ${capitalize(selectedAddress.city)}`
-                                    : 'Tap to select delivery location'}
+                                {locationLoading 
+                                    ? 'Fetching your location...' 
+                                    : locationPermission !== 'granted'
+                                    ? 'Enable location permission'
+                                    : (locationAddress || 'Tap to select delivery location')}
                             </Text>
                         </View>
                     </TouchableOpacity>
@@ -247,7 +259,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
 
                         <TouchableOpacity
                             activeOpacity={0.7}
-                            onPress={() => router.push("/(app)/(tabs)" as any)}
+                            onPress={() => router.push("/(app)/profile" as any)}
                         >
                             <View style={styles.profileCircle}>
                                 <Ionicons name="person-outline" size={16} color={theme.text} />
@@ -494,15 +506,20 @@ const styles = StyleSheet.create({
     addressInfo: {
         flex: 1,
     },
-    addressRow: {
+    statusRow: {
         flexDirection: 'row',
         alignItems: 'center',
     },
     addressText: {
         fontSize: 14,
         fontFamily: Typography.fontFamily.bold,
-        marginRight: 3,
         letterSpacing: 0.1,
+    },
+    statusDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        marginRight: 6,
     },
     subText: {
         fontSize: 10.5,

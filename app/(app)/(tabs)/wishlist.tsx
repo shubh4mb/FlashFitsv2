@@ -8,8 +8,8 @@ import { useGender } from '@/context/GenderContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
+import Loader from '@/components/common/Loader';
 import {
-  ActivityIndicator,
   Dimensions,
   RefreshControl,
   ScrollView,
@@ -67,7 +67,7 @@ export default function WishlistScreen() {
   if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.primary} />
+        <Loader size={60} />
       </View>
     );
   }

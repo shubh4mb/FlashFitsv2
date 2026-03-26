@@ -54,7 +54,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "https://ff-api-web-1.onrender.com"
+      "BACKEND_URL": "https://ff-api-web-2.onrender.com"
       
     }
   }

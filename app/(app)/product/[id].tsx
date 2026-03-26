@@ -11,8 +11,8 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
+import Loader from '@/components/common/Loader';
 import {
-  ActivityIndicator,
   Animated,
   Dimensions,
   Platform,
@@ -149,7 +149,7 @@ const ProductDetailPage = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.primary} />
+        <Loader size={60} />
         <Text style={styles.loadingText}>Loading product...</Text>
       </View>
     );
