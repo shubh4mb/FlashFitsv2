@@ -26,6 +26,7 @@ export default function AddAddressScreen() {
     const longitude = params.lng ? Number(params.lng) : null;
 
     const [submitting, setSubmitting] = useState(false);
+    const [orderingFor, setOrderingFor] = useState('myself');
     const [addressType, setAddressType] = useState('Home');
     const [formData, setFormData] = useState({
         name: '',
@@ -34,7 +35,7 @@ export default function AddAddressScreen() {
         addressLine2: '',
         landmark: '',
         city: rawAddress?.town || rawAddress?.suburb || rawAddress?.city || '',
-        state: rawAddress?.state || '',
+        state: rawAddress?.state || 'Kerala',
         pincode: rawAddress?.postcode || '',
         latitude: latitude,
         longitude: longitude,
@@ -45,9 +46,20 @@ export default function AddAddressScreen() {
     };
 
     const handleSubmit = async () => {
-        if (!formData.name.trim() || !formData.phone.trim() || !formData.addressLine1.trim()) {
-            alert("Please fill in all required fields");
-            return;
+        const errors: string[] = [];
+
+        if (!formData.name.trim()) errors.push("Full name is required");
+        if (!formData.phone.trim()) errors.push("Phone number is required");
+        if (!/^[0-9]{10}$/.test(formData.phone)) errors.push("Enter valid 10-digit phone number");
+        if (!formData.addressLine1.trim()) errors.push("Flat/House number is required");
+        if (!formData.pincode.trim()) errors.push("Pincode is required");
+    
+        if (!formData.latitude || !formData.longitude)
+          errors.push("Please select your location on the map");
+    
+        if (errors.length > 0) {
+          alert(errors[0]); // show first error only
+          return;
         }
 
         const addressData = {
@@ -62,21 +74,20 @@ export default function AddAddressScreen() {
             addressType,
             location: {
                 type: "Point",
-                coordinates: [formData.longitude || 0, formData.latitude || 0],
+                coordinates: [formData.longitude, formData.latitude],
             },
         };
 
         try {
             setSubmitting(true);
             const response = await addAddress(addressData as any);
+            console.log(response, 'responseresponser4434esponseresponse');
             
-            // In a real app, response would contain the new address list or the new address object
-            // For now we just update selected address and go back
-            if (response.address) {
+            if (response?.address) {
                 await SecureStore.setItemAsync('selectedAddress', JSON.stringify(response.address));
                 setSelectedAddress(response.address);
             }
-            
+            console.log("Address added and saved to SecureStore");
             router.replace("/(app)/(tabs)");
         } catch (error) {
             console.error("Error saving address:", error);
@@ -100,73 +111,111 @@ export default function AddAddressScreen() {
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
             >
                 <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                    <Text style={styles.sectionLabel}>Save Address As</Text>
-                    <View style={styles.typeContainer}>
-                        {['Home', 'Work', 'Other'].map((type) => (
-                            <TouchableOpacity
-                                key={type}
-                                style={[styles.typeButton, addressType === type && styles.activeTypeButton]}
-                                onPress={() => setAddressType(type)}
-                            >
-                                <Ionicons 
-                                    name={type === 'Home' ? 'home-outline' : type === 'Work' ? 'briefcase-outline' : 'location-outline'} 
-                                    size={20} 
-                                    color={addressType === type ? '#fff' : '#64748B'} 
-                                />
-                                <Text style={[styles.typeText, addressType === type && styles.activeTypeText]}>{type}</Text>
-                            </TouchableOpacity>
-                        ))}
+                    <Text style={styles.sectionLabel}>Who are you ordering for?</Text>
+                    <View style={styles.radioGroup}>
+                        <TouchableOpacity
+                            style={styles.radioOption}
+                            onPress={() => setOrderingFor('myself')}
+                        >
+                            <View style={styles.radioOuter}>
+                                {orderingFor === 'myself' && <View style={styles.radioInner} />}
+                            </View>
+                            <Text style={styles.radioText}>Myself</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.radioOption}
+                            onPress={() => setOrderingFor('someone')}
+                        >
+                            <View style={styles.radioOuter}>
+                                {orderingFor === 'someone' && <View style={styles.radioInner} />}
+                            </View>
+                            <Text style={styles.radioText}>Someone else</Text>
+                        </TouchableOpacity>
                     </View>
 
-                    <Text style={styles.sectionLabel}>Contact Details</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Full Name *"
-                        value={formData.name}
-                        onChangeText={(t) => handleInputChange('name', t)}
-                    />
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Phone Number *"
-                        keyboardType="phone-pad"
-                        value={formData.phone}
-                        onChangeText={(t) => handleInputChange('phone', t)}
-                    />
+                    <Text style={styles.sectionLabel}>Save Address As</Text>
+                    <View style={styles.typeContainer}>
+                        {['Home', 'Work', 'Other'].map((type) => {
+                            const label = type === 'Work' ? 'Office' : type === 'Other' ? 'Others' : type;
+                            return (
+                                <TouchableOpacity
+                                    key={type}
+                                    style={[styles.typeButton, addressType === type && styles.activeTypeButton]}
+                                    onPress={() => setAddressType(type)}
+                                >
+                                    <Ionicons 
+                                        name={type === 'Home' ? 'home-outline' : type === 'Work' ? 'briefcase-outline' : 'location-outline'} 
+                                        size={20} 
+                                        color={addressType === type ? '#fff' : '#64748B'} 
+                                    />
+                                    <Text style={[styles.typeText, addressType === type && styles.activeTypeText]}>{label}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
 
-                    <Text style={styles.sectionLabel}>Address Details</Text>
+                    <Text style={styles.sectionLabel}>Address details</Text>
                     <TextInput
                         style={styles.input}
-                        placeholder="Flat / House / Office No *"
+                        placeholder="*Flat / House number"
+                        placeholderTextColor="#999"
                         value={formData.addressLine1}
                         onChangeText={(t) => handleInputChange('addressLine1', t)}
                     />
                     <TextInput
                         style={styles.input}
-                        placeholder="Street / Landmark (Optional)"
-                        value={formData.landmark}
-                        onChangeText={(t) => handleInputChange('landmark', t)}
+                        placeholder="Street / Building name (optional)"
+                        placeholderTextColor="#999"
+                        value={formData.addressLine2}
+                        onChangeText={(t) => handleInputChange('addressLine2', t)}
                     />
                     <TextInput
                         style={styles.input}
-                        placeholder="City *"
+                        placeholder="*City"
+                        placeholderTextColor="#999"
                         value={formData.city}
                         onChangeText={(t) => handleInputChange('city', t)}
                     />
-                    <View style={styles.row}>
-                        <TextInput
-                            style={[styles.input, { flex: 1, marginRight: 8 }]}
-                            placeholder="State *"
-                            value={formData.state}
-                            onChangeText={(t) => handleInputChange('state', t)}
-                        />
-                        <TextInput
-                            style={[styles.input, { flex: 1, marginLeft: 8 }]}
-                            placeholder="Pincode *"
-                            keyboardType="number-pad"
-                            value={formData.pincode}
-                            onChangeText={(t) => handleInputChange('pincode', t)}
-                        />
-                    </View>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="*State"
+                        placeholderTextColor="#999"
+                        value={formData.state}
+                        onChangeText={(t) => handleInputChange('state', t)}
+                    />
+                    <TextInput
+                        style={styles.input}
+                        placeholder="*Pincode"
+                        placeholderTextColor="#999"
+                        keyboardType="number-pad"
+                        value={formData.pincode}
+                        onChangeText={(t) => handleInputChange('pincode', t)}
+                    />
+
+                    <Text style={styles.sectionLabel}>Contact details</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="*Phone number"
+                        placeholderTextColor="#999"
+                        keyboardType="phone-pad"
+                        value={formData.phone}
+                        onChangeText={(t) => handleInputChange('phone', t)}
+                    />
+                    <TextInput
+                        style={styles.input}
+                        placeholder="*Full name"
+                        placeholderTextColor="#999"
+                        value={formData.name}
+                        onChangeText={(t) => handleInputChange('name', t)}
+                    />
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Landmark (optional)"
+                        placeholderTextColor="#999"
+                        value={formData.landmark}
+                        onChangeText={(t) => handleInputChange('landmark', t)}
+                    />
 
                     <TouchableOpacity
                         style={[styles.submitButton, submitting && { opacity: 0.7 }]}
@@ -221,6 +270,37 @@ const styles = StyleSheet.create({
     typeContainer: {
         flexDirection: 'row',
         gap: 12,
+        marginBottom: 8,
+    },
+    radioGroup: {
+        flexDirection: 'row',
+        marginBottom: 8,
+    },
+    radioOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: 32,
+    },
+    radioOuter: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#0F0F0F',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+    },
+    radioInner: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#0F0F0F',
+    },
+    radioText: {
+        fontSize: 15,
+        fontWeight: '500',
+        color: '#0F0F0F',
     },
     typeButton: {
         flex: 1,

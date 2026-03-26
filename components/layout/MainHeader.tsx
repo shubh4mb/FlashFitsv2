@@ -221,7 +221,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     <>
                                         <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} />
                                         <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
-                                            {deliveryAvailable ? 'Try & Buy Now' : 'Not available'}
+                                            {deliveryAvailable ? 'Try & Buy Now !!!' : 'Oops, We aren\'t here yet!'}
                                         </Text>
                                     </>
                                 ) : (
