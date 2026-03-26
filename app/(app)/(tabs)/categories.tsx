@@ -6,19 +6,52 @@ import {
   ScrollView, 
   TouchableOpacity, 
   ActivityIndicator, 
-  Dimensions 
+  Dimensions, 
+  FlatList,
+  Platform
 } from 'react-native';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
 import { fetchCategories } from '@/api/categories';
 import MainHeader from '@/components/layout/MainHeader';
-import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
-import { GenderThemes } from '@/constants/Theme';
+import { GenderThemes, Typography } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
+import Skeleton from '@/components/common/Skeleton';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import { Animated, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 
-const { width } = Dimensions.get('window');
-const SIDEBAR_WIDTH = width * 0.25;
+const CategoriesSkeleton = ({ headerHeight }: { headerHeight: number }) => (
+  <View style={styles.container}>
+    <View style={[styles.mainContent, { paddingTop: headerHeight }]}>
+      <View style={styles.sidebar}>
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <View key={i} style={styles.sidebarItem}>
+            <Skeleton width={65} height={80} borderRadius={12} style={{ marginBottom: 6 }} />
+            <Skeleton width={50} height={12} />
+          </View>
+        ))}
+      </View>
+      <View style={styles.productsContainer}>
+        <Skeleton width={100} height={20} style={{ marginBottom: 16 }} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <View key={i} style={{ marginBottom: 16 }}>
+              <Skeleton width={cardSize} height={cardSize} borderRadius={12} style={{ marginBottom: 6 }} />
+              <Skeleton width={cardSize * 0.8} height={12} />
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  </View>
+);
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const productsAreaWidth = SCREEN_WIDTH * (2 / 3);
+// Provide 24px container padding + 8px gap between 2 columns = 32px subtracted
+const cardSize = (productsAreaWidth - 32) / 2; 
 
 interface Category {
   _id: string;
@@ -35,28 +68,44 @@ interface Category {
     KIDS?: { url: string };
   };
   image?: { url: string };
+  isTriable?: boolean;
 }
 
 export default function CategoriesScreen() {
   const { selectedGender } = useGender();
+  const router = useRouter();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [selectedMainId, setSelectedMainId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    setRefreshKey(prev => prev + 1);
+    await loadCategories();
+    setRefreshing(false);
+  };
+
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset } = event.nativeEvent;
+    if (contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
 
   useEffect(() => {
     loadCategories();
-  }, []);
+  }, [refreshKey]);
 
   const loadCategories = async () => {
     try {
       setLoading(true);
       const response = await fetchCategories();
-      console.log('Categories API response:', response);
-      
-      // AxiosConfig unwraps the response data if success=true, 
-      // so response is expected to be { categories: [...] }
       const categoriesList = response?.categories || response?.data?.categories || [];
       setAllCategories(categoriesList);
 
@@ -74,7 +123,6 @@ export default function CategoriesScreen() {
     }
   };
 
-  // Filter main categories based on gender
   const mainCategories = useMemo(() => {
     const backendGender = selectedGender.toUpperCase();
     return allCategories.filter(
@@ -82,7 +130,6 @@ export default function CategoriesScreen() {
     );
   }, [allCategories, selectedGender]);
 
-  // Filter subcategories based on parent and gender
   const subCategories = useMemo(() => {
     if (!selectedMainId) return [];
     const backendGender = selectedGender.toUpperCase();
@@ -91,7 +138,6 @@ export default function CategoriesScreen() {
     );
   }, [allCategories, selectedMainId, selectedGender]);
 
-  // Auto-update selection if gender changes and current selection is no longer valid
   useEffect(() => {
     const isCurrentValid = mainCategories.some(c => c._id === selectedMainId);
     if (!isCurrentValid && mainCategories.length > 0) {
@@ -106,98 +152,116 @@ export default function CategoriesScreen() {
 
   const getLogoUrl = (item: Category) => {
     const backendGender = selectedGender.toUpperCase() as keyof NonNullable<Category['logos']>;
-    // Priority: Gender-specific logo > Default logo > Image
     return item.logos?.[backendGender]?.url || item.logo?.url || item.image?.url;
   };
 
+  const handleSubcategoryPress = (subCatName: string, subCategoryId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: '/search' as any,
+      params: {
+        categoryQuery: subCatName,
+        categoryId: subCategoryId,
+        gender: selectedGender.toUpperCase(),
+      },
+    });
+  };
+
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.primary} />
-      </View>
-    );
+    return <CategoriesSkeleton headerHeight={headerHeight || 120} />;
   }
 
   return (
     <ThemedView style={styles.container}>
-      <MainHeader hideCategories={true} />
+      <MainHeader hideCategories={true} onHeaderLayout={setHeaderHeight} refreshKey={refreshKey} />
       
-      <View style={styles.contentContainer}>
+      <CustomRefreshControl 
+        scrollY={scrollY} 
+        refreshing={refreshing} 
+        onRefresh={onRefresh} 
+      />
+
+      <View style={[styles.mainContent, { paddingTop: headerHeight }]}>
         {/* Left Sidebar */}
-        <View style={styles.sidebar}>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {mainCategories.map((cat) => {
-              const isActive = selectedMainId === cat._id;
-              return (
-                <TouchableOpacity
-                  key={cat._id}
+        <ScrollView style={styles.sidebar} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
+          {mainCategories.map((cat) => {
+            const isActive = selectedMainId === cat._id;
+            return (
+              <TouchableOpacity
+                key={cat._id}
+                style={[
+                  styles.sidebarItem,
+                  isActive && { backgroundColor: theme.primary.slice(0, 7) + '15' } // strips 'ff' suffix from Men theme
+                ]}
+                onPress={() => handleSidebarPress(cat._id)}
+              >
+                <Image 
+                  source={{ uri: getLogoUrl(cat) }} 
+                  style={styles.sidebarImage} 
+                  contentFit="cover"
+                />
+                <Text 
                   style={[
-                    styles.sidebarItem,
-                    isActive && { backgroundColor: '#FFFFFF', borderLeftColor: theme.primary, borderLeftWidth: 4 }
-                  ]}
-                  onPress={() => handleSidebarPress(cat._id)}
+                    styles.sidebarText, 
+                    isActive && { color: theme.primary, fontFamily: Typography.fontFamily.serifBold }
+                  ]} 
+                  numberOfLines={2}
                 >
-                  <View style={[styles.sidebarIconContainer, isActive && styles.activeIconContainer]}>
-                    <Image
-                      source={{ uri: getLogoUrl(cat) }}
-                      style={styles.sidebarIcon}
-                      contentFit="contain"
-                    />
-                  </View>
-                  <Text 
-                    style={[
-                      styles.sidebarText, 
-                      isActive && { color: theme.primary, fontWeight: '700' }
-                    ]}
-                    numberOfLines={2}
-                  >
-                    {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
-        {/* Right Content */}
-        <View style={styles.mainArea}>
-          <ScrollView 
-            contentContainerStyle={styles.gridContainer}
+        {/* Right Content - 2 Column Grid */}
+        <View style={styles.productsContainer}>
+          <Animated.FlatList
+            data={subCategories}
+            keyExtractor={(item) => item._id}
+            numColumns={2}
+            key={'2_columns'}
             showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.sectionHeader}>
-              <ThemedText type="subtitle" style={styles.sectionTitle}>
+            columnWrapperStyle={styles.cardRow}
+            contentContainerStyle={styles.listContent}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: true }
+            )}
+            onScrollEndDrag={handleScrollEndDrag}
+            scrollEventThrottle={16}
+            ListHeaderComponent={() => (
+              <Text style={styles.sectionTitle}>
                 {mainCategories.find(c => c._id === selectedMainId)?.name || 'Categories'}
-              </ThemedText>
-            </View>
-
-            <View style={styles.grid}>
-              {subCategories.length > 0 ? (
-                subCategories.map((sub) => (
-                  <TouchableOpacity 
-                    key={sub._id} 
-                    style={styles.subCategoryCard}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.subIconContainer}>
-                      <Image
-                        source={{ uri: getLogoUrl(sub) }}
-                        style={styles.subIcon}
-                        contentFit="contain"
-                      />
+              </Text>
+            )}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No subcategories found</Text>
+              </View>
+            )}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[styles.productCard, { width: cardSize, height: cardSize + 40 }]}
+                onPress={() => handleSubcategoryPress(item.name, item._id)}
+                activeOpacity={0.8}
+              >
+                <View style={{ position: 'relative' }}>
+                  <Image 
+                    source={{ uri: getLogoUrl(item) }} 
+                    style={[styles.productImage, { height: cardSize }]} 
+                    contentFit="cover"
+                  />
+                  {item.isTriable && (
+                    <View style={styles.triableBadge}>
+                      <Text style={styles.triableText}>Try at Home</Text>
                     </View>
-                    <Text style={styles.subText} numberOfLines={2}>
-                      {sub.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>No subcategories found</Text>
+                  )}
                 </View>
-              )}
-            </View>
-          </ScrollView>
+                <Text style={styles.productTitle} numberOfLines={2}>{item.name}</Text>
+              </TouchableOpacity>
+            )}
+          />
         </View>
       </View>
     </ThemedView>
@@ -215,100 +279,97 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
   },
-  contentContainer: {
-    flex: 1,
-    flexDirection: 'row',
+  mainContent: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    backgroundColor: '#FFFFFF',
   },
-  sidebar: {
-    width: SIDEBAR_WIDTH,
-    backgroundColor: '#F8FAFC',
-    borderRightWidth: 1,
-    borderRightColor: '#E2E8F0',
+  
+  // Sidebar
+  sidebar: { 
+    flex: 1, 
+    // backgroundColor: '#FFFFFF', 
+    borderRightWidth: 1, 
+    borderColor: '#EEEEEE', 
+    paddingVertical: 10 
   },
-  sidebarItem: {
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    borderLeftWidth: 4,
+  sidebarItem: { 
+    alignItems: 'center', 
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    borderLeftWidth: 3,
     borderLeftColor: 'transparent',
   },
-  sidebarIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-    // Soft shadow for transparent PNGs
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+  sidebarImage: { 
+    width: 65, 
+    height: 80, 
+    borderRadius: 12, 
+    marginBottom: 6, 
+    // backgroundColor: '#F8F8F8' 
   },
-  activeIconContainer: {
-    backgroundColor: '#F1F5F9',
+  sidebarText: { 
+    fontSize: 12, // slightly increased for serif legibility
+    color: '#444444', 
+    textAlign: 'center', 
+    paddingHorizontal: 4,
+    fontFamily: Typography.fontFamily.serifMedium,
   },
-  sidebarIcon: {
-    width: 30,
-    height: 30,
+
+  // Grid
+  productsContainer: { 
+    flex: 2, 
+    padding: 12,
+    backgroundColor: '#FFFFFF'
   },
-  sidebarText: {
-    fontSize: 11,
-    textAlign: 'center',
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  mainArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  gridContainer: {
-    padding: 16,
-    paddingBottom: 100, // Extra space for tabs
-  },
-  sectionHeader: {
-    marginBottom: 20,
+  listContent: { 
+    paddingBottom: 150 
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  subCategoryCard: {
-    width: (width - SIDEBAR_WIDTH - 32 - 24) / 3, // 3 column grid
-    alignItems: 'center',
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.serifBold,
     marginBottom: 16,
+    color: '#1E293B',
+    paddingHorizontal: 4,
   },
-  subIconContainer: {
+  cardRow: { 
+    justifyContent: 'flex-start',
+    gap: 8, // 8px gap between two cards
+    marginBottom: 16 
+  },
+  productCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  productImage: {
     width: '100%',
-    aspectRatio: 1,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-    // Floating effect for transparent PNGs
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 12,
   },
-  subIcon: {
-    width: '70%',
-    height: '70%',
-  },
-  subText: {
-    fontSize: 12,
-    textAlign: 'center',
+  productTitle: { 
+    fontSize: 12, // slightly increased for serif legibility
+    textAlign: 'center', 
+    paddingVertical: 6, 
+    paddingHorizontal: 4,
     color: '#334155',
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.serifSemiBold
+  },
+  triableBadge: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingVertical: 3,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  triableText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    textAlign: 'center',
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.2,
   },
   emptyContainer: {
     flex: 1,
@@ -318,5 +379,6 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#94A3B8',
     fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
   }
 });

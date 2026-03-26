@@ -6,8 +6,18 @@ import { router } from 'expo-router';
 import { useAddress } from '../../context/AddressContext';
 import { Address } from '../../api/address';
 
-const AddressSelectionModal = forwardRef((props, ref: any) => {
+interface AddressSelectionModalProps {
+    onDismiss?: () => void;
+}
+
+const capitalize = (str?: string) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+const AddressSelectionModal = forwardRef((props: AddressSelectionModalProps, ref: any) => {
     const { addresses, selectedAddress, setSelectedAddress } = useAddress();
+    const { onDismiss } = props;
 
     const handleAddNewAddress = () => {
         ref.current?.close();
@@ -33,9 +43,9 @@ const AddressSelectionModal = forwardRef((props, ref: any) => {
                     />
                 </View>
                 <View style={styles.textContainer}>
-                    <Text style={[styles.addressType, isSelected && styles.selectedText]}>{item.addressType}</Text>
-                    <Text style={styles.addressLine} numberOfLines={1}>{item.addressLine1}</Text>
-                    <Text style={styles.areaCity}>{item.area}, {item.city}</Text>
+                    <Text style={[styles.addressType, isSelected && styles.selectedText]}>{capitalize(item.addressType)}</Text>
+                    <Text style={styles.addressLine} numberOfLines={1}>{capitalize(item.addressLine1)}</Text>
+                    <Text style={styles.areaCity}>{capitalize(item.area)}, {capitalize(item.city)}</Text>
                 </View>
                 {isSelected && (
                     <Ionicons name="checkmark-circle" size={24} color="#0F0F0F" />
@@ -50,8 +60,9 @@ const AddressSelectionModal = forwardRef((props, ref: any) => {
             adjustToContentHeight
             handlePosition="inside"
             modalStyle={styles.modal}
-            closeOnOverlayTap={!!selectedAddress}
-            panGestureEnabled={!!selectedAddress}
+            closeOnOverlayTap={true}
+            panGestureEnabled={true}
+            onClosed={onDismiss}
             HeaderComponent={
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>Select Delivery Address</Text>

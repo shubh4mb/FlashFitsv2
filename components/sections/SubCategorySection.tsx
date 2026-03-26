@@ -1,22 +1,43 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Dimensions,
   FlatList,
   Image,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Dimensions,
-  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
-import { useGender } from '../../context/GenderContext';
-import { GenderThemes } from '../../constants/Theme';
 import { fetchCategories } from '../../api/categories';
+import { GenderThemes, Typography } from '../../constants/theme';
+import { useGender } from '../../context/GenderContext';
+import Skeleton from '../common/Skeleton';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = width * 0.22;
 
-export default function SubCategorySection() {
+const SubCategorySkeleton = () => (
+  <View style={styles.container}>
+    <View style={styles.header}>
+      <View>
+        <Skeleton width={150} height={24} style={{ marginBottom: 4 }} />
+        <Skeleton width={120} height={14} />
+      </View>
+      <Skeleton width={50} height={16} />
+    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <View key={i} style={styles.itemContainer}>
+          <Skeleton width={ITEM_SIZE} height={ITEM_SIZE} borderRadius={ITEM_SIZE / 2} style={{ marginBottom: 8 }} />
+          <Skeleton width={60} height={12} />
+        </View>
+      ))}
+    </ScrollView>
+  </View>
+);
+
+export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: number }) {
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
@@ -29,7 +50,6 @@ export default function SubCategorySection() {
       try {
         setLoading(true);
         const response = await fetchCategories();
-        // response.data handled by axiosConfig unwrapper
         setCategories(response?.categories || []);
         setError(false);
       } catch (err) {
@@ -40,13 +60,12 @@ export default function SubCategorySection() {
       }
     };
     loadCategories();
-  }, []);
+  }, [refreshKey]);
 
-  // Filter subcategories based on allowedGenders and level === 1
   const filteredSubCategories = useMemo(() => {
     const normalizedGender = selectedGender.toUpperCase();
     return categories.filter((item) =>
-      item.level === 1 && 
+      item.level === 1 &&
       item.allowedGenders?.includes(normalizedGender) &&
       item.isActive !== false
     );
@@ -54,7 +73,6 @@ export default function SubCategorySection() {
 
   const renderItem = ({ item }: { item: any }) => {
     const normalizedGender = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
-    // Fallback logic: logos[GENDER] -> logo -> image
     const logoUrl = item.logos?.[normalizedGender]?.url || item.logo?.url || item.image?.url;
 
     return (
@@ -62,7 +80,6 @@ export default function SubCategorySection() {
         activeOpacity={0.7}
         style={styles.itemContainer}
         onPress={() => {
-          /* TODO: Navigate to category products */
           console.log('Selected:', item.name);
         }}
       >
@@ -87,11 +104,7 @@ export default function SubCategorySection() {
   };
 
   if (loading) {
-    return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="small" color={theme.primary} />
-      </View>
-    );
+    return <SubCategorySkeleton />;
   }
 
   if (error || filteredSubCategories.length === 0) return null;
@@ -109,7 +122,7 @@ export default function SubCategorySection() {
           <Text style={[styles.seeAll, { color: theme.primary }]}>See All</Text>
         </TouchableOpacity>
       </View>
-      
+
       <FlatList
         data={filteredSubCategories}
         renderItem={renderItem}
@@ -127,6 +140,7 @@ export default function SubCategorySection() {
 const styles = StyleSheet.create({
   container: {
     marginVertical: 10,
+    backgroundColor: 'white',
   },
   header: {
     flexDirection: 'row',
@@ -137,23 +151,18 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: Typography.fontFamily.serifExtraBold,
     letterSpacing: -0.8,
   },
   subtitle: {
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
   seeAll: {
     fontSize: 13,
-    fontWeight: '700',
-  },
-  centerContent: {
-    height: ITEM_SIZE + 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    fontFamily: Typography.fontFamily.bold,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -186,13 +195,13 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontFamily: Typography.fontFamily.bold,
     color: '#fff',
     opacity: 0.5,
   },
   itemText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     textAlign: 'center',
     width: '100%',
   },

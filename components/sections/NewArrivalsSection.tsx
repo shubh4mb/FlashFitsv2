@@ -1,20 +1,42 @@
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  FlatList,
-  ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { fetchnewArrivalsProductsData } from '../../api/products';
-import ProductCard from '../common/ProductCard';
+import { GenderThemes, Typography } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
-import { GenderThemes } from '../../constants/Theme';
 import { Product } from '../../utils/recentlyViewed';
+import ProductCard from '../common/ProductCard';
+import Skeleton from '../common/Skeleton';
+import { ScrollView } from 'react-native';
 
-const NewArrivalsSection = () => {
+const ProductSectionSkeleton = () => (
+  <View style={styles.container}>
+    <View style={styles.header}>
+      <View>
+        <Skeleton width={150} height={24} style={{ marginBottom: 4 }} />
+        <Skeleton width={120} height={14} />
+      </View>
+      <Skeleton width={50} height={16} />
+    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+      {[1, 2, 3].map((i) => (
+        <View key={i} style={{ marginRight: 16 }}>
+          <Skeleton width={155} height={200} borderRadius={12} style={{ marginBottom: 8 }} />
+          <Skeleton width={120} height={16} style={{ marginBottom: 4 }} />
+          <Skeleton width={80} height={14} />
+        </View>
+      ))}
+    </ScrollView>
+  </View>
+);
+
+const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
   const router = useRouter();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
@@ -26,16 +48,7 @@ const NewArrivalsSection = () => {
     const loadNewArrivals = async () => {
       try {
         setLoading(true);
-        // Map GenderContext names to API expected names if necessary
-        // SelectedGender: 'Men', 'Women', 'Kids'
-        // API filters by: 'MEN', 'WOMEN', 'KIDS' usually or matches exactly
-        // Based on backend controller: if (gender && gender !== 'All') filter.gender = gender;
-        // So we should pass 'Men', 'Women', or 'Kids' as is, or uppercase if backend expects uppercase.
-        // Let's check backend model.
-        // In category model it was 'MEN', 'WOMEN', 'KIDS'.
-        // In product controller it uses the query param directly.
         const apiGender = selectedGender.toUpperCase();
-        
         const data = await fetchnewArrivalsProductsData(apiGender);
         setProducts(data);
       } catch (error) {
@@ -46,12 +59,12 @@ const NewArrivalsSection = () => {
     };
 
     loadNewArrivals();
-  }, [selectedGender]);
+  }, [selectedGender, refreshKey]);
 
   const renderItem = ({ item }: { item: Product }) => (
     <ProductCard
       product={item}
-      width={180}
+      width={155}
       onPress={() => {
         router.push({
           pathname: '/(app)/product/[id]' as any,
@@ -62,11 +75,7 @@ const NewArrivalsSection = () => {
   );
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={theme.primary} />
-      </View>
-    );
+    return <ProductSectionSkeleton />;
   }
 
   if (products.length === 0) return null;
@@ -75,7 +84,7 @@ const NewArrivalsSection = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={[styles.title, { color: theme.text }]}>New Arrivals</Text>
+          <Text style={styles.title}>New Arrivals</Text>
           <Text style={styles.subtitle}>Fresh styles just for you</Text>
         </View>
         <TouchableOpacity>
@@ -91,7 +100,7 @@ const NewArrivalsSection = () => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"
-        snapToInterval={180 + 16}
+        snapToInterval={155 + 16}
       />
     </View>
   );
@@ -100,11 +109,6 @@ const NewArrivalsSection = () => {
 const styles = StyleSheet.create({
   container: {
     marginVertical: 15,
-  },
-  loadingContainer: {
-    height: 240,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -115,18 +119,18 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: Typography.fontFamily.semiBold,
     letterSpacing: -0.8,
   },
   subtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#000000ff',
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.serif,
   },
   seeAll: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.serif,
   },
   listContent: {
     paddingHorizontal: 16,

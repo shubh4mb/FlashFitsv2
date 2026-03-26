@@ -1,21 +1,21 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  ScrollView, 
-  ActivityIndicator, 
-  RefreshControl,
-  Dimensions
-} from 'react-native';
-import { useWishlist } from '@/context/WishlistContext';
 import { getMyWishlist } from '@/api/wishlist';
 import ProductCard from '@/components/common/ProductCard';
-import MainHeader from '@/components/layout/MainHeader';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
+import MainHeader from '@/components/layout/MainHeader';
+import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
-import { GenderThemes } from '@/constants/Theme';
+import { useWishlist } from '@/context/WishlistContext';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Dimensions,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View
+} from 'react-native';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 2;
@@ -25,6 +25,7 @@ export default function WishlistScreen() {
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
+  const [headerHeight, setHeaderHeight] = useState(0);
   const [wishlistItems, setWishlistItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -33,19 +34,18 @@ export default function WishlistScreen() {
     try {
       const response = await getMyWishlist();
       const items = response?.wishlist || [];
-      
-      // Map to ProductCard expectations
-      const mappedProducts = items.map((item: any) => ({
-        _id: item.product._id,
-        name: item.product.name,
-        price: item.product.variant.price,
-        mrp: item.product.variant.mrp,
-        images: [{ url: item.product.variant.image || '' }],
-        ratings: 4.5, // Placeholder
-        isTriable: true, // Placeholder
-        variants: [item.product.variant]
-      }));
-      
+
+      // Map to ProductCard expectations using the robust extraction logic
+      const mappedProducts = items.map((item: any) => {
+        if (!item.product) return null;
+        
+        return {
+          ...item.product,
+          wishlistItemId: item._id, // Store for removal if needed
+          // The robust ProductCard now handles the rest via .variant or .variants
+        };
+      }).filter(Boolean);
+
       setWishlistItems(mappedProducts);
     } catch (error) {
       console.error('Failed to fetch wishlist items:', error);
@@ -74,15 +74,17 @@ export default function WishlistScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <MainHeader />
-      
-      <ScrollView 
+      <MainHeader onHeaderLayout={setHeaderHeight} />
+
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} />
         }
       >
+        {headerHeight > 0 && <View style={{ height: headerHeight }} />}
+
         <View style={styles.header}>
           <ThemedText type="title" style={styles.title}>My Wishlist</ThemedText>
           <ThemedText style={styles.count}>{wishlistItems.length} Items</ThemedText>
@@ -102,10 +104,10 @@ export default function WishlistScreen() {
           <View style={styles.grid}>
             {wishlistItems.map((product) => (
               <View key={product._id} style={styles.cardWrapper}>
-                <ProductCard 
-                  product={product} 
+                <ProductCard
+                  product={product}
                   width={COLUMN_WIDTH}
-                  onPress={() => {}} // Navigate to product detail later
+                  onPress={() => { }} // Navigate to product detail later
                 />
               </View>
             ))}
@@ -141,6 +143,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '800',
+    color: '#0F172A',
   },
   count: {
     fontSize: 14,

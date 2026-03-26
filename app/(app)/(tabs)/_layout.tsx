@@ -1,5 +1,5 @@
 import AddressSelectionModal from '@/components/modals/AddressSelectionModal';
-import { GenderThemes } from '@/constants/Theme';
+import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -58,7 +58,7 @@ const AnimatedIconWrapper = ({ focused, iconName, color, label }: { focused: boo
       <Ionicons name={iconName} size={focused ? 25 : 22} color={color} />
       <Text
         style={{
-          fontSize: focused ? 9 : 10,
+          fontSize: focused ? 6 : 10,
           marginTop: 2,
           color: color, // Use the active/inactive tint color instead of hardcoded
           fontWeight: focused ? 'bold' : 'normal',
@@ -126,6 +126,12 @@ function TabsContainer() {
 
         // 7. Restore or Auto-select Address
         const saved = await SecureStore.getItemAsync('selectedAddress');
+        const isDismissed = await SecureStore.getItemAsync('addressModalDismissed');
+
+        if (isDismissed === 'true') {
+          setIsInitializing(false);
+          return;
+        }
 
         if (!isAnyInRange) {
           // User is out of range of ALL saved addresses
@@ -180,7 +186,7 @@ function TabsContainer() {
           tabBarBackground: () => {
             return (
               <LinearGradient
-                colors={['#FFFFFF', theme.primary]} // Fades from White (top) to Primary (bottom)
+                colors={['#FFFFFF', '#FFFFFF']} // Solid White
                 style={{
                   flex: 1,
                   overflow: 'hidden',
@@ -190,8 +196,8 @@ function TabsContainer() {
               />
             );
           },
-          tabBarActiveTintColor: theme.primary === '#0F172A' ? theme.primary : theme.primary,
-          tabBarInactiveTintColor: theme.primary === '#0F172A' ? 'rgba(255,255,255,0.7)' : '#ffffffff',
+          tabBarActiveTintColor: theme.primary,
+          tabBarInactiveTintColor: theme.primary,
           tabBarIcon: ({ color, focused }) => {
             let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'home-outline';
             let label = 'Home';
@@ -211,12 +217,14 @@ function TabsContainer() {
             }
 
             return (
-              <AnimatedIconWrapper
-                focused={focused}
-                iconName={iconName}
-                color={color}
-                label={label}
-              />
+              <View style={{ opacity: focused ? 1 : 0.6 }}>
+                <AnimatedIconWrapper
+                  focused={focused}
+                  iconName={iconName}
+                  color={color}
+                  label={label}
+                />
+              </View>
             );
           },
         })}
@@ -226,7 +234,12 @@ function TabsContainer() {
         <Tabs.Screen name="stores" />
         <Tabs.Screen name="wishlist" />
       </Tabs>
-      <AddressSelectionModal ref={addressModalRef} />
+      <AddressSelectionModal
+        ref={addressModalRef}
+        onDismiss={async () => {
+          await SecureStore.setItemAsync('addressModalDismissed', 'true');
+        }}
+      />
     </View>
   );
 }

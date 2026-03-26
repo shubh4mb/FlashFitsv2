@@ -1,23 +1,27 @@
 import { AntDesign } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from "react-native";
 import { phoneLogin } from "../../api/auth";
+import logo from "../../assets/images/logo/logo.png";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 export default function PhoneLogin() {
+  const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -82,7 +86,7 @@ export default function PhoneLogin() {
 
   const handleFocus = () => {
     setIsFocused(true);
-    Animated.spring(inputScale, { toValue: 1.02, tension: 80, friction: 7, useNativeDriver: true }).start();
+    Animated.spring(inputScale, { toValue: 1.015, tension: 80, friction: 7, useNativeDriver: true }).start();
   };
   const handleBlur = () => {
     setIsFocused(false);
@@ -94,54 +98,71 @@ export default function PhoneLogin() {
     outputRange: ["0%", "100%"],
   });
 
+  // ── Render ─────────────────────────────────────────────────────────
   return (
-    <View className="flex-1 items-center justify-center">
-      <LinearGradient colors={["#FFFFFF", "#FFFFFF", "#FFFFFF"]} className="flex-1 w-full">
+    <View style={styles.centerWrapper}>
+      <LinearGradient colors={["#ffffffff", "#ffffffff", "#ffffffff"]} style={styles.gradient}>
         <KeyboardAvoidingView
-          className="flex-1"
+          style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={Platform.select({ ios: 0, android: 20 })}
         >
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingBottom: 48, alignItems: "center", justifyContent: "center" }}
+            contentContainerStyle={styles.scrollContainer}
             showsVerticalScrollIndicator={false}
             bounces={false}
             keyboardShouldPersistTaps="handled"
           >
             {/* ── LOGO ── */}
             <Animated.View
-              style={{ opacity: logoOpacity, transform: [{ scale: logoScale }] }}
-              className="mb-6 items-center"
+              style={[
+                styles.logoWrapper,
+                { opacity: logoOpacity, transform: [{ scale: logoScale }] },
+              ]}
             >
-              <View style={{ width: width * 0.6, height: 80 }} className="items-center justify-center">
-                  <Text className="text-4xl font-black text-black tracking-tighter">FlashFits</Text>
-              </View>
+              <Image
+                source={logo}
+                style={styles.logo}
+                resizeMode="contain"
+              />
             </Animated.View>
 
             {/* ── CARD ── */}
             <Animated.View
-              style={{ opacity: cardOpacity, transform: [{ translateY: cardSlide }] }}
-              className="w-full mb-8"
+              style={[
+                styles.cardWrapper,
+                { opacity: cardOpacity, transform: [{ translateY: cardSlide }] },
+              ]}
             >
-              <View className="bg-white rounded-[32px] p-7 shadow-2xl shadow-black/5 elevation-5">
+              <View style={styles.card}>
                 {/* Label */}
-                <Text className="text-sm font-bold text-black mb-2 px-1">Phone Number</Text>
+                <Text style={styles.label}>Phone Number</Text>
 
                 {/* Input */}
                 <Animated.View
-                  style={{ transform: [{ scale: inputScale }] }}
-                  className={`flex-row items-center border-[1.5px] rounded-2xl px-4 py-4 mb-5 ${isFocused ? 'border-primary bg-white' : 'border-slate-100 bg-slate-50'}`}
+                  style={[
+                    styles.inputBox,
+                    {
+                      transform: [{ scale: inputScale }],
+                      borderColor: isFocused ? "#78787cff" : "#e2e8f0",
+                      backgroundColor: isFocused ? "#ffffff" : "#f8fafc",
+                    },
+                  ]}
                 >
-                  <TouchableOpacity className="flex-row items-center">
-                    <Text className="text-[17px] font-bold text-slate-800 mr-1.5">+91</Text>
+                  <TouchableOpacity style={styles.countryPicker}>
+                    <Image
+                      source={{ uri: "https://flagcdn.com/w40/in.png" }}
+                      style={styles.flag}
+                    />
+                    <Text style={styles.code}>+91</Text>
                   </TouchableOpacity>
 
-                  <View className="w-[1px] h-7 bg-slate-200 ml-0.5 mr-2" />
+                  <View style={styles.divider} />
 
                   <TextInput
-                    className="flex-1 text-[17px] ml-1 font-semibold text-slate-900"
+                    style={styles.phoneInput}
                     placeholder="Phone Number"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor="#94a3b8"
                     keyboardType="phone-pad"
                     value={phoneNumber}
                     onChangeText={(t) => {
@@ -156,35 +177,47 @@ export default function PhoneLogin() {
                 </Animated.View>
 
                 {/* Progress */}
-                <View className="mb-6">
-                  <View className="flex-row justify-between mb-2 px-1">
-                    <Text className="text-xs text-slate-500 font-medium">Progress</Text>
-                    <Text className="text-xs text-slate-500 font-bold">{phoneNumber.length}/10</Text>
+                <View style={styles.progressBox}>
+                  <View style={styles.progressHeader}>
+                    <Text style={styles.progressTxt}>Progress</Text>
+                    <Text style={styles.progressNum}>{phoneNumber.length}/10</Text>
                   </View>
-                  <View className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <Animated.View style={{ width: progressPct }} className="h-full bg-primary rounded-full" />
+                  <View style={styles.progressTrack}>
+                    <Animated.View style={[styles.progressFill, { width: progressPct }]} />
                   </View>
                 </View>
 
                 {/* Continue button */}
                 <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
                   <TouchableOpacity
-                    className={`rounded-2xl overflow-hidden ${phoneNumber.length === 10 ? 'opacity-100' : 'opacity-40'}`}
+                    style={[
+                      styles.continueBtn,
+                      phoneNumber.length === 10 ? styles.continueActive : styles.continueDisabled,
+                    ]}
                     disabled={phoneNumber.length !== 10 || isLoading}
                     onPress={handleSendOTP}
                     activeOpacity={0.85}
                   >
                     <LinearGradient
-                      colors={phoneNumber.length === 10 ? ["#1A1A1A", "#2D2D2D"] : ["#E2E8F0", "#E2E8F0"]}
+                      colors={
+                        phoneNumber.length === 10
+                          ? ["rgba(0, 0, 0, 1)", 'rgba(0, 0, 0, 0.93)', "rgba(0, 0, 0, 0.61)"]
+                          : ["#eee", "#eee"]
+                      }
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
-                      className="flex-row items-center justify-center py-[18px] gap-2"
+                      style={styles.gradientBtn}
                     >
-                      <Text className={`text-[18px] font-bold ${phoneNumber.length === 10 ? 'text-white' : 'text-slate-500'}`}>
-                        {isLoading ? "Sending..." : "Continue"}
+                      <Text
+                        style={[
+                          styles.continueTxt,
+                          phoneNumber.length === 10 ? styles.txtActive : styles.txtDisabled,
+                        ]}
+                      >
+                         {isLoading ? "Sending..." : "Continue"}
                       </Text>
                       {phoneNumber.length === 10 && !isLoading && (
-                        <AntDesign name="arrow-right" size={20} color="#FFF" />
+                        <AntDesign name="right" size={20} color="#fff" />
                       )}
                     </LinearGradient>
                   </TouchableOpacity>
@@ -193,16 +226,105 @@ export default function PhoneLogin() {
             </Animated.View>
 
             {/* ── Terms ── */}
-            <View className="items-center px-4">
-              <Text className="text-[13px] text-slate-400 text-center leading-5">
+            <View style={styles.termsBox}>
+              <Text style={styles.terms}>
                 By continuing, you agree to our{" "}
-                <Text className="text-slate-800 font-bold">Terms of Service</Text> and{" "}
-                <Text className="text-slate-800 font-bold">Privacy Policy</Text>
+                <Text style={styles.link}>Terms of Service</Text> and{" "}
+                <Text style={styles.link}>Privacy Policy</Text>
               </Text>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
+
       </LinearGradient>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  gradient: { flex: 1 },
+
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 48,
+    alignItems: "center",
+    justifyContent: "center", // <-- Center vertically
+  },
+  centerWrapper: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center", // <-- Vertically center
+  },
+
+  /* ── LOGO ── */
+  logoWrapper: { marginBottom: 10, alignItems: "center" },
+  logo: { width: width * 0.55, height: 80 },
+
+  /* ── CARD ── */
+  cardWrapper: { width: "100%", marginBottom: 32 },
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 32,
+    padding: 28,
+  },
+
+  label: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F0F0F",
+    marginBottom: 8,
+     fontFamily: "Manrope-Bold",
+  },
+
+  /* ── INPUT ── */
+  inputBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    marginBottom: 20,
+  },
+  countryPicker: { flexDirection: "row", alignItems: "center", },
+  flag: { width: 28, height: 20, borderRadius: 4, marginRight: 8 },
+  code: { fontSize: 17, fontWeight: "700", color: "#1e293b", marginRight: 6 },
+  divider: { width: 1, height: 28, backgroundColor: "#cbd5e1", marginLeft: 2 },
+  phoneInput: {
+    flex: 1,
+    fontSize: 17,
+    marginLeft: 5,
+    fontWeight: "600",
+    color: "#1e293b",
+    fontFamily: "Manrope-SemiBold",
+  },
+
+  /* ── PROGRESS ── */
+  progressBox: { marginBottom: 24 },
+  progressHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+  progressTxt: { fontSize: 12, color: "#64748b", fontWeight: "500" },
+  progressNum: { fontSize: 12, color: "#64748b", fontWeight: "600" },
+  progressTrack: { height: 6, backgroundColor: "#e2e8f0", borderRadius: 3, overflow: "hidden" },
+  progressFill: { height: "100%", backgroundColor: "#04002aff", borderRadius: 3 },
+
+  /* ── BUTTON ── */
+  continueBtn: { borderRadius: 20, overflow: "hidden", shadowColor: "#000" },
+  continueActive: { shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } },
+  continueDisabled: { shadowOpacity: 0, elevation: 0 },
+  gradientBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 18,
+    gap: 8,
+  },
+  continueTxt: { fontSize: 18, fontWeight: "700", fontFamily: "Manrope-Bold" },
+  txtActive: { color: "#ffffff" },
+  txtDisabled: { color: "#888" },
+
+  /* ── TERMS ── */
+  termsBox: { alignItems: "center", paddingHorizontal: 16 },
+  terms: { fontSize: 13, color: "#64748b", textAlign: "center", lineHeight: 19 },
+  link: { color: "#1e293b", fontWeight: "700" },
+});

@@ -9,7 +9,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '@/context/CartContext';
-import { GenderThemes } from '@/constants/Theme';
+import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 
 interface CartItemProps {

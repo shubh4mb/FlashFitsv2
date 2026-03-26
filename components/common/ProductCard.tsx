@@ -1,18 +1,19 @@
+import { useGender } from '@/context/GenderContext';
+import { useWishlist } from '@/context/WishlistContext';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import {
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Platform,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { Product } from '../../utils/recentlyViewed';
-import { Palette } from '../../constants/Theme';
-import { useWishlist } from '@/context/WishlistContext';
+import { GenderThemes, Palette, Typography } from '../../constants/theme';
 
 interface ProductCardProps {
   product: Product;
@@ -21,30 +22,43 @@ interface ProductCardProps {
   containerStyle?: any;
 }
 
-const ProductCard = ({ product, onPress, width = 160, containerStyle }: ProductCardProps) => {
+const ProductCard = ({ product, onPress, width = 155, containerStyle }: ProductCardProps) => {
+  // console.log(product, 'procn');
+
   const router = useRouter();
   const { toggleWishlist, isInWishlist } = useWishlist();
+  const { selectedGender } = useGender();
+  const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+
   const productId = product._id || product.id || '';
   const isFavorite = isInWishlist(productId);
 
-  // Extract data with fallbacks
-  const imageUrl = product.images?.[0]?.url || 'https://via.placeholder.com/300';
-  const price = product.price;
-  const mrp = product.mrp;
+  // Robust data extraction
+  const variant = product.variant || (Array.isArray(product.variants) && product.variants.length > 0 ? product.variants[0] : null);
+  
+  // Image URL extraction: variant images array > top-level images array > variant singular image field > placeholder
+  const imageUrl = 
+    (variant?.images && Array.isArray(variant.images) && variant.images.length > 0 ? variant.images[0].url : null) ||
+    (product.images && Array.isArray(product.images) && product.images.length > 0 ? product.images[0].url : null) ||
+    variant?.image || 
+    'https://via.placeholder.com/300';
+
+  const price = variant?.price ?? product.price ?? 0;
+  const mrp = variant?.mrp ?? product.mrp ?? price;
   const discount = mrp && mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+  const isTriable = variant?.isTriable ?? product.isTriable ?? false;
 
   const handleWishlistPress = async () => {
-    // Priority: explicit variantId > first variant's _id
-    // NEVER fall back to productId as variantId, as the backend will 404
-    const variantId = product.variantId || product.variants?.[0]?._id;
-    
-    if (!variantId) {
+    // Priority: explicit variantId > current variant's _id > first variant in array
+    const vId = product.variantId || variant?._id || (Array.isArray(product.variants) ? product.variants[0]?._id : null);
+
+    if (!vId) {
       console.warn(`Cannot toggle wishlist for product ${productId}: No variant ID found.`);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       return;
     }
-    
-    await toggleWishlist(productId, variantId);
+
+    await toggleWishlist(productId, vId);
   };
 
   return (
@@ -61,14 +75,9 @@ const ProductCard = ({ product, onPress, width = 160, containerStyle }: ProductC
           contentFit="cover"
           transition={300}
         />
-        
-        {/* Badges */}
-        {product.isTriable && (
-          <View style={styles.tryBadge}>
-            <Text style={styles.tryBadgeText}>Try & Buy</Text>
-          </View>
-        )}
-        
+
+        {/* Badges placeholder - removed tryBadge from here to move to details */}
+
         {discount > 0 && (
           <View style={styles.discountBadge}>
             <Text style={styles.discountText}>{discount}% OFF</Text>
@@ -76,15 +85,15 @@ const ProductCard = ({ product, onPress, width = 160, containerStyle }: ProductC
         )}
 
         {/* Wishlist Button */}
-        <TouchableOpacity 
-          style={styles.wishlistButton} 
+        <TouchableOpacity
+          style={styles.wishlistButton}
           activeOpacity={0.7}
           onPress={handleWishlistPress}
         >
-          <Ionicons 
-            name={isFavorite ? "heart" : "heart-outline"} 
-            size={18} 
-            color={isFavorite ? "#EF4444" : "#1E293B"} 
+          <Ionicons
+            name={isFavorite ? "heart" : "heart-outline"}
+            size={18}
+            color={isFavorite ? "#EF4444" : "#1E293B"}
           />
         </TouchableOpacity>
       </View>
@@ -94,7 +103,7 @@ const ProductCard = ({ product, onPress, width = 160, containerStyle }: ProductC
         <Text style={styles.name} numberOfLines={1}>
           {product.name}
         </Text>
-        
+
         <View style={styles.priceRow}>
           <Text style={styles.price}>₹{price}</Text>
           {discount > 0 && (
@@ -103,11 +112,18 @@ const ProductCard = ({ product, onPress, width = 160, containerStyle }: ProductC
         </View>
 
         <View style={styles.ratingRow}>
-          <View style={styles.ratingBadge}>
+          <View style={[styles.ratingBadge, { backgroundColor: theme.primary }]}>
             <Ionicons name="star" size={10} color="#FFFFFF" />
             <Text style={styles.ratingText}>{product.ratings || '4.2'}</Text>
           </View>
+
           <Text style={styles.reviewsText}>(120)</Text>
+
+          {isTriable && (
+            <View style={styles.tryContainer}>
+              <Text style={styles.tryText}>Try & Buy</Text>
+            </View>
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -134,7 +150,7 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     width: '100%',
-    height: 200,
+    height: 180,
     position: 'relative',
     backgroundColor: '#F8FAFC',
   },
@@ -170,7 +186,7 @@ const styles = StyleSheet.create({
   tryBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     textTransform: 'uppercase',
   },
   discountBadge: {
@@ -186,16 +202,16 @@ const styles = StyleSheet.create({
   discountText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.bold,
   },
   details: {
     padding: 12,
   },
   name: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.serif,
+    fontSize: 16,
     color: '#0F172A',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   priceRow: {
     flexDirection: 'row',
@@ -204,11 +220,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   price: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.serifMedium,
+    fontSize: 18,
     color: '#0F172A',
   },
   mrp: {
+    fontFamily: Typography.fontFamily.medium,
     fontSize: 12,
     color: '#94A3B8',
     textDecorationLine: 'line-through',
@@ -230,12 +247,25 @@ const styles = StyleSheet.create({
   ratingText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
   },
   reviewsText: {
     fontSize: 10,
     color: '#94A3B8',
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
+  },
+  tryContainer: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  tryText: {
+    color: '#166534',
+    fontSize: 9,
+    fontFamily: Typography.fontFamily.bold,
+    textTransform: 'uppercase',
   },
 });
 

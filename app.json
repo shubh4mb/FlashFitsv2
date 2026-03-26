@@ -54,7 +54,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "https://abab-2405-201-f001-8ff-85d1-8290-9185-f1c0.ngrok-free.app"
+      "BACKEND_URL": "https://ff-api-web-1.onrender.com"
       
     }
   }

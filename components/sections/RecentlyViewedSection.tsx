@@ -1,19 +1,41 @@
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  FlatList,
-  ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { GenderThemes, Typography } from '../../constants/theme';
+import { useGender } from '../../context/GenderContext';
 import { getRecentlyViewed, Product } from '../../utils/recentlyViewed';
 import ProductCard from '../common/ProductCard';
-import { useGender } from '../../context/GenderContext';
-import { GenderThemes } from '../../constants/Theme';
+import Skeleton from '../common/Skeleton';
+import { ScrollView } from 'react-native';
 
-const RecentlyViewedSection = () => {
+const ProductSectionSkeleton = () => (
+  <View style={styles.container}>
+    <View style={styles.header}>
+      <View>
+        <Skeleton width={150} height={24} style={{ marginBottom: 4 }} />
+        <Skeleton width={120} height={14} />
+      </View>
+      <Skeleton width={50} height={16} />
+    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+      {[1, 2, 3].map((i) => (
+        <View key={i} style={{ marginRight: 16 }}>
+          <Skeleton width={155} height={200} borderRadius={12} style={{ marginBottom: 8 }} />
+          <Skeleton width={120} height={16} style={{ marginBottom: 4 }} />
+          <Skeleton width={80} height={14} />
+        </View>
+      ))}
+    </ScrollView>
+  </View>
+);
+
+const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
   const router = useRouter();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
@@ -27,6 +49,7 @@ const RecentlyViewedSection = () => {
         setLoading(true);
         const data = await getRecentlyViewed();
         setProducts(data);
+        console.log(data, "recently viewed");
       } catch (error) {
         console.error('Error loading recently viewed:', error);
       } finally {
@@ -35,12 +58,12 @@ const RecentlyViewedSection = () => {
     };
 
     loadRecentlyViewed();
-  }, []);
+  }, [refreshKey]);
 
   const renderItem = ({ item }: { item: Product }) => (
     <ProductCard
       product={item}
-      width={180}
+      width={155}
       onPress={() => {
         router.push({
           pathname: '/(app)/product/[id]' as any,
@@ -51,11 +74,7 @@ const RecentlyViewedSection = () => {
   );
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={theme.primary} />
-      </View>
-    );
+    return <ProductSectionSkeleton />;
   }
 
   if (products.length === 0) return null;
@@ -64,7 +83,7 @@ const RecentlyViewedSection = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={[styles.title, { color: theme.text }]}>Recently Viewed</Text>
+          <Text style={styles.title}>Recently Viewed</Text>
           <Text style={styles.subtitle}>Pick up where you left off</Text>
         </View>
         <TouchableOpacity>
@@ -80,7 +99,7 @@ const RecentlyViewedSection = () => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"
-        snapToInterval={180 + 16} // card width + margin
+        snapToInterval={155 + 16}
       />
     </View>
   );
@@ -89,11 +108,6 @@ const RecentlyViewedSection = () => {
 const styles = StyleSheet.create({
   container: {
     marginVertical: 15,
-  },
-  loadingContainer: {
-    height: 240,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -104,18 +118,18 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontWeight: '900',
+    fontFamily: Typography.fontFamily.semiBold,
     letterSpacing: -0.8,
   },
   subtitle: {
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
   seeAll: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
   },
   listContent: {
     paddingHorizontal: 16,

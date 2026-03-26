@@ -5,15 +5,32 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity, 
-  ActivityIndicator 
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
 import { fetchMerchants } from '@/api/merchants';
 import { ThemedText } from '@/components/common/themed-text';
-import { GenderThemes } from '@/constants/Theme';
+import { GenderThemes, Typography } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
+import Skeleton from '../common/Skeleton';
+
+const MerchantLogosSkeleton = () => (
+  <View style={styles.container}>
+    <View style={styles.header}>
+      <Skeleton width={100} height={20} />
+      <Skeleton width={60} height={16} />
+    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <View key={i} style={styles.merchantCard}>
+          <Skeleton width={72} height={72} borderRadius={6} style={{ marginBottom: 6 }} />
+          <Skeleton width={60} height={12} />
+        </View>
+      ))}
+    </ScrollView>
+  </View>
+);
 
 interface Merchant {
   _id: string;
@@ -22,10 +39,9 @@ interface Merchant {
     url: string;
   };
   genderCategory: string[];
-  rating?: number;
 }
 
-export default function MerchantLogosSection() {
+export default function MerchantLogosSection({ refreshKey = 0 }: { refreshKey?: number }) {
   const router = useRouter();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
@@ -35,15 +51,12 @@ export default function MerchantLogosSection() {
 
   useEffect(() => {
     loadMerchants();
-  }, []);
+  }, [refreshKey]);
 
   const loadMerchants = async () => {
     try {
       setLoading(true);
       const response = await fetchMerchants();
-      console.log('Merchants API response:', response);
-      
-      // AxiosConfig unwraps the response data if success=true
       const merchantsList = response?.merchants || response?.data?.merchants || [];
       setMerchants(merchantsList);
     } catch (error) {
@@ -54,7 +67,6 @@ export default function MerchantLogosSection() {
   };
 
   const filteredMerchants = useMemo(() => {
-    // Backend enums for Merchants are 'Men', 'Women', 'Kids', 'Unisex'
     return merchants.filter(m => 
       m.genderCategory && (
         m.genderCategory.includes(selectedGender) || 
@@ -65,11 +77,7 @@ export default function MerchantLogosSection() {
   }, [merchants, selectedGender]);
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color={theme.primary} />
-      </View>
-    );
+    return <MerchantLogosSkeleton />;
   }
 
   if (filteredMerchants.length === 0) return null;
@@ -77,8 +85,8 @@ export default function MerchantLogosSection() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <ThemedText type="subtitle" style={styles.title}>Official Stores</ThemedText>
-        <TouchableOpacity>
+        <ThemedText type="subtitle" style={styles.title}>Brands</ThemedText>
+        <TouchableOpacity onPress={() => router.push('/stores')}>
           <Text style={[styles.viewAll, { color: theme.primary }]}>View All</Text>
         </TouchableOpacity>
       </View>
@@ -116,12 +124,7 @@ export default function MerchantLogosSection() {
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 16,
-  },
-  loadingContainer: {
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: 12,
   },
   header: {
     flexDirection: 'row',
@@ -132,16 +135,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.bold,
     color: '#0F172A',
   },
   viewAll: {
     fontSize: 12,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
   },
   scrollContent: {
     paddingLeft: 20,
     paddingRight: 10,
+    paddingBottom: 8,
   },
   merchantCard: {
     alignItems: 'center',
@@ -149,29 +153,21 @@ const styles = StyleSheet.create({
     width: 80,
   },
   logoContainer: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#F8FAFC',
+    margin:4,
+    width: 72,
+    height: 72,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 6,
-    borderWidth: 1,
-    borderRightColor: '#F1F5F9',
-    // Premium floating effect
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
   },
   logo: {
-    width: '70%',
-    height: '70%',
+    width: '85%',
+    height: '85%',
   },
   shopName: {
     fontSize: 11,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#334155',
     textAlign: 'center',
   },

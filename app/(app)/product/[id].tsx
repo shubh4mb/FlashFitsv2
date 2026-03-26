@@ -1,3 +1,9 @@
+import { productDetailPage } from '@/api/products';
+import { GenderThemes, Typography } from '@/constants/theme';
+import { useCart } from '@/context/CartContext';
+import { useGender } from '@/context/GenderContext';
+import { useWishlist } from '@/context/WishlistContext';
+import { addToRecentlyViewed } from '@/utils/recentlyViewed';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -18,12 +24,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { productDetailPage } from '../../../api/products';
-import { GenderThemes } from '../../../constants/Theme';
-import { useGender } from '../../../context/GenderContext';
-import { addToRecentlyViewed } from '../../../utils/recentlyViewed';
-import { useWishlist } from '@/context/WishlistContext';
-import { useCart } from '@/context/CartContext';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 520;
@@ -37,7 +37,7 @@ const ProductDetailPage = () => {
 
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { addToCart: addItemToCart } = useCart();
-  
+
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
@@ -113,7 +113,7 @@ const ProductDetailPage = () => {
     if (product) {
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
       toggleWishlist(product._id, activeVariant._id);
-      
+
       Animated.sequence([
         Animated.spring(wishlistScale, { toValue: 1.3, useNativeDriver: true, friction: 3 }),
         Animated.spring(wishlistScale, { toValue: 1, useNativeDriver: true, friction: 5 }),
@@ -130,7 +130,7 @@ const ProductDetailPage = () => {
 
     try {
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
-      
+
       await addItemToCart({
         productId: product._id,
         variantId: activeVariant._id,
@@ -139,7 +139,7 @@ const ProductDetailPage = () => {
         merchantId: product.merchantId?._id || product.merchantId,
         image: activeVariant.images?.[0]?.url || '',
       });
-      
+
       router.push('/cart' as any);
     } catch (error) {
       console.error('Failed to add to cart:', error);
@@ -197,7 +197,7 @@ const ProductDetailPage = () => {
         </TouchableOpacity>
         <TouchableOpacity style={styles.staticIcon} onPress={handleShare} activeOpacity={0.7}>
           <BlurView intensity={40} tint="dark" style={[StyleSheet.absoluteFill, { borderRadius: 20 }]} />
-          <Ionicons name="share-outline" size={20} color="#FFFFFF" />
+          <Ionicons name="cart-outline" size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
@@ -501,8 +501,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.serifExtraBold,
     color: '#0F172A',
     textAlign: 'center',
     marginHorizontal: 8,
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
   imageCounterText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     letterSpacing: 0.5,
   },
   imageGradient: {
@@ -598,14 +598,14 @@ const styles = StyleSheet.create({
   },
   brand: {
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.bold,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     marginBottom: 6,
   },
   name: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 22,
+    fontFamily: Typography.fontFamily.serifExtraBold,
     color: '#0F172A',
     letterSpacing: -0.4,
     lineHeight: 24,
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
   ratingText: {
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.bold,
   },
   priceRow: {
     flexDirection: 'row',
@@ -631,15 +631,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   price: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 24,
+    fontFamily: Typography.fontFamily.serifExtraBold,
     letterSpacing: -0.4,
   },
   mrp: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#94A3B8',
     textDecorationLine: 'line-through',
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
   discountBadge: {
     backgroundColor: '#ECFDF5',
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
   discountText: {
     fontSize: 12,
     color: '#059669',
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.bold,
     letterSpacing: 0.3,
   },
   divider: {
@@ -659,8 +659,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.serifBold,
     color: '#0F172A',
     marginBottom: 10,
     marginTop: 4,
@@ -668,7 +668,7 @@ const styles = StyleSheet.create({
   },
   sectionSubtitle: {
     fontSize: 14,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: '#94A3B8',
   },
   selectionRow: {
@@ -695,7 +695,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: '#334155',
   },
   sizeGrid: {
@@ -721,12 +721,12 @@ const styles = StyleSheet.create({
   },
   sizeText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#1E293B',
   },
   selectedSizeText: {
     color: '#FFFFFF',
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.bold,
   },
   disabledSizeText: {
     color: '#94A3B8',
@@ -756,7 +756,7 @@ const styles = StyleSheet.create({
   },
   deliveryText: {
     fontSize: 9,
-    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
     color: '#475569',
     letterSpacing: 0.1,
   },
@@ -769,7 +769,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     color: '#64748B',
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.regular,
     letterSpacing: 0.1,
   },
   spacer: {

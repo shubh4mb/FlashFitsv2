@@ -1,98 +1,131 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  Dimensions,
-  Platform
-} from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { fetchMerchantById } from '@/api/merchants';
-import ParallaxScrollView from '@/components/common/parallax-scroll-view';
-import { ThemedText } from '@/components/common/themed-text';
+import { fetchFilteredProducts } from '@/api/products';
+import { Image } from 'expo-image';
+import ProductCard from '@/components/common/ProductCard';
+import { GenderThemes, Typography } from '@/constants/theme';
+import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
-import { GenderThemes } from '@/constants/Theme';
+import { calculateDistanceKm } from '@/utils/locationHelper';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 
-interface Merchant {
-  _id: string;
-  shopName: string;
-  logo: { url: string };
-  backgroundImage?: { url: string };
-  rating: number;
-  reviewCount: number;
-  address: string;
-  location?: {
-    coordinates: [number, number]; // [lng, lat]
-  };
-  operatingHours: string;
-  shopDescription?: string;
-  genderCategory: string[];
-  phoneNumber?: string;
-}
-
-import { useAddress } from '@/context/AddressContext';
-import { calculateDistanceKm } from '@/utils/locationHelper';
+const GENDER_ICON_MAP: Record<string, any> = {
+  MEN: 'male',
+  WOMEN: 'female',
+  KIDS: 'happy-outline',
+};
 
 export default function MerchantDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { selectedGender } = useGender();
+  
+  const { selectedGender, setSelectedGender } = useGender();
   const { selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
-  const [merchant, setMerchant] = useState<any>(null); // Use any for inner objects or define strictly
   const [loading, setLoading] = useState(true);
-  const [distanceInfo, setDistanceInfo] = useState<{km: string, mins: string} | null>(null);
+  const [merchant, setMerchant] = useState<any>(null);
+  const [products, setProducts] = useState<any[]>([]);
+  const [localSelectedGender, setLocalSelectedGender] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (id) {
-      loadMerchantDetails();
+  const distanceInfo = useMemo(() => {
+    if (!merchant || !selectedAddress?.location?.coordinates) {
+      return { km: '2.4', mins: '25-30' };
     }
-  }, [id]);
+    const merchantCoords = merchant.address?.location?.coordinates;
+    const userCoords = selectedAddress.location.coordinates;
 
-  useEffect(() => {
-    if (merchant && selectedAddress?.location?.coordinates) {
-      const merchantCoords = merchant.address?.location?.coordinates;
-      const userCoords = selectedAddress.location.coordinates;
+    if (!merchantCoords || !userCoords) return { km: '2.4', mins: '25-30' };
 
-      if (merchantCoords && userCoords) {
-        const distKm = calculateDistanceKm(
-          userCoords[1], // User Lat
-          userCoords[0], // User Lng
-          merchantCoords[1], // Merchant Lat
-          merchantCoords[0]  // Merchant Lng
-        );
-        
-        // Estimate time: 3 mins per km + 10 mins prep time
-        const estMins = Math.round(distKm * 3 + 10);
-        
-        setDistanceInfo({
-          km: distKm.toFixed(1),
-          mins: `${estMins}-${estMins + 10}`
-        });
-      }
-    }
+    const distKm = calculateDistanceKm(
+      userCoords[1], userCoords[0],
+      merchantCoords[1], merchantCoords[0]
+    );
+    const estMins = Math.round(distKm * 3 + 10);
+    return {
+      km: distKm.toFixed(1),
+      mins: `${estMins}-${estMins + 10}`
+    };
   }, [merchant, selectedAddress]);
 
-  const loadMerchantDetails = async () => {
-    try {
-      setLoading(true);
-      const response = await fetchMerchantById(id);
-      // AxiosConfig unwraps the { merchant: {...} } data
-      setMerchant(response?.merchant || response?.data?.merchant);
-    } catch (error) {
-      console.error('Failed to load merchant details:', error);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!id) return;
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [mRes, pRes] = await Promise.all([
+          fetchMerchantById(id),
+          fetchFilteredProducts({ selectedStores: [id] })
+        ]);
+        
+        const merchantData = mRes?.merchant || mRes?.data?.merchant;
+        setMerchant(merchantData);
+        setProducts(pRes?.products || pRes?.data || []);
+      } catch (error) {
+        console.error('Error fetching merchant details or products:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [id]);
+
+  const availableGenders = useMemo(() => {
+    if (!merchant?.genderCategory) return [];
+    return merchant.genderCategory
+      .map((g: string) => g.toUpperCase())
+      .filter((g: string) => ['MEN', 'WOMEN', 'KIDS'].includes(g));
+  }, [merchant]);
+
+  useEffect(() => {
+    if (availableGenders.length === 0) return;
+    const globalUpper = (selectedGender as any) !== 'All' ? selectedGender.toUpperCase() : null;
+    if (globalUpper && availableGenders.includes(globalUpper)) {
+      setLocalSelectedGender(globalUpper);
+    } else {
+      setLocalSelectedGender(availableGenders[0]);
     }
-  };
+  }, [availableGenders, selectedGender]);
+
+  const filteredProducts = useMemo(() => {
+    if (!localSelectedGender) return products;
+    return products.filter((p: any) => {
+      const pGenders = Array.isArray(p.gender) 
+        ? p.gender.map((g: any) => g.toUpperCase()) 
+        : [String(p.gender || '').toUpperCase()];
+      return pGenders.includes(localSelectedGender) || pGenders.includes('UNISEX');
+    });
+  }, [products, localSelectedGender]);
+  console.log(filteredProducts, 'filteredProducts');
+
+
+  const groupedProducts = useMemo(() => {
+    return filteredProducts.reduce((acc: any, p: any) => {
+      const subCatName = p.subCategory || p.subCategoryId?.name || 'Others';
+      if (!acc[subCatName]) acc[subCatName] = [];
+      acc[subCatName].push(p);
+      return acc;
+    }, {});
+  }, [filteredProducts]);
+
 
   const handleBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -118,354 +151,446 @@ export default function MerchantDetailScreen() {
     );
   }
 
+  const ratingValue = merchant?.rating || '4.4';
+  const reviewCount = merchant?.reviewCount ? `${merchant.reviewCount}+` : '3.8K+';
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#F8FAFC', dark: '#0F172A' }}
-      headerImage={
-        <View style={styles.headerContainer}>
-          <Image
-            source={{ uri: merchant.backgroundImage?.url || merchant.logo.url }}
-            style={styles.headerImage}
-            contentFit="cover"
-          />
-          <View style={styles.overlay} />
-          
-          {/* Custom Back Button */}
+    <View style={styles.container}>
+      <StatusBar style="light" />
+
+      {/* Top Action Bar */}
+      <View style={[styles.topActionBar, { paddingTop: insets.top + 4 }]}>
+        <TouchableOpacity onPress={handleBack} style={styles.iconCircle}>
+          <Ionicons name="arrow-back" size={20} color="#fff" />
+        </TouchableOpacity>
+        <View style={styles.topRightActions}>
           <TouchableOpacity 
-            style={styles.headerBackButton}
-            onPress={handleBack}
+            style={styles.iconCircle}
+            onPress={() => router.push('/cart' as any)}
           >
-            <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+            <Ionicons name="cart-outline" size={22} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.iconCircle}
+          >
+            <Ionicons name="storefront-outline" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
-      }
-    >
-      <View style={styles.content}>
-        {/* Floating Logo Card */}
-        <View style={styles.logoCard}>
-          <View style={styles.logoWrapper}>
-            <Image
-              source={{ uri: merchant.logo.url }}
-              style={styles.logo}
-              contentFit="contain"
-            />
-          </View>
-          <View style={styles.mainInfo}>
-            <ThemedText type="title" style={styles.shopName}>{merchant.shopName}</ThemedText>
-            <View style={styles.ratingRow}>
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={14} color="#FFFFFF" />
-                <Text style={styles.ratingText}>{merchant.rating || '4.5'}</Text>
-              </View>
-              <Text style={styles.reviewText}>({merchant.reviewCount || 0} reviews)</Text>
-            </View>
-            
-            {distanceInfo && (
-              <View style={styles.distanceRow}>
-                <Ionicons name="bicycle" size={16} color={theme.primary} />
-                <Text style={styles.distanceText}>{distanceInfo.km} km away · {distanceInfo.mins} mins</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Tags */}
-        <View style={styles.tagContainer}>
-          {merchant.genderCategory?.map((gender: string) => (
-            <View key={gender} style={[styles.tag, { borderColor: theme.primary + '40' }]}>
-              <Text style={[styles.tagText, { color: theme.primary }]}>{gender}</Text>
-            </View>
-          ))}
-          <View style={styles.statusBadge}>
-            <View style={styles.onlineDot} />
-            <Text style={styles.statusText}>Open Now</Text>
-          </View>
-        </View>
-
-        {/* Description Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons name="information-circle-outline" size={20} color={theme.primary} />
-            <Text style={styles.sectionTitle}>About</Text>
-          </View>
-          <Text style={styles.description}>
-            {merchant.shopDescription || `${merchant.shopName} is a premium merchant at FlashFits offering curated fashion collections for ${merchant.genderCategory?.join(' & ')}.`}
-          </Text>
-        </View>
-
-        {/* Info Rows */}
-        <View style={styles.infoGrid}>
-          <View style={styles.infoCard}>
-            <Ionicons name="time-outline" size={20} color={theme.primary} />
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoLabel}>Operating Hours</Text>
-              <Text style={styles.infoValue}>
-                {typeof merchant.operatingHours === 'string' 
-                  ? merchant.operatingHours 
-                  : merchant.operatingHours?.open && merchant.operatingHours?.close 
-                    ? `${merchant.operatingHours.open} - ${merchant.operatingHours.close}`
-                    : '10:00 AM - 09:00 PM'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.infoCard}>
-            <Ionicons name="location-outline" size={20} color={theme.primary} />
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoLabel}>Location</Text>
-              <Text style={styles.infoValue} numberOfLines={2}>
-                {typeof merchant.address === 'string' 
-                  ? merchant.address 
-                  : merchant.address?.street 
-                    ? `${merchant.address.street}${merchant.address.city ? `, ${merchant.address.city}` : ''}`
-                    : 'HustleHub Tech Park, HSR Layout'}
-              </Text>
-            </View>
-          </View>
-
-          {merchant.phoneNumber && (
-            <View style={styles.infoCard}>
-              <Ionicons name="call-outline" size={20} color={theme.primary} />
-              <View style={styles.infoTextContainer}>
-                <Text style={styles.infoLabel}>Contact</Text>
-                <Text style={styles.infoValue}>{merchant.phoneNumber}</Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* CTA Section */}
-        <TouchableOpacity 
-          style={[styles.primaryButton, { backgroundColor: theme.primary }]}
-          onPress={() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)}
-        >
-          <Text style={styles.primaryButtonText}>View Store Collections</Text>
-          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
       </View>
-    </ParallaxScrollView>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Hero Section */}
+        <View style={styles.heroContainer}>
+          <Image 
+            source={{ uri: merchant.backgroundImage?.url || merchant.logo.url }} 
+            style={styles.heroImage} 
+            contentFit="cover" 
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(255,255,255,0.7)', '#FFFFFF']}
+            style={styles.heroGradientOverlay}
+          />
+        </View>
+
+        {/* Store Header Card */}
+        <View style={styles.headerCard}>
+          <View style={styles.logoNameRow}>
+            <View style={styles.logoWrapper}>
+              <Image source={{ uri: merchant.logo.url }} style={styles.storeLogo} contentFit="contain" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text style={styles.storeName} numberOfLines={1}>
+                {merchant.shopName}
+              </Text>
+              <View style={styles.locationChip}>
+                <Ionicons name="location" size={12} color={theme.primary} />
+                <Text style={styles.locationText}>
+                  {distanceInfo.km} km • {merchant.address?.city || merchant.address || 'Location'}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.ratingPill, { backgroundColor: theme.primary }]}>
+              <Ionicons name="star" size={13} color="#fff" />
+              <Text style={styles.ratingText}>{ratingValue}</Text>
+            </View>
+          </View>
+
+          <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
+              <Ionicons name="time-outline" size={15} color="#64748B" />
+              <Text style={styles.metaText}>{distanceInfo.mins} mins</Text>
+            </View>
+            <View style={styles.metaDivider} />
+            <View style={styles.metaItem}>
+              <Ionicons name="chatbubble-outline" size={14} color="#64748B" />
+              <Text style={styles.metaText}>{reviewCount} reviews</Text>
+            </View>
+            <View style={styles.metaDivider} />
+            <View style={styles.metaItem}>
+              <Ionicons name="cube-outline" size={14} color="#64748B" />
+              <Text style={styles.metaText}>Try & Buy</Text>
+            </View>
+          </View>
+
+          <LinearGradient
+            colors={['#F1F5F9', '#E2E8F0']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.offerStrip}
+          >
+            <View style={styles.offerIconCircle}>
+              <Ionicons name="pricetag" size={14} color={theme.primary} />
+            </View>
+            <Text style={[styles.offerStripText, { color: theme.primary }]}>Flat ₹175 OFF above ₹1399</Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.primary} />
+          </LinearGradient>
+        </View>
+
+        {/* Gender Switcher */}
+        {availableGenders.length > 1 && (
+          <View style={styles.genderSwitcherContainer}>
+            <View style={styles.genderSwitcherTrack}>
+              {availableGenders.map((gender: string) => {
+                const isActive = localSelectedGender === gender;
+                return (
+                  <TouchableOpacity
+                    key={gender}
+                    onPress={() => {
+                      setLocalSelectedGender(gender);
+                      const labelMap: Record<string, string> = { MEN: 'Men', WOMEN: 'Women', KIDS: 'Kids' };
+                      setSelectedGender((labelMap[gender] || gender) as any);
+                    }}
+                    style={[styles.genderTab, isActive && { backgroundColor: theme.primary }]}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={GENDER_ICON_MAP[gender] || 'person'}
+                      size={15}
+                      color={isActive ? '#fff' : '#64748B'}
+                    />
+                    <Text style={[styles.genderTabText, isActive && styles.genderTabTextActive]}>
+                      {gender.charAt(0) + gender.slice(1).toLowerCase()}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Section Title */}
+        <View style={styles.sectionTitleContainer}>
+          <View style={[styles.sectionTitleAccent, { backgroundColor: theme.primary }]} />
+          <Text style={styles.sectionTitle}>Categories in Store</Text>
+        </View>
+
+        {/* Display Grouped Products */}
+        {Object.entries(groupedProducts).map(([subCatName, subProducts]: [string, any]) => (
+          <View key={subCatName} style={styles.categoryCard}>
+            <View style={styles.categoryHeader}>
+              <Text style={styles.categoryName}>{subCatName}</Text>
+              <TouchableOpacity
+                style={[styles.viewAllBtn, { backgroundColor: theme.primary + '15' }]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.viewAllBtnText, { color: theme.primary }]}>See all</Text>
+                <Ionicons name="arrow-forward" size={14} color={theme.primary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.productListContent}
+            >
+              {subProducts.map((p: any) => (
+                <ProductCard
+                  key={p._id || p.id}
+                  product={p}
+                  width={150}
+                  containerStyle={{ marginRight: 15 }}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ))}
+
+        {Object.keys(groupedProducts).length === 0 && (
+          <View style={styles.emptyState}>
+            <Ionicons name="bag-outline" size={48} color="#CBD5E1" />
+            <Text style={styles.emptyText}>No products available for {localSelectedGender}</Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
   },
   backButton: {
     marginTop: 20,
     padding: 10,
   },
-  headerContainer: {
+  topActionBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  heroContainer: {
+    height: 260,
     width: '100%',
-    height: '100%',
     position: 'relative',
   },
-  headerImage: {
+  heroImage: {
     width: '100%',
     height: '100%',
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  headerBackButton: {
+  heroGradientOverlay: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 40,
-    left: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
   },
-  content: {
+  headerCard: {
+    marginHorizontal: 16,
+    backgroundColor: '#fff',
+    borderRadius: 24,
     padding: 20,
-    paddingTop: 0,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    marginTop: -30,
-  },
-  logoCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: -40,
-    marginBottom: 20,
-  },
-  logoWrapper: {
-    width: 100,
-    height: 100,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    padding: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  logo: {
-    width: '100%',
-    height: '100%',
-  },
-  mainInfo: {
-    flex: 1,
-    marginLeft: 16,
-    paddingBottom: 4,
-  },
-  shopName: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  ratingText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-    marginLeft: 4,
-  },
-  reviewText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  distanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 4,
-  },
-  distanceText: {
-    fontSize: 12,
-    color: '#0F172A',
-    fontWeight: '700',
-  },
-  tagContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 24,
-  },
-  tag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    backgroundColor: 'transparent',
-  },
-  tagText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  onlineDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#22C55E',
-    marginRight: 6,
-  },
-  statusText: {
-    color: '#166534',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  description: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#475569',
-    textAlign: 'justify',
-  },
-  infoGrid: {
-    gap: 16,
-    marginBottom: 32,
-  },
-  infoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    padding: 16,
-    borderRadius: 20,
-    gap: 16,
-  },
-  infoTextContainer: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 10,
-    color: '#64748B',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  infoValue: {
-    fontSize: 13,
-    color: '#1E293B',
-    fontWeight: '600',
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    height: 60,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 40,
+    marginTop: -50,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  logoNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    padding: 2,
+  },
+  storeLogo: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
+  },
+  storeName: {
+    fontSize: 22,
     fontWeight: '800',
+    color: '#0F172A',
+    fontFamily: Typography.fontFamily.serifBold,
+  },
+  locationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  locationText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontFamily: Typography.fontFamily.medium,
+  },
+  ratingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
+  },
+  ratingText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  metaItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  metaText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  metaDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: '#E2E8F0',
+  },
+  offerStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    gap: 10,
+  },
+  offerIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offerStripText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
+  },
+  genderSwitcherContainer: {
+    paddingHorizontal: 16,
+    marginTop: 24,
+  },
+  genderSwitcherTrack: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 18,
+    padding: 5,
+    gap: 5,
+  },
+  genderTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    gap: 8,
+  },
+  genderTabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+    fontFamily: Typography.fontFamily.bold,
+  },
+  genderTabTextActive: {
+    color: '#FFFFFF',
+  },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginTop: 32,
+    marginBottom: 16,
+    gap: 12,
+  },
+  sectionTitleAccent: {
+    width: 4,
+    height: 24,
+    borderRadius: 2,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+    fontFamily: Typography.fontFamily.serifExtraBold,
+  },
+  categoryCard: {
+    marginBottom: 24,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  categoryName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+    fontFamily: Typography.fontFamily.bold,
+  },
+  viewAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  viewAllBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: Typography.fontFamily.bold,
+  },
+  productListContent: {
+    paddingLeft: 20,
+    paddingRight: 5,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#94A3B8',
+    fontFamily: Typography.fontFamily.medium,
   },
 });

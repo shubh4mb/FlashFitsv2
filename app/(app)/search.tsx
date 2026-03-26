@@ -9,19 +9,23 @@ import {
   Keyboard,
   Text,
   SafeAreaView,
-  Platform
+  Platform,
+  Dimensions,
+  ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { fetchFilteredProducts } from '@/api/products';
 import ProductCard from '@/components/common/ProductCard';
 import { useGender } from '@/context/GenderContext';
-import { GenderThemes } from '@/constants/Theme';
+import { GenderThemes, Typography } from '@/constants/theme';
 import { ThemedText } from '@/components/common/themed-text';
-import { BlurView } from 'expo-blur';
+import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
 
+const { width } = Dimensions.get('window');
 const RECENT_SEARCHES_KEY = '@flashfits_recent_searches';
 const POPULAR_TAGS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets', 'Perfumes', 'Belts'];
 
@@ -71,7 +75,7 @@ export default function SearchScreen() {
     searchTimeout.current = setTimeout(async () => {
       try {
         const response = await fetchFilteredProducts({ search: text });
-        setResults(response.products || []);
+        setResults(response.products || response.data || []);
       } catch (error) {
         console.error('Search error:', error);
       } finally {
@@ -94,16 +98,6 @@ export default function SearchScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const renderRecentSearch = ({ item }: { item: string }) => (
-    <TouchableOpacity 
-      style={styles.recentItem}
-      onPress={() => handleSearch(item)}
-    >
-      <Ionicons name="time-outline" size={18} color="#94A3B8" />
-      <Text style={styles.recentText}>{item}</Text>
-      <Ionicons name="arrow-forward" size={14} color="#CBD5E1" />
-    </TouchableOpacity>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -115,7 +109,7 @@ export default function SearchScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <Ionicons name="chevron-back" size={24} color="#1E293B" />
+          <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         
         <View style={styles.searchContainer}>
@@ -133,7 +127,7 @@ export default function SearchScreen() {
           />
           {query.length > 0 && (
             <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-              <Ionicons name="close-circle" size={18} color="#CBD5E1" />
+              <Ionicons name="close-circle" size={20} color="#CBD5E1" />
             </TouchableOpacity>
           )}
         </View>
@@ -145,7 +139,7 @@ export default function SearchScreen() {
           <Text style={styles.loadingText}>Searching for "{query}"...</Text>
         </View>
       ) : query.length === 0 ? (
-        <View style={styles.content}>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {recentSearches.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -157,38 +151,71 @@ export default function SearchScreen() {
                   <Text style={styles.clearAllText}>Clear All</Text>
                 </TouchableOpacity>
               </View>
-              <FlatList
-                data={recentSearches}
-                renderItem={renderRecentSearch}
-                keyExtractor={item => item}
-                scrollEnabled={false}
-              />
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tagScrollContent}
+                style={styles.tagScrollView}
+              >
+                {recentSearches.map((item) => (
+                  <TouchableOpacity 
+                    key={item} 
+                    style={[styles.tag, { backgroundColor: '#F1F5F9' }]}
+                    onPress={() => handleSearch(item)}
+                    activeOpacity={0.6}
+                  >
+                    <Ionicons name="time-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <Text style={styles.tagText}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )}
 
+          <RecentlyViewedSection />
+
           <View style={[styles.section, { marginTop: 24 }]}>
             <ThemedText type="subtitle" style={styles.sectionTitle}>Popular Searches</ThemedText>
-            <View style={styles.tagGrid}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagScrollContent}
+              style={styles.tagScrollView}
+            >
               {POPULAR_TAGS.map(tag => (
                 <TouchableOpacity 
                   key={tag} 
-                  style={[styles.tag, { borderColor: '#E2E8F0' }]}
+                  style={[styles.tag, { backgroundColor: '#F8FAFC' }]}
                   onPress={() => {
                     handleSearch(tag);
                     saveSearch(tag);
                   }}
+                  activeOpacity={0.6}
                 >
                   <Text style={styles.tagText}>{tag}</Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
           </View>
-        </View>
+          
+          <View style={styles.trendingBanner}>
+             <LinearGradient
+               colors={['#F8FAFC', '#F1F5F9']}
+               style={styles.bannerContent}
+             >
+               <View>
+                 <Text style={styles.bannerLabel}>TRENDING NOW</Text>
+                 <Text style={styles.bannerTitle}>Summer Essentials</Text>
+               </View>
+               <Ionicons name="flash" size={24} color={theme.primary} />
+             </LinearGradient>
+          </View>
+        </ScrollView>
       ) : results.length > 0 ? (
         <FlatList
           data={results}
           renderItem={({ item }) => <ProductCard product={item} containerStyle={styles.cardContainer} />}
-          keyExtractor={item => `${item._id}-${item.variantId}`}
+          keyExtractor={(item, index) => `${item._id || index}-${item.variantId || index}`}
           numColumns={2}
           contentContainerStyle={styles.resultsList}
           showsVerticalScrollIndicator={false}
@@ -200,10 +227,16 @@ export default function SearchScreen() {
           <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
             <Ionicons name="search-outline" size={60} color={theme.primary} />
           </View>
-          <ThemedText type="subtitle">No results found</ThemedText>
+          <ThemedText type="subtitle" style={styles.emptyTitle}>No results found</ThemedText>
           <Text style={styles.emptyText}>
-            We couldn't find anything for "{query}". Try searching for something else.
+            We couldn't find anything for "{query}". Try searching for categories like "Shoes" or "Jackets".
           </Text>
+          <TouchableOpacity 
+            style={[styles.retryButton, { backgroundColor: theme.primary }]}
+            onPress={clearSearch}
+          >
+            <Text style={styles.retryButtonText}>Clear Search</Text>
+          </TouchableOpacity>
         </View>
       )}
     </SafeAreaView>
@@ -221,13 +254,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#F8FAFC',
+    zIndex: 10,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F8FAFC',
@@ -236,42 +271,46 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    height: 46,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    color: '#1E293B',
-    fontWeight: '500',
+    fontSize: 16,
+    color: '#0F172A',
+    fontFamily: Typography.fontFamily.medium,
     paddingVertical: 8,
   },
   clearButton: {
-    padding: 4,
+    padding: 6,
   },
   content: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 24,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 40,
+    backgroundColor: '#FFFFFF',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 14,
+    marginTop: 20,
+    fontSize: 15,
     color: '#64748B',
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
   section: {
-    marginBottom: 12,
+    marginBottom: 20,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -280,55 +319,93 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.serifBold,
+    color: '#0F172A',
   },
   clearAllText: {
     fontSize: 13,
     color: '#EF4444',
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.bold,
   },
   recentItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F8FAFC',
   },
+  recentIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
   recentText: {
     flex: 1,
-    marginLeft: 12,
-    fontSize: 15,
-    color: '#475569',
-    fontWeight: '500',
+    fontSize: 16,
+    color: '#334155',
+    fontFamily: Typography.fontFamily.medium,
   },
-  tagGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  tagScrollView: {
+    marginHorizontal: -20,
+    marginTop: 12,
+  },
+  tagScrollContent: {
+    paddingHorizontal: 20,
     gap: 10,
-    marginTop: 16,
   },
   tag: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
     backgroundColor: '#F8FAFC',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   tagText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#475569',
+  },
+  trendingBanner: {
+    marginTop: 40,
+    marginBottom: 40,
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    borderRadius: 24,
+  },
+  bannerLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#94A3B8',
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  bannerTitle: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.serifBold,
+    color: '#0F172A',
   },
   resultsList: {
     padding: 16,
+    paddingTop: 12,
   },
   columnWrapper: {
     justifyContent: 'space-between',
+    gap: 16,
   },
   cardContainer: {
-    width: '48%',
+    width: (width - 48) / 2,
     marginBottom: 16,
+    marginRight: 0,
   },
   emptyIconContainer: {
     width: 120,
@@ -338,11 +415,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
+  emptyTitle: {
+    fontSize: 22,
+    fontFamily: Typography.fontFamily.serifBold,
+    color: '#0F172A',
+  },
   emptyText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#64748B',
     textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 8,
+    lineHeight: 22,
+    marginTop: 10,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  retryButton: {
+    marginTop: 30,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
   },
 });

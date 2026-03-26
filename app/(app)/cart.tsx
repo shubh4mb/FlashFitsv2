@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { useCart } from '@/context/CartContext';
 import { useGender } from '@/context/GenderContext';
-import { GenderThemes } from '@/constants/Theme';
+import { GenderThemes } from '@/constants/theme';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
 import CartItem from '@/components/common/CartItem';

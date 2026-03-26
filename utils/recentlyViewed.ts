@@ -10,7 +10,15 @@ export interface Product {
   ratings?: number | string;
   isTriable?: boolean;
   variants?: any[];
+  variant?: any;
   variantId?: string;
+  subCategory?: string;
+  subCategoryId?: any;
+  category?: string;
+  categoryId?: any;
+  gender?: string | string[];
+  brand?: string;
+  brandId?: string;
 }
 
 /**

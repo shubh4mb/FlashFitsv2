@@ -14,27 +14,37 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
 
-import { fetchCategories } from "../../api/categories";
 import { useCart } from "@/context/CartContext";
-import { useWishlist } from "@/context/WishlistContext";
-import { GenderThemes } from "../../constants/Theme";
+import { fetchCategories } from "../../api/categories";
+import { GenderThemes, Typography } from "../../constants/theme";
 import { useAddress } from "../../context/AddressContext";
 import { Gender, useGender } from "../../context/GenderContext";
+import Skeleton from "../common/Skeleton";
 
 interface MainHeaderProps {
     cartCount?: number;
     wishlistCount?: number;
     hideCategories?: boolean;
+    scrollY?: Animated.Value;
+    onHeaderLayout?: (height: number) => void;
+    refreshKey?: number;
 }
 
-export default function MainHeader({ hideCategories = false }: MainHeaderProps) {
+const SCROLL_DISTANCE = 75;
+
+const capitalize = (str?: string) => {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+export default function MainHeader({ hideCategories = false, scrollY, onHeaderLayout, refreshKey }: MainHeaderProps) {
     const { cart } = useCart();
-    const { wishlistIds } = useWishlist();
-    
+
     const cartCount = cart?.totalItems || 0;
-    const wishlistCount = wishlistIds.length;
     const router = useRouter();
     const { selectedAddress, openAddressModal } = useAddress();
+    console.log(selectedAddress, "selectedAddress");
+
     const insets = useSafeAreaInsets();
 
     const [keywordIndex, setKeywordIndex] = useState(0);
@@ -50,7 +60,8 @@ export default function MainHeader({ hideCategories = false }: MainHeaderProps) 
 
     // 3D Gender Switcher animations
     const genderAnim = useRef(new Animated.Value(0)).current;
-    const scaleAnims = useRef(genders.map(() => new Animated.Value(1))).current;
+    const scaleAnims = useRef(genders.map((g) => new Animated.Value(g === selectedGender ? 1.05 : 0.98))).current;
+    const activeOpacities = useRef(genders.map((g) => new Animated.Value(g === selectedGender ? 1 : 0))).current;
 
     useEffect(() => {
         const loadCategories = async () => {
@@ -73,17 +84,25 @@ export default function MainHeader({ hideCategories = false }: MainHeaderProps) 
         };
 
         loadCategories();
-    }, []);
+    }, [refreshKey]);
 
     useEffect(() => {
-        // Animate the scale of the buttons
+        // Animate the scale and opacity of the buttons smoothly
         genders.forEach((g, i) => {
-            Animated.spring(scaleAnims[i], {
-                toValue: selectedGender === g ? 1.1 : 0.95,
-                friction: 8,
-                tension: 100,
-                useNativeDriver: true,
-            }).start();
+            const isActive = selectedGender === g;
+            Animated.parallel([
+                Animated.spring(scaleAnims[i], {
+                    toValue: isActive ? 1.05 : 0.98,
+                    friction: 7,
+                    tension: 80,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(activeOpacities[i], {
+                    toValue: isActive ? 1 : 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                })
+            ]).start();
         });
     }, [selectedGender]);
 
@@ -135,224 +154,304 @@ export default function MainHeader({ hideCategories = false }: MainHeaderProps) 
         return () => clearInterval(interval);
     }, [fadeAnim, slideAnim]);
 
+    const TOP_OFFSET = 54;
+
+    const headerTranslate = scrollY ? scrollY.interpolate({
+        inputRange: [0, 10000],
+        outputRange: [0, -10000],
+        extrapolateLeft: 'clamp',
+        extrapolateRight: 'extend',
+    }) : 0;
+
+    const topRowOpacity = scrollY ? scrollY.interpolate({
+        inputRange: [0, TOP_OFFSET * 0.7],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+    }) : 1;
+
+    const stickyCounterY = scrollY ? scrollY.interpolate({
+        inputRange: [0, TOP_OFFSET, TOP_OFFSET + 1],
+        outputRange: [0, 0, 1],
+        extrapolateLeft: 'clamp',
+        extrapolateRight: 'extend'
+    }) : 0;
+
+    const stickyBgOpacity = scrollY ? scrollY.interpolate({
+        inputRange: [TOP_OFFSET, TOP_OFFSET + 20],
+        outputRange: [0, 1],
+        extrapolate: 'clamp'
+    }) : 0;
+
+
+
     return (
-        <LinearGradient
-            colors={[theme.primary, '#FFFFFF', '#FFFFFF']} // Fade to white
-            locations={[0, 0.7, 1]} // Reaches white by approx 40% height (gender switcher area)
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={[styles.container, { paddingTop: insets.top + 10 }]}
+        <Animated.View
+            style={[
+                styles.stickyWrapper,
+                {
+                    transform: [{ translateY: headerTranslate }],
+                    zIndex: 100,
+                }
+            ]}
+            onLayout={(e) => onHeaderLayout?.(e.nativeEvent.layout.height)}
         >
-            {/* Decorative blurred orb */}
-            {/* <View style={styles.decorativeOrb} /> */}
-
-            {/* ── Top Row: Location & Icons ── */}
-            <View style={styles.topRow}>
-                <TouchableOpacity
-                    style={styles.locationContainer}
-                    activeOpacity={0.7}
-                    onPress={openAddressModal}
-                >
-                    <View style={styles.locationPin}>
-                        <Ionicons name="location" size={18} color={theme.text} />
-                    </View>
-                    <View style={styles.addressInfo}>
-                        <View style={styles.addressRow}>
-                            <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
-                                {selectedAddress ? selectedAddress.addressLine1 : 'Select Address'}
-                            </Text>
-                            <AntDesign name="down" size={9} color={theme.text} style={{ opacity: 0.7, marginLeft: 2 }} />
-                        </View>
-                        <Text style={[styles.subText, { color: theme.text }]} numberOfLines={1}>
-                            {selectedAddress
-                                ? `${selectedAddress.area}, ${selectedAddress.city}`
-                                : 'Tap to select delivery location'}
-                        </Text>
-                    </View>
-                </TouchableOpacity>
-
-                <View style={styles.actionIcons}>
-                    <TouchableOpacity
-                        style={styles.iconButton}
-                        activeOpacity={0.7}
-                        onPress={() => router.push("/(app)/(tabs)/wishlist" as any)}
-                    >
-                        <Ionicons name="heart-outline" size={22} color={theme.text} />
-                        {wishlistCount > 0 && (
-                            <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-                                <Text style={styles.badgeText}>{wishlistCount > 9 ? '9+' : wishlistCount}</Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={styles.iconButton}
-                        activeOpacity={0.7}
-                        onPress={() => router.push("/cart" as any)}
-                    >
-                        <Ionicons name="bag-handle-outline" size={22} color={theme.text} />
-                        {cartCount > 0 && (
-                            <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-                                <Text style={styles.badgeText}>{cartCount > 9 ? '9+' : cartCount}</Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => router.push("/(app)/(tabs)" as any)}
-                    >
-                        <View style={styles.profileCircle}>
-                            <Ionicons name="person-outline" size={16} color={theme.text} />
-                        </View>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* ── Search Bar ── */}
-            <TouchableOpacity
-                style={styles.searchBar}
-                activeOpacity={0.85}
-                onPress={() => router.push("/search" as any)}
+            <LinearGradient
+                colors={[theme?.primary || '#011441', '#FFFFFF', '#FFFFFF',]} // Fade to white
+                locations={[0, 0.7, 1]} // Reaches white by approx 70% height
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={[styles.container, { paddingTop: insets.top + 10 }]}
             >
-                <Ionicons name="search" size={18} color="#94A3B8" style={{ marginRight: 10 }} />
-                <View style={styles.searchTextContainer}>
-                    <Text style={styles.staticSearchText}>Search </Text>
-                    <Animated.Text
-                        style={[
-                            styles.animatedSearchText,
-                            {
-                                opacity: fadeAnim,
-                                transform: [{ translateY: slideAnim }],
-                            },
-                        ]}
-                    >
-                        "{KEYWORDS[keywordIndex]}"
-                    </Animated.Text>
-                </View>
-                <View style={styles.micButton}>
-                    <MaterialCommunityIcons name="microphone-outline" size={18} color="#64748B" />
-                </View>
-            </TouchableOpacity>
+                {/* Decorative blurred orb */}
+                {/* <View style={styles.decorativeOrb} /> */}
 
-            {/* ── Gender Switcher ── */}
-            <View style={styles.genderContainer}>
-                {genders.map((g, i) => {
-                    const isActive = selectedGender === g;
-                    const gTheme = GenderThemes[g] || GenderThemes.Men;
-                    return (
-                        <Animated.View
-                            key={g}
-                            style={[
-                                styles.genderButtonWrapper,
-                                { transform: [{ scale: scaleAnims[i] }] }
-                            ]}
+                {/* ── Top Row: Location & Icons ── */}
+                <Animated.View style={[styles.topRow, { opacity: topRowOpacity }]}>
+                    <TouchableOpacity
+                        style={styles.locationContainer}
+                        activeOpacity={0.7}
+                        onPress={openAddressModal}
+                    >
+                        <View style={styles.locationPin}>
+                            <Ionicons name="location" size={18} color={theme.text} />
+                        </View>
+                        <View style={styles.addressInfo}>
+                            <View style={styles.addressRow}>
+                                <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
+                                    {selectedAddress ? capitalize(selectedAddress.addressType) : 'Select Address'}
+                                </Text>
+                                <AntDesign name="down" size={9} color={theme.text} style={{ opacity: 0.7, marginLeft: 2 }} />
+                            </View>
+                            <Text style={[styles.subText, { color: theme.text }]} numberOfLines={1}>
+                                {selectedAddress
+                                    ? `${capitalize(selectedAddress.addressLine1)}, ${capitalize(selectedAddress.addressLine2)}, ${capitalize(selectedAddress.city)}`
+                                    : 'Tap to select delivery location'}
+                            </Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.actionIcons}>
+
+                        <TouchableOpacity
+                            style={styles.iconButton}
+                            activeOpacity={0.7}
+                            onPress={() => router.push("/cart" as any)}
                         >
-                            <TouchableOpacity
-                                onPress={() => setSelectedGender(g)}
+                            <Ionicons name="bag-handle-outline" size={22} color={theme.text} />
+                            {cartCount > 0 && (
+                                <View style={[styles.badge, { backgroundColor: theme.accent }]}>
+                                    <Text style={styles.badgeText}>{cartCount > 9 ? '9+' : cartCount}</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => router.push("/(app)/(tabs)" as any)}
+                        >
+                            <View style={styles.profileCircle}>
+                                <Ionicons name="person-outline" size={16} color={theme.text} />
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                </Animated.View>
+
+                {/* ── Sticky Section Header ── */}
+                <Animated.View style={{ transform: [{ translateY: stickyCounterY }], zIndex: 10, elevation: 10 }}>
+                    {/* Opaque Background for Sticky Section */}
+                    <Animated.View style={{
+                        position: 'absolute',
+                        top: -insets.top - 10,
+                        bottom: -15,
+                        left: -16,
+                        right: -16,
+                        opacity: stickyBgOpacity,
+                        ...Platform.select({
+                            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+                            android: { elevation: 8 }
+                        }),
+                    }}>
+                        <LinearGradient
+                            colors={[theme?.primary || '#011441', '#FFFFFF', '#FFFFFF']}
+                            locations={[0, 0.7, 1]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 0, y: 1 }}
+                            style={StyleSheet.absoluteFillObject}
+                        />
+                    </Animated.View>
+
+                    {/* ── Search Bar ── */}
+                    <TouchableOpacity
+                        style={styles.searchBar}
+                        activeOpacity={0.85}
+                        onPress={() => router.push("/search" as any)}
+                    >
+                        <Ionicons name="search" size={18} color="#94A3B8" style={{ marginRight: 10 }} />
+                        <View style={styles.searchTextContainer}>
+                            <Text style={styles.staticSearchText}>Try </Text>
+                            <Animated.Text
                                 style={[
-                                    styles.genderButton,
-                                    isActive && {
-                                        backgroundColor: '#FFFFFF',
-                                        ...Platform.select({
-                                            ios: {
-                                                shadowColor: gTheme.primary,
-                                                shadowOffset: { width: 0, height: 6 },
-                                                shadowOpacity: 0.3,
-                                                shadowRadius: 10,
-                                            },
-                                            android: {
-                                                elevation: 10,
-                                            },
-                                        }),
+                                    styles.animatedSearchText,
+                                    {
+                                        opacity: fadeAnim,
+                                        transform: [{ translateY: slideAnim }],
                                     },
                                 ]}
-                                activeOpacity={0.9}
                             >
-                                <Text
+                                "{KEYWORDS[keywordIndex]}"
+                            </Animated.Text>
+                            <Text style={styles.staticSearchText}> at your Home! </Text>
+
+                        </View>
+                        <View style={styles.micButton}>
+                            <MaterialCommunityIcons name="microphone-outline" size={18} color="#64748B" />
+                        </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.genderContainer}>
+                        {genders.map((g, i) => {
+                            const isActive = selectedGender === g;
+                            const gTheme = GenderThemes[g] || GenderThemes.Men;
+
+                            const inactiveOpacity = activeOpacities[i].interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [1, 0]
+                            });
+
+                            return (
+                                <Animated.View
+                                    key={g}
                                     style={[
-                                        styles.genderText,
-                                        {
-                                            color: isActive ? gTheme.primary : 'rgba(255,255,255,0.6)',
-                                            fontWeight: isActive ? '900' : '600',
-                                            textShadowColor: isActive ? 'rgba(0,0,0,0.05)' : 'transparent',
-                                            textShadowOffset: { width: 0, height: 1 },
-                                            textShadowRadius: 1,
-                                        },
+                                        styles.genderButtonWrapper,
+                                        { transform: [{ scale: scaleAnims[i] }] }
                                     ]}
                                 >
-                                    {g}
-                                </Text>
-                                {isActive && (
-                                    <View style={[styles.activeIndicator, { backgroundColor: gTheme.primary }]} />
-                                )}
-                            </TouchableOpacity>
-                        </Animated.View>
-                    );
-                })}
-            </View>
+                                    <TouchableOpacity
+                                        onPress={() => setSelectedGender(g)}
+                                        style={styles.genderButton}
+                                        activeOpacity={0.9}
+                                    >
+                                        {/* Active Background Pill */}
+                                        <Animated.View style={[
+                                            StyleSheet.absoluteFill,
+                                            {
+                                                backgroundColor: '#FFFFFF',
+                                                borderRadius: 16,
+                                                opacity: activeOpacities[i],
+                                                ...Platform.select({
+                                                    ios: {
+                                                        shadowColor: gTheme.primary,
+                                                        shadowOffset: { width: 0, height: 4 },
+                                                        shadowOpacity: 0.2,
+                                                        shadowRadius: 8,
+                                                    },
+                                                    android: {
+                                                        elevation: 4,
+                                                    },
+                                                }),
+                                            }
+                                        ]} />
 
-            {/* ── Category List ── */}
-            {!hideCategories && (
-                <Animated.ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.categoriesContainer}
-                    style={{ marginTop: 16 }}
-                >
-                    {!loading && categories.map((cat) => {
-                        const isActive = selectedCategoryId === cat._id;
-                        const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
-                        const logoUrl = cat.logos?.[genderKey]?.url || cat.logo?.url || cat.image?.url;
-
-                        return (
-                            <TouchableOpacity
-                                key={cat._id}
-                                style={styles.categoryItem}
-                                onPress={() => setSelectedCategoryId(cat._id)}
-                            >
-                                <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
-                                    {logoUrl ? (
-                                        <Animated.Image
-                                            source={{ uri: logoUrl }}
-                                            style={styles.categoryLogo}
-                                            resizeMode="contain"
-                                        />
-                                    ) : (
-                                        <View style={styles.placeholderLogo}>
-                                            <Text style={styles.placeholderText}>{cat.name[0]}</Text>
+                                        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                                            <Animated.Text
+                                                style={[
+                                                    styles.genderText,
+                                                    {
+                                                        color: 'rgba(255,255,255,0.7)',
+                                                        fontFamily: Typography.fontFamily.extraBold,
+                                                        opacity: inactiveOpacity,
+                                                    }
+                                                ]}
+                                            >
+                                                {g}
+                                            </Animated.Text>
+                                            <Animated.Text
+                                                style={[
+                                                    styles.genderText,
+                                                    {
+                                                        position: 'absolute',
+                                                        color: gTheme.primary,
+                                                        fontFamily: Typography.fontFamily.extraBold,
+                                                        opacity: activeOpacities[i],
+                                                    }
+                                                ]}
+                                            >
+                                                {g}
+                                            </Animated.Text>
                                         </View>
-                                    )}
+                                    </TouchableOpacity>
+                                </Animated.View>
+                            );
+                        })}
+                    </View>
+                </Animated.View>
+
+                {/* ── Category List ── */}
+                {!hideCategories && (
+                    <Animated.ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.categoriesContainer}
+                        style={{ marginTop: 10 }}
+                    >
+                        {loading
+                            ? [1, 2, 3, 4, 5].map((i) => (
+                                <View key={i} style={styles.categoryItem}>
+                                    <Skeleton width={72} height={72} borderRadius={16} style={{ marginBottom: 4 }} />
+                                    <Skeleton width={50} height={10} />
                                 </View>
-                                <Text style={[styles.categoryName, { color: theme.text }, isActive && styles.categoryNameActive]}>
-                                    {cat.name}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </Animated.ScrollView>
-            )}
-        </LinearGradient>
+                            ))
+                            : categories.map((cat) => {
+                                const isActive = selectedCategoryId === cat._id;
+                                const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
+                                const logoUrl = cat.logos?.[genderKey]?.url || cat.logo?.url || cat.image?.url;
+
+                                return (
+                                    <TouchableOpacity
+                                        key={cat._id}
+                                        style={styles.categoryItem}
+                                        onPress={() => setSelectedCategoryId(cat._id)}
+                                    >
+                                        <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
+                                            {logoUrl ? (
+                                                <Animated.Image
+                                                    source={{ uri: logoUrl }}
+                                                    style={styles.categoryLogo}
+                                                    resizeMode="contain"
+                                                />
+                                            ) : (
+                                                <View style={styles.placeholderLogo}>
+                                                    <Text style={styles.placeholderText}>{cat.name[0]}</Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                        <Text style={[styles.categoryName, { color: 'grey' }]} numberOfLines={1}>
+                                            {cat.name}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })
+                        }
+                    </Animated.ScrollView>
+                )}
+            </LinearGradient>
+        </Animated.View>
     );
 }
 
 const styles = StyleSheet.create({
+    stickyWrapper: {
+        position: 'absolute',
+        top: -4,
+        left: 0,
+        right: 0,
+
+    },
     container: {
         paddingHorizontal: 16,
-        paddingBottom: 20,
+        // paddingBottom: 20,
         borderBottomLeftRadius: 28,
         borderBottomRightRadius: 28,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.08,
-                shadowRadius: 16,
-            },
-            android: {
-                elevation: 6,
-            },
-        }),
     },
     decorativeOrb: {
         position: 'absolute',
@@ -401,13 +500,13 @@ const styles = StyleSheet.create({
     },
     addressText: {
         fontSize: 14,
-        fontWeight: '700',
+        fontFamily: Typography.fontFamily.bold,
         marginRight: 3,
         letterSpacing: 0.1,
     },
     subText: {
         fontSize: 10.5,
-        fontWeight: '500',
+        fontFamily: Typography.fontFamily.medium,
         opacity: 0.6,
         marginTop: 1,
         letterSpacing: 0.1,
@@ -437,7 +536,7 @@ const styles = StyleSheet.create({
     badgeText: {
         color: '#fff',
         fontSize: 8,
-        fontWeight: '800',
+        fontFamily: Typography.fontFamily.bold,
         letterSpacing: -0.2,
     },
     profileCircle: {
@@ -476,12 +575,12 @@ const styles = StyleSheet.create({
     staticSearchText: {
         fontSize: 14,
         color: '#94A3B8',
-        fontWeight: '400',
+        fontFamily: Typography.fontFamily.regular,
     },
     animatedSearchText: {
         fontSize: 14,
         color: '#1E293B',
-        fontWeight: '700',
+        fontFamily: Typography.fontFamily.bold,
         letterSpacing: 0.1,
     },
     micButton: {
@@ -495,33 +594,25 @@ const styles = StyleSheet.create({
     genderContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.18)',
-        padding: 6,
+        backgroundColor: 'rgba(0,0,0,0.12)',
+        padding: 5,
         borderRadius: 20,
         marginTop: 10,
-        gap: 8,
+        gap: 4,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.15)',
     },
     genderButtonWrapper: {
         flex: 1,
     },
     genderButton: {
-        paddingVertical: 12,
+        paddingVertical: 10,
         borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
-        overflow: 'hidden',
     },
-    activeIndicator: {
-        position: 'absolute',
-        bottom: 4,
-        width: 4,
-        height: 4,
-        borderRadius: 2,
-        opacity: 0.6,
-    },
+
     genderText: {
         fontSize: 13,
         textTransform: 'uppercase',
@@ -535,11 +626,11 @@ const styles = StyleSheet.create({
     categoryItem: {
         alignItems: 'center',
         gap: 2,
-        width: 90,
+        width: 62,
     },
     logoWrapper: {
-        width: 100,
-        height: 100,
+        width: 72,
+        height: 72,
         borderRadius: 16,
         backgroundColor: 'transparent',
         alignItems: 'center',
@@ -550,8 +641,8 @@ const styles = StyleSheet.create({
         // No border or background for active state as per request
     },
     categoryLogo: {
-        width: '120%',
-        height: '120%',
+        width: '100%',
+        height: '100%',
         zIndex: 2,
     },
     placeholderLogo: {
@@ -564,19 +655,19 @@ const styles = StyleSheet.create({
     },
     placeholderText: {
         fontSize: 24,
-        fontWeight: 'bold',
+        fontFamily: Typography.fontFamily.bold,
         color: '#fff',
         opacity: 0.5,
     },
     categoryName: {
         fontSize: 10.5,
-        fontWeight: '600',
+        fontFamily: Typography.fontFamily.serifSemiBold,
         textAlign: 'center',
         opacity: 0.85,
-        // marginTop: 4,
+        marginBottom: 8,
     },
     categoryNameActive: {
-        fontWeight: '800',
+        fontFamily: Typography.fontFamily.serifBold,
         opacity: 1,
     },
 });

@@ -42,10 +42,17 @@ export const GenderThemes = {
 
 export const Typography = {
   fontFamily: {
-    regular: "System",
-    medium: "System",
-    bold: "System",
-    semiBold: "System",
+    light: "Manrope_300Light",
+    regular: "Manrope_400Regular",
+    medium: "Manrope_500Medium",
+    semiBold: "Manrope_600SemiBold",
+    bold: "Manrope_700Bold",
+    extraBold: "Manrope_800ExtraBold",
+    serif: "WorkSans_400Regular",
+    serifMedium: "WorkSans_500Medium",
+    serifSemiBold: "WorkSans_600SemiBold",
+    serifBold: "WorkSans_700Bold",
+    serifExtraBold: "WorkSans_800ExtraBold",
   },
   fontSize: {
     xs: 12,
