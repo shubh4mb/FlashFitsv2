@@ -611,13 +611,14 @@ const styles = StyleSheet.create({
     genderContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.12)',
+        backgroundColor: 'rgba(0,0,0,0.13)',
         padding: 5,
         borderRadius: 20,
         marginTop: 10,
         gap: 4,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.15)',
+        
     },
     genderButtonWrapper: {
         flex: 1,
