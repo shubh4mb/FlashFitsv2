@@ -1,18 +1,22 @@
-import { productDetailPage } from '@/api/products';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { productDetailPage, fetchRelatedProducts } from '@/api/products';
+import { GenderThemes, Typography, Palette } from '@/constants/theme';
 import { useCart } from '@/context/CartContext';
 import { useGender } from '@/context/GenderContext';
 import { useWishlist } from '@/context/WishlistContext';
+import { useAddress } from '@/context/AddressContext';
 import { addToRecentlyViewed } from '@/utils/recentlyViewed';
+import ProductCard from '@/components/common/ProductCard';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Loader from '@/components/common/Loader';
+import { useCourierCart } from '@/context/CourierCartContext';
 import {
+  Alert,
   Animated,
   Dimensions,
   Platform,
@@ -22,6 +26,9 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Switch,
+  ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,17 +36,23 @@ const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 520;
 
 const ProductDetailPage = () => {
-  const { id } = useLocalSearchParams();
+  const { id, fromExplore, variantId, size } = useLocalSearchParams();
+  const isExplore = fromExplore === 'true';
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const { userLocation, selectedAddress } = useAddress();
 
   const { toggleWishlist, isInWishlist } = useWishlist();
-  const { addToCart: addItemToCart } = useCart();
+  const { cart, addToCart: addItemToCart, clearCart } = useCart();
+  const { courierCart, addToCourierCart: addItemToCourierCart, clearCart: clearCourierCart } = useCourierCart();
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
+  const [loadingRelated, setLoadingRelated] = useState(false);
+  const [showOnlyNearby, setShowOnlyNearby] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -56,19 +69,36 @@ const ProductDetailPage = () => {
         setProduct(data);
 
         if (data.variants?.[0]) {
-          setSelectedColor(data.variants[0].color.name);
-          const firstInStockSize = data.variants[0].sizes.find((s: any) => s.stock > 0);
-          if (firstInStockSize) setSelectedSize(firstInStockSize.size);
+          // Find target variant based on variantId param or fallback to first
+          const targetVariant = variantId 
+            ? data.variants.find((v: any) => v._id === variantId) 
+            : data.variants[0];
+
+          if (targetVariant) {
+            setSelectedColor(targetVariant.color.name);
+            
+            // Set size from param or first in stock
+            if (size) {
+              setSelectedSize(size as string);
+            } else {
+              const firstInStockSize = targetVariant.sizes.find((s: any) => s.stock > 0);
+              if (firstInStockSize) setSelectedSize(firstInStockSize.size);
+            }
+          }
         }
+
+        const activeVariant = variantId 
+          ? data.variants.find((v: any) => v._id === variantId) || data.variants[0]
+          : data.variants[0];
 
         addToRecentlyViewed({
           id: data._id,
           name: data.name,
-          price: data.variants[0]?.price,
-          mrp: data.variants[0]?.mrp,
-          images: data.variants[0]?.images,
+          price: activeVariant?.price,
+          mrp: activeVariant?.mrp,
+          images: activeVariant?.images,
           ratings: data.ratings,
-          variantId: data.variants[0]?._id, // Add this
+          variantId: activeVariant?._id,
         });
       } catch (error) {
         console.error('Error fetching product:', error);
@@ -78,7 +108,32 @@ const ProductDetailPage = () => {
     };
 
     if (id) fetchProduct();
-  }, [id]);
+  }, [id, variantId, size]);
+
+  // ── Fetch Related Products ──
+  useEffect(() => {
+    const loadRelated = async () => {
+      if (!product?._id) return;
+      try {
+        setLoadingRelated(true);
+        const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+        const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+        const data = await fetchRelatedProducts(product._id, lat, lng);
+        setRelatedProducts(data || []);
+      } catch (error) {
+        console.error('Error fetching related products:', error);
+      } finally {
+        setLoadingRelated(false);
+      }
+    };
+
+    loadRelated();
+  }, [product?._id, selectedAddress, userLocation]);
+
+  const filteredRelated = useMemo(() => {
+    if (!showOnlyNearby) return relatedProducts;
+    return relatedProducts.filter(p => p.isInstantBuyable);
+  }, [relatedProducts, showOnlyNearby]);
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 120],
@@ -92,11 +147,7 @@ const ProductDetailPage = () => {
     extrapolate: 'clamp',
   });
 
-  const imageTranslateY = scrollY.interpolate({
-    inputRange: [0, IMAGE_HEIGHT],
-    outputRange: [0, -IMAGE_HEIGHT * 0.35],
-    extrapolate: 'clamp',
-  });
+
 
   const handleShare = async () => {
     try {
@@ -130,17 +181,76 @@ const ProductDetailPage = () => {
 
     try {
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
+      const selectedStock = activeVariant?.sizes?.find((s: any) => s.size === selectedSize)?.stock || 0;
+      const targetMerchantId = product.merchantId?._id || product.merchantId;
 
-      await addItemToCart({
-        productId: product._id,
-        variantId: activeVariant._id,
-        size: selectedSize,
-        quantity: 1,
-        merchantId: product.merchantId?._id || product.merchantId,
-        image: activeVariant.images?.[0]?.url || '',
-      });
+      const performAdd = async () => {
+        if (isExplore) {
+          await addItemToCourierCart({
+            productId: product._id,
+            variantId: activeVariant._id,
+            size: selectedSize,
+            quantity: 1,
+            merchantId: targetMerchantId,
+            image: { url: activeVariant.images?.[0]?.url || '' },
+          });
+          router.push({ pathname: '/cart', params: { tab: 'courier' } } as any);
+        } else {
+          await addItemToCart({
+            productId: product._id,
+            variantId: activeVariant._id,
+            size: selectedSize,
+            quantity: 1,
+            merchantId: targetMerchantId,
+            image: { url: activeVariant.images?.[0]?.url || '' },
+          });
+          router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
+        }
+      };
 
-      router.push('/cart' as any);
+      // Single-Merchant Validation
+      let currentCartItems = [];
+      if (isExplore) {
+        currentCartItems = courierCart?.items || [];
+      } else {
+        currentCartItems = cart?.items || [];
+      }
+
+      if (currentCartItems.length > 0) {
+        // Find existing merchant ID from the cart items
+        const existingMerchantId = currentCartItems[0].merchantId?._id || currentCartItems[0].merchantId;
+
+        if (existingMerchantId && existingMerchantId !== targetMerchantId) {
+          Alert.alert(
+            'Clear Cart?',
+            'Your cart contains items from another shop. Clear the cart and add this new item?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Clear Cart',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    if (isExplore) {
+                      await clearCourierCart();
+                    } else {
+                      await clearCart();
+                    }
+                    await performAdd();
+                  } catch (error) {
+                    console.error('Error clearing cart:', error);
+                  }
+                },
+              },
+            ]
+          );
+          return; // Stop execution, await user action on the alert
+        }
+      }
+
+      // If merchant matches or cart is empty, proceed to add
+      await performAdd();
+
     } catch (error) {
       console.error('Failed to add to cart:', error);
     }
@@ -177,28 +287,18 @@ const ProductDetailPage = () => {
     <View style={styles.container}>
       {/* Animated Blur Header */}
       <Animated.View style={[styles.header, { opacity: headerOpacity, paddingTop: insets.top }]}>
-        <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
         <View style={styles.headerContent}>
-          <TouchableOpacity style={styles.headerIcon} onPress={() => router.back()} activeOpacity={0.7}>
-            <Ionicons name="chevron-back" size={22} color="#0F172A" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{product.name}</Text>
-          <TouchableOpacity style={styles.headerIcon} onPress={handleShare} activeOpacity={0.7}>
-            <Ionicons name="share-outline" size={20} color="#0F172A" />
-          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
         </View>
       </Animated.View>
 
       {/* Floating Static Header */}
       <View style={[styles.staticHeader, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity style={styles.staticIcon} onPress={() => router.back()} activeOpacity={0.7}>
-          <BlurView intensity={40} tint="dark" style={[StyleSheet.absoluteFill, { borderRadius: 20 }]} />
           <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.staticIcon} onPress={handleShare} activeOpacity={0.7}>
-          <BlurView intensity={40} tint="dark" style={[StyleSheet.absoluteFill, { borderRadius: 20 }]} />
-          <Ionicons name="cart-outline" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
+        <View style={{ width: 40 }} />
       </View>
 
       <Animated.ScrollView
@@ -221,7 +321,7 @@ const ProductDetailPage = () => {
                 style={{
                   width,
                   height: IMAGE_HEIGHT,
-                  transform: [{ scale: imageScale }, { translateY: imageTranslateY }],
+                  transform: [{ scale: imageScale }],
                 }}
               >
                 <Image source={{ uri: img.url }} style={styles.mainImage} contentFit="cover" transition={300} />
@@ -248,10 +348,11 @@ const ProductDetailPage = () => {
             ))}
           </View>
 
-          {/* Gradient fade into content */}
+
+          {/* Bottom Shade Gradient */}
           <LinearGradient
-            colors={['transparent', 'rgba(255,255,255,0.6)', '#FFFFFF']}
-            style={styles.imageGradient}
+            colors={['transparent', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.4)']}
+            style={styles.imageBottomShade}
           />
         </View>
 
@@ -265,15 +366,24 @@ const ProductDetailPage = () => {
               </Text>
               <Text style={styles.name}>{product.name}</Text>
             </View>
-            <View style={[styles.ratingBadge, { backgroundColor: theme.primary }]}>
-              <Ionicons name="star" size={12} color="#FFFFFF" />
-              <Text style={styles.ratingText}>{product.ratings || '4.5'}</Text>
+            <View style={{ alignItems: 'flex-end', gap: 8 }}>
+              <TouchableOpacity
+                style={styles.inlineShareBtn}
+                onPress={handleShare}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="share-social-outline" size={18} color="#64748B" />
+              </TouchableOpacity>
+              <View style={styles.ratingBadge}>
+                <Ionicons name="star" size={12} color="#F59E0B" />
+                <Text style={styles.ratingText}>{product.ratings || '4.5'}</Text>
+              </View>
             </View>
           </View>
 
           {/* Price */}
           <View style={styles.priceRow}>
-            <Text style={[styles.price, { color: theme.primary }]}>₹{activeVariant.price}</Text>
+            <Text style={styles.price}>₹{activeVariant.price}</Text>
             {discountPercent > 0 && (
               <>
                 <Text style={styles.mrp}>₹{activeVariant.mrp}</Text>
@@ -371,40 +481,94 @@ const ProductDetailPage = () => {
           {/* Delivery Info Strip */}
           <View style={styles.deliveryStrip}>
             <View style={styles.deliveryItem}>
-              <Ionicons name="flash" size={16} color={theme.primary} />
+              <Ionicons name="flash" size={16} color="#64748B" />
               <Text style={styles.deliveryText}>Express Delivery</Text>
             </View>
             <View style={styles.deliveryDivider} />
             <View style={styles.deliveryItem}>
-              <Ionicons name="refresh" size={16} color={theme.primary} />
+              <Ionicons name="refresh" size={16} color="#64748B" />
               <Text style={styles.deliveryText}>Easy Returns</Text>
             </View>
             <View style={styles.deliveryDivider} />
             <View style={styles.deliveryItem}>
-              <Ionicons name="shield-checkmark" size={16} color={theme.primary} />
+              <Ionicons name="shield-checkmark" size={16} color="#64748B" />
               <Text style={styles.deliveryText}>Genuine</Text>
             </View>
           </View>
 
-          {/* Description */}
-          <Text style={styles.sectionTitle}>About this product</Text>
           <Text style={styles.description}>
             {product.description ||
               'Elevate your wardrobe with this stylish and durable piece. Crafted with premium materials for ultimate comfort and a sleek modern look.'}
           </Text>
 
+          {/* Related Products Section */}
+          <View style={styles.relatedSection}>
+            <View style={styles.relatedHeader}>
+              <Text style={styles.sectionTitle}>You May Also Like</Text>
+              {loadingRelated && <ActivityIndicator size="small" color={theme.primary} />}
+            </View>
+            
+            {filteredRelated.length > 0 ? (
+              <FlatList
+                data={filteredRelated}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item._id}
+                contentContainerStyle={styles.relatedList}
+                renderItem={({ item }) => (
+                  <ProductCard 
+                    product={item} 
+                    width={160}
+                    containerStyle={styles.relatedCard}
+                  />
+                )}
+              />
+            ) : !loadingRelated && (
+              <View style={styles.emptyRelated}>
+                <Text style={styles.emptyRelatedText}>
+                  {showOnlyNearby 
+                    ? "No instant try items nearby. Try turning off the filter!" 
+                    : "No related products found."}
+                </Text>
+              </View>
+            )}
+          </View>
+
           <View style={styles.spacer} />
         </View>
       </Animated.ScrollView>
 
+      {/* Floating Toggle */}
+      {!loading && (
+        <Animated.View 
+          style={[
+            styles.floatingToggleContainer, 
+            { bottom: insets.bottom + 85 }
+          ]}
+        >
+          <BlurView intensity={80} tint="light" style={styles.floatingToggleBlur}>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleTextCol}>
+                <Text style={styles.toggleLabel}>Instant Try & Buy</Text>
+                <Text style={styles.toggleSublabel}>Nearby stores only</Text>
+              </View>
+              <Switch
+                value={showOnlyNearby}
+                onValueChange={(val) => {
+                  setShowOnlyNearby(val);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                trackColor={{ false: '#CBD5E1', true: theme.primary }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showOnlyNearby ? theme.secondary : '#F8FAFC'}
+              />
+            </View>
+          </BlurView>
+        </Animated.View>
+      )}
+
       {/* Bottom Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-        <LinearGradient
-          colors={['#FFFFFF', '#F8FAFC', '#F1F5F9']} // Fully opaque gray-to-white gradient
-          style={[StyleSheet.absoluteFill]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-        />
+
         <Animated.View style={{ transform: [{ scale: wishlistScale }] }}>
           <TouchableOpacity
             style={[styles.wishlistBtn, isWishlisted && { borderColor: '#EF4444', backgroundColor: '#FEF2F2' }]}
@@ -501,34 +665,35 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 18,
-    fontFamily: Typography.fontFamily.serifExtraBold,
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
     color: '#0F172A',
     textAlign: 'center',
     marginHorizontal: 8,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   staticHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 90,
+    zIndex: 110, // Higher than animated header to stay on top
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
   },
   staticIcon: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.3)', // Semi-transparent for visibility on light backgrounds
     overflow: 'hidden',
   },
   imageGallery: {
     height: IMAGE_HEIGHT,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#000000', // Changed to black to blend with the bottom shade
     overflow: 'hidden',
   },
   mainImage: {
@@ -547,16 +712,17 @@ const styles = StyleSheet.create({
   imageCounterText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontFamily: Typography.fontFamily.bold,
+    fontFamily: Typography.fontFamily.medium,
     letterSpacing: 0.5,
   },
-  imageGradient: {
+  imageBottomShade: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 80,
+    height: 120, // Slightly taller for a smoother shade
   },
+
   pagination: {
     position: 'absolute',
     bottom: 36,
@@ -598,31 +764,32 @@ const styles = StyleSheet.create({
   },
   brand: {
     fontSize: 12,
-    fontFamily: Typography.fontFamily.bold,
+    fontFamily: Typography.fontFamily.medium,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 6,
+    letterSpacing: 1,
+    marginBottom: 4,
   },
   name: {
-    fontSize: 22,
-    fontFamily: Typography.fontFamily.serifExtraBold,
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#0F172A',
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
     lineHeight: 24,
   },
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
     gap: 3,
     marginTop: 4,
   },
   ratingText: {
-    color: '#FFFFFF',
+    color: '#475569',
     fontSize: 12,
-    fontFamily: Typography.fontFamily.bold,
+    fontFamily: Typography.fontFamily.medium,
   },
   priceRow: {
     flexDirection: 'row',
@@ -631,9 +798,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   price: {
-    fontSize: 24,
-    fontFamily: Typography.fontFamily.serifExtraBold,
-    letterSpacing: -0.4,
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    letterSpacing: -0.3,
   },
   mrp: {
     fontSize: 14,
@@ -642,16 +810,14 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.medium,
   },
   discountBadge: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
+    paddingHorizontal: 2,
     paddingVertical: 3,
-    borderRadius: 8,
   },
   discountText: {
     fontSize: 12,
     color: '#059669',
-    fontFamily: Typography.fontFamily.bold,
-    letterSpacing: 0.3,
+    fontFamily: Typography.fontFamily.medium,
+    letterSpacing: 0.2,
   },
   divider: {
     height: 1,
@@ -659,10 +825,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.serifBold,
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#0F172A',
-    marginBottom: 10,
+    marginBottom: 8,
     marginTop: 4,
     letterSpacing: -0.1,
   },
@@ -695,7 +861,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 13,
-    fontFamily: Typography.fontFamily.bold,
+    fontFamily: Typography.fontFamily.medium,
     color: '#334155',
   },
   sizeGrid: {
@@ -755,9 +921,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   deliveryText: {
-    fontSize: 9,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#475569',
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
     letterSpacing: 0.1,
   },
   deliveryDivider: {
@@ -782,10 +948,12 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 14,
     alignItems: 'center',
     gap: 12,
-    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
   wishlistBtn: {
     width: 54,
@@ -819,9 +987,104 @@ const styles = StyleSheet.create({
   },
   cartBtnText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 1.2,
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 1,
+  },
+  relatedSection: {
+    marginTop: 32,
+    marginBottom: 8,
+  },
+  relatedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  relatedList: {
+    paddingRight: 20,
+    paddingBottom: 10,
+  },
+  relatedCard: {
+    marginRight: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  emptyRelated: {
+    padding: 20,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyRelatedText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    fontFamily: Typography.fontFamily.medium,
+    textAlign: 'center',
+  },
+  floatingToggleContainer: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 1000,
+  },
+  floatingToggleBlur: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 5,
+      },
+    }),
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
+  },
+  toggleTextCol: {
+    justifyContent: 'center',
+  },
+  toggleLabel: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+  },
+  toggleSublabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
+  },
+  inlineShareBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
 });
 

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { useAuth } from './AuthContext';
 
 export type Gender = 'Men' | 'Women' | 'Kids';
 
@@ -14,6 +15,7 @@ const GenderContext = createContext<GenderContextType | undefined>(undefined);
 export const GenderProvider = ({ children }: { children: ReactNode }) => {
   const [selectedGender, setSelectedGender] = useState<Gender>('Men');
   const [isInitializing, setIsInitializing] = useState(true);
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const loadGender = async () => {
@@ -33,6 +35,15 @@ export const GenderProvider = ({ children }: { children: ReactNode }) => {
     };
     loadGender();
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSelectedGender('Men');
+      SecureStore.deleteItemAsync('user_gender').catch(e => 
+        console.error('Failed to clear gender on logout:', e)
+      );
+    }
+  }, [isAuthenticated]);
 
   const handleSetGender = async (gender: Gender) => {
     setSelectedGender(gender);

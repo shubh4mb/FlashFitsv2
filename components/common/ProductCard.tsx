@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { BlurView } from 'expo-blur';
 import React from 'react';
 import {
   Platform,
@@ -12,19 +13,35 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, { 
+  useAnimatedStyle, 
+  useSharedValue, 
+  withSpring, 
+  withSequence,
+  withTiming
+} from 'react-native-reanimated';
 import { Product } from '../../utils/recentlyViewed';
-import { GenderThemes, Palette, Typography } from '../../constants/theme';
+import { GenderThemes, Typography } from '../../constants/theme';
 
 interface ProductCardProps {
   product: Product;
   onPress?: () => void;
   width?: number;
   containerStyle?: any;
+  fromExplore?: boolean;
+  isNearby?: boolean;
+  isOnline?: boolean;
 }
 
-const ProductCard = ({ product, onPress, width = 155, containerStyle }: ProductCardProps) => {
-  // console.log(product, 'procn');
-
+const ProductCard = ({ 
+  product, 
+  onPress, 
+  width = 155, 
+  containerStyle, 
+  fromExplore = false,
+  isNearby = false,
+  isOnline = false 
+}: ProductCardProps) => {
   const router = useRouter();
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { selectedGender } = useGender();
@@ -48,7 +65,19 @@ const ProductCard = ({ product, onPress, width = 155, containerStyle }: ProductC
   const discount = mrp && mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
   const isTriable = variant?.isTriable ?? product.isTriable ?? false;
 
+  const scale = useSharedValue(1);
+
+  const animatedHeartStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   const handleWishlistPress = async () => {
+    // Pop animation
+    scale.value = withSequence(
+      withTiming(1.3, { duration: 100 }),
+      withSpring(1, { damping: 10, stiffness: 100 })
+    );
+
     // Priority: explicit variantId > current variant's _id > first variant in array
     const vId = product.variantId || variant?._id || (Array.isArray(product.variants) ? product.variants[0]?._id : null);
 
@@ -64,7 +93,7 @@ const ProductCard = ({ product, onPress, width = 155, containerStyle }: ProductC
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={onPress || (() => router.push(`/product/${product._id || product.id}` as any))}
+      onPress={onPress || (() => router.push({ pathname: `/product/${product._id || product.id}`, params: { fromExplore: fromExplore ? 'true' : 'false' } } as any))}
       style={[styles.container, width ? { width } : {}, containerStyle]}
     >
       {/* Image Section */}
@@ -76,8 +105,6 @@ const ProductCard = ({ product, onPress, width = 155, containerStyle }: ProductC
           transition={300}
         />
 
-        {/* Badges placeholder - removed tryBadge from here to move to details */}
-
         {discount > 0 && (
           <View style={styles.discountBadge}>
             <Text style={styles.discountText}>{discount}% OFF</Text>
@@ -87,15 +114,32 @@ const ProductCard = ({ product, onPress, width = 155, containerStyle }: ProductC
         {/* Wishlist Button */}
         <TouchableOpacity
           style={styles.wishlistButton}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
           onPress={handleWishlistPress}
         >
-          <Ionicons
-            name={isFavorite ? "heart" : "heart-outline"}
-            size={18}
-            color={isFavorite ? "#EF4444" : "#1E293B"}
-          />
+          <BlurView intensity={70} tint="light" style={styles.wishlistBlur}>
+            <Animated.View style={animatedHeartStyle}>
+              <Ionicons
+                name={isFavorite ? "heart" : "heart-outline"}
+                size={20}
+                color={isFavorite ? "#EF4444" : "#1E293B"}
+              />
+            </Animated.View>
+          </BlurView>
         </TouchableOpacity>
+
+        {/* Online Indicator */}
+        {isOnline && (
+          <View style={styles.onlineDot} />
+        )}
+
+        {/* Try & Buy Badge (Nearby Status) */}
+        {isNearby && (
+          <View style={[styles.tryBadge, { backgroundColor: theme.primary }]}>
+            <Ionicons name="flash" size={8} color="#FFFFFF" />
+            <Text style={styles.tryBadgeText}>TRY & BUY</Text>
+          </View>
+        )}
       </View>
 
       {/* Details Section */}
@@ -133,20 +177,9 @@ const ProductCard = ({ product, onPress, width = 155, containerStyle }: ProductC
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 16,
     marginRight: 16,
     overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
   },
   imageContainer: {
     width: '100%',
@@ -160,19 +193,23 @@ const styles = StyleSheet.create({
   },
   wishlistButton: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    top: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  wishlistBlur: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
   tryBadge: {
     position: 'absolute',
@@ -201,17 +238,17 @@ const styles = StyleSheet.create({
   },
   discountText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: Typography.fontFamily.bold,
   },
   details: {
-    padding: 12,
+    padding: 8,
   },
   name: {
     fontFamily: Typography.fontFamily.serif,
-    fontSize: 16,
+    fontSize: 13,
     color: '#0F172A',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   priceRow: {
     flexDirection: 'row',
@@ -221,12 +258,12 @@ const styles = StyleSheet.create({
   },
   price: {
     fontFamily: Typography.fontFamily.serifMedium,
-    fontSize: 18,
+    fontSize: 15,
     color: '#0F172A',
   },
   mrp: {
     fontFamily: Typography.fontFamily.medium,
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
     textDecorationLine: 'line-through',
   },
@@ -266,6 +303,42 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: Typography.fontFamily.bold,
     textTransform: 'uppercase',
+  },
+  onlineDot: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#22C55E', // Green
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    zIndex: 10,
+  },
+  tryBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 3,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  tryBadgeText: {
+    fontSize: 7,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#FFF',
+    fontWeight: '900',
   },
 });
 

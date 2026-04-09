@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store'; // Note: SecureStore is import
 import { Address, getAddresses } from "../api/address";
 import * as Location from 'expo-location';
 import { checkDeliveryAvailability } from "../api/auth";
+import { useAuth } from "./AuthContext";
 
 const SELECTED_ADDRESS_KEY = 'selectedAddress';
 
@@ -16,6 +17,8 @@ interface AddressContextType {
     userLocation: { latitude: number; longitude: number } | null;
     locationAddress: string | null;
     deliveryAvailable: boolean | null;
+    tbAvailable: boolean | null;
+    tbOffline: boolean | null;
     locationPermission: Location.PermissionStatus | 'undetermined';
     locationLoading: boolean;
     detectLocation: () => Promise<void>;
@@ -29,6 +32,8 @@ const AddressContext = createContext<AddressContextType>({
     userLocation: null,
     locationAddress: null,
     deliveryAvailable: null,
+    tbAvailable: null,
+    tbOffline: null,
     locationPermission: 'undetermined',
     locationLoading: true,
     detectLocation: async () => { },
@@ -37,14 +42,31 @@ const AddressContext = createContext<AddressContextType>({
 export const AddressProvider = ({ children }: { children: ReactNode }) => {
     const [selectedAddress, setSelectedAddressState] = useState<Address | null>(null);
     const [addresses, setAddresses] = useState<Address[]>([]);
+    const { isAuthenticated } = useAuth();
     
     // New States
     const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
     const [locationAddress, setLocationAddress] = useState<string | null>(null);
     const [deliveryAvailable, setDeliveryAvailable] = useState<boolean | null>(null);
+    const [tbAvailable, setTbAvailable] = useState<boolean | null>(null);
+    const [tbOffline, setTbOffline] = useState<boolean | null>(null);
     const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | 'undetermined'>('undetermined');
     const [locationLoading, setLocationLoading] = useState(true);
     const [retryCount, setRetryCount] = useState(0);
+
+    const distanceInMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const toRad = (x: number) => (x * Math.PI) / 180;
+        const R = 6371e3;
+        const φ1 = toRad(lat1);
+        const φ2 = toRad(lat2);
+        const Δφ = toRad(lat2 - lat1);
+        const Δλ = toRad(lon2 - lon1);
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    };
 
     const detectLocation = async () => {
         try {
@@ -55,7 +77,6 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             setLocationPermission(status);
             
             if (status !== 'granted') {
-                console.warn('Location permission denied. Exploring app with generic content.');
                 setLocationLoading(false);
                 return;
             }
@@ -68,45 +89,76 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             const lng = location.coords.longitude;
             setUserLocation({ latitude: lat, longitude: lng });
 
-            let fetchedPostcode = '';
+            // 3. Fetch Saved Addresses
+            const addressesRes = await getAddresses();
+            const userAddresses = addressesRes?.addresses || (Array.isArray(addressesRes) ? addressesRes : []);
+            setAddresses(userAddresses);
 
-            // 3. Reverse Geocode via OpenStreetMap (Nominatim)
+            // 4. Proximity Match
+            let bestMatch: Address | null = null;
+            let minFoundDist = 100; // 100m threshold
+
+            userAddresses.forEach((addr: any) => {
+                if (addr.location?.coordinates && Array.isArray(addr.location.coordinates)) {
+                    const [c1, c2] = addr.location.coordinates;
+                    const d1 = distanceInMeters(lat, lng, Number(c2), Number(c1));
+                    const d2 = distanceInMeters(lat, lng, Number(c1), Number(c2)); // rotated check
+                    const dist = Math.min(d1, d2);
+                    if (dist < minFoundDist) {
+                        minFoundDist = dist;
+                        bestMatch = addr;
+                    }
+                } else if (addr.latitude !== undefined && addr.longitude !== undefined) {
+                    const dist = distanceInMeters(lat, lng, Number(addr.latitude), Number(addr.longitude));
+                    if (dist < minFoundDist) {
+                        minFoundDist = dist;
+                        bestMatch = addr;
+                    }
+                }
+            });
+
+            if (bestMatch) {
+                console.log(`Proximity Match Found: ${(bestMatch as any).addressType} (${Math.round(minFoundDist)}m)`);
+                setSelectedAddress(bestMatch);
+                
+                // Still check availability for the matched address context to get TB status
+                try {
+                    const availability = await checkDeliveryAvailability(lat, lng);
+                    setDeliveryAvailable(availability?.serviceable || false);
+                    setTbAvailable(availability?.tbAvailable || false);
+                    setTbOffline(availability?.allOffline || false);
+                } catch (e) {
+                    console.log('Availability check failed for match, defaulting to false');
+                    setDeliveryAvailable(false);
+                }
+                
+                setLocationLoading(false);
+                return;
+            }
+
+            // 5. Fallback: Check Availability and Reverse Geocode
             try {
+                const availability = await checkDeliveryAvailability(lat, lng);
+                setDeliveryAvailable(availability?.serviceable || false);
+                setTbAvailable(availability?.tbAvailable || false);
+                setTbOffline(availability?.allOffline || false);
+
                 const resp = await fetch(
                     `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-                    {
-                        headers: { "User-Agent": "FlashFitsApp/1.0 (contact@flashfits.com)" },
-                    }
+                    { headers: { "User-Agent": "FlashFitsApp/1.0 (contact@flashfits.com)" } }
                 );
                 const json = await resp.json();
-                console.log("StreetMap Fetch Response:", json);
-                
-                // Format a short display address
                 const addressObj = json.address || {};
-                fetchedPostcode = addressObj.postcode || '';
                 const shortAddress = [
                     addressObj.suburb || addressObj.neighbourhood || addressObj.village,
                     addressObj.city || addressObj.town || addressObj.county
                 ].filter(Boolean).join(', ') || json.display_name;
                 
-                setLocationAddress(fetchedPostcode ? `${shortAddress}, ${fetchedPostcode}` : shortAddress);
-            } catch (geocodeErr) {
-                console.error('Reverse geocode failed:', geocodeErr);
+                const postcode = addressObj.postcode || '';
+                setLocationAddress(postcode ? `${shortAddress}, ${postcode}` : shortAddress);
+            } catch (err) {
+                console.error('Reverse geocode / availability failed:', err);
                 setLocationAddress("Location found");
-            }
-
-            // 4. Check Delivery Availability
-            try {
-                const availability = await checkDeliveryAvailability(lat, lng);
-                setDeliveryAvailable(availability?.serviceable || false);
-                
-                if (availability?.zone?.zoneName && availability?.zone?.city) {
-                    const zoneStr = `${availability.zone.zoneName}, ${availability.zone.city}`;
-                    setLocationAddress(fetchedPostcode ? `${zoneStr}, ${fetchedPostcode}` : zoneStr);
-                }
-            } catch (availErr) {
-                console.error('Delivery check failed:', availErr);
-                setDeliveryAvailable(null); // Unknown state
             }
 
         } catch (error) {
@@ -116,52 +168,70 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         }
     };
     
-    // Retry availability check if it failed (e.g. backend inactive)
+    // Handle Logout / Auth State Changes
     useEffect(() => {
-        if (userLocation && deliveryAvailable === null && retryCount < 3) {
-            const timer = setTimeout(async () => {
-                try {
-                    console.log(`Retrying availability check (Attempt ${retryCount + 1})...`);
-                    const availability = await checkDeliveryAvailability(userLocation.latitude, userLocation.longitude);
-                    if (availability) {
-                        setDeliveryAvailable(availability.serviceable || false);
-                        if (availability.zone?.zoneName && availability.zone?.city) {
-                            const zoneStr = `${availability.zone.zoneName}, ${availability.zone.city}`;
-                            setLocationAddress(prev => prev?.includes(',') ? prev : zoneStr);
-                        }
-                    } else {
-                        setRetryCount(prev => prev + 1);
-                    }
-                } catch (err) {
-                    console.error('Retry failed:', err);
-                    setRetryCount(prev => prev + 1);
-                }
-            }, 8000);
-            return () => clearTimeout(timer);
+        if (!isAuthenticated) {
+            // Logout case
+            setSelectedAddressState(null);
+            setAddresses([]);
+            setUserLocation(null);
+            setLocationAddress(null);
+            setDeliveryAvailable(null);
+            setTbAvailable(null);
+            setTbOffline(null);
+            SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY).catch(e => 
+                console.error('Failed to clear address on logout:', e)
+            );
+        } else {
+            // On Login or App Start while authenticated
+            // We only trigger detectLocation if we don't have a selection yet
+            // Or if we specifically want to refresh
+            if (!selectedAddress) {
+                detectLocation();
+            }
         }
-    }, [userLocation, deliveryAvailable, retryCount]);
-
-    // Auto-detect on mount
+    }, [isAuthenticated]);
+    
+    // Auto-detect & Initial Load
     useEffect(() => {
-        detectLocation();
-        
-        // Load Addresses (Fallback / Background)
-        const loadSavedAddress = async () => {
-            try {
-                /*
-                const saved = await SecureStore.getItemAsync(SELECTED_ADDRESS_KEY);
-                if (saved) {
-                    setSelectedAddressState(JSON.parse(saved));
+        const initialLoad = async () => {
+            const saved = await SecureStore.getItemAsync(SELECTED_ADDRESS_KEY);
+            if (saved) {
+                setSelectedAddressState(JSON.parse(saved));
+            }
+            await detectLocation();
+        };
+        initialLoad();
+    }, []);
+
+    // ── Sync Availability When Address/Location Changes ──
+    useEffect(() => {
+        const updateAvailability = async () => {
+            const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+            const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+
+            if (lat !== undefined && lng !== undefined) {
+                try {
+                    // Set to null while fetching to avoid stale UI flashes
+                    setTbAvailable(null);
+                    setDeliveryAvailable(null);
+                    
+                    const availability = await checkDeliveryAvailability(lat, lng);
+                    
+                    setDeliveryAvailable(availability?.serviceable || false);
+                    setTbAvailable(availability?.tbAvailable || false);
+                    setTbOffline(availability?.allOffline || false);
+                } catch (e) {
+                    console.error('[AddressContext] Unified availability check failed:', e);
+                    setDeliveryAvailable(false);
+                    setTbAvailable(false);
+                    setTbOffline(false);
                 }
-                const res = await getAddresses();
-                setAddresses(res?.addresses || []);
-                */
-            } catch (error) {
-                console.error('Failed to load saved address:', error);
             }
         };
-        loadSavedAddress();
-    }, []);
+
+        updateAvailability();
+    }, [selectedAddress, userLocation]);
 
     const setSelectedAddress = async (address: Address | null) => {
         try {
@@ -186,6 +256,8 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 userLocation,
                 locationAddress,
                 deliveryAvailable,
+                tbAvailable,
+                tbOffline,
                 locationPermission,
                 locationLoading,
                 detectLocation,

@@ -34,9 +34,9 @@ export default function AddAddressScreen() {
         addressLine1: '',
         addressLine2: '',
         landmark: '',
-        city: rawAddress?.town || rawAddress?.suburb || rawAddress?.city || '',
-        state: rawAddress?.state || 'Kerala',
-        pincode: rawAddress?.postcode || '',
+        city: rawAddress?.city || rawAddress?.town || rawAddress?.suburb || rawAddress?.village || rawAddress?.municipality || '',
+        state: rawAddress?.state || '',
+        pincode: rawAddress?.postcode || rawAddress?.postal_code || '',
         latitude: latitude,
         longitude: longitude,
     });

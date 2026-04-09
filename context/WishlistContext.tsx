@@ -6,6 +6,7 @@ import {
   getMyWishlistIds, 
   getMyWishlist 
 } from '../api/wishlist';
+import { useAuth } from './AuthContext';
 
 interface WishlistItem {
   productId: string;
@@ -26,8 +27,13 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 export const WishlistProvider = ({ children }: { children: ReactNode }) => {
   const [wishlistIds, setWishlistIds] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isAuthenticated } = useAuth();
 
   const fetchIds = async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
     try {
       const response = await getMyWishlistIds();
       console.log('Wishlist IDs response:', response);
@@ -42,6 +48,14 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     fetchIds();
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setWishlistIds([]);
+    } else {
+      fetchIds();
+    }
+  }, [isAuthenticated]);
 
   const isInWishlist = (productId: string) => {
     const pId = String(productId);

@@ -157,10 +157,9 @@ export default function CategoriesScreen() {
   const handleSubcategoryPress = (subCatName: string, subCategoryId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push({
-      pathname: '/search' as any,
+      pathname: '/search-results' as any,
       params: {
-        categoryQuery: subCatName,
-        categoryId: subCategoryId,
+        subCategoryId: subCategoryId,
         gender: selectedGender.toUpperCase(),
       },
     });

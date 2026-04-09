@@ -4,7 +4,12 @@ import NewArrivalsSection from '@/components/sections/NewArrivalsSection';
 import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
 import SubCategorySection from '@/components/sections/SubCategorySection';
 import ProductHorizontalSection from '@/components/sections/ProductHorizontalSection';
+import TryComingSoonSection from '@/components/sections/TryComingSoonSection';
+import TryOfflineSection from '@/components/sections/TryOfflineSection';
+import OfferBanner from '@/components/sections/OfferBanner';
+import { fetchMerchants } from '@/api/merchants';
 import { useAuth } from '@/context/AuthContext';
+import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
 import { fetchBanners, fetchRecommendedProductsData, fetchTrendingProductsData, fetchnewArrivalsProductsData } from '@/api/products';
 import { Product } from '@/utils/recentlyViewed';
@@ -19,13 +24,16 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   Image,
+  Dimensions,
 } from 'react-native';
+import Skeleton from '@/components/common/Skeleton';
 import logo from '@/assets/images/logo/logo.png';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
   const { selectedGender } = useGender();
+  const { userLocation, selectedAddress, tbAvailable, tbOffline } = useAddress();
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const [headerHeight, setHeaderHeight] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,6 +43,7 @@ export default function HomeScreen() {
   const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
   const [newArrivalsProducts, setNewArrivalsProducts] = useState<Product[]>([]);
   const [banners, setBanners] = useState<any>({});
+  const [merchants, setMerchants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -43,27 +52,35 @@ export default function HomeScreen() {
       const genderMap: Record<string, string> = { Men: 'MEN', Women: 'WOMEN', Kids: 'KIDS', All: 'MEN' };
       const apiGender = genderMap[selectedGender] || 'MEN';
 
-      const [trending, recommended, newArrivals, bannerData] = await Promise.all([
-        fetchTrendingProductsData(apiGender),
-        fetchRecommendedProductsData(apiGender),
-        fetchnewArrivalsProductsData(apiGender),
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+
+      const [trending, recommended, newArrivals, bannerData, merchantsResponse] = await Promise.all([
+        fetchTrendingProductsData(apiGender, lat, lng),
+        fetchRecommendedProductsData(apiGender, lat, lng),
+        fetchnewArrivalsProductsData(apiGender, lat, lng),
         fetchBanners(),
+        fetchMerchants(lat, lng, selectedGender, true)
       ]);
 
       setTrendingProducts(trending || []);
       setRecommendedProducts(recommended || []);
       setNewArrivalsProducts(newArrivals || []);
+      setMerchants(merchantsResponse?.merchants || merchantsResponse?.data?.merchants || []);
       setBanners(bannerData?.banners || bannerData || {});
     } catch (error) {
       console.error('Error loading home data:', error);
     } finally {
       setLoading(false);
     }
-  }, [selectedGender]);
+  }, [selectedGender, userLocation, selectedAddress]);
 
   useEffect(() => {
     loadData();
   }, [loadData, refreshKey]);
+
+  // Derived state for readability
+  const isServiceAvailable = tbAvailable !== false;
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -99,50 +116,67 @@ export default function HomeScreen() {
         scrollEventThrottle={16}
       >
         {headerHeight > 0 && <View style={{ height: headerHeight }} />}
-        {/* <SubCategorySection refreshKey={refreshKey} /> */}
-        <MerchantLogosSection refreshKey={refreshKey} />
-        <RecentlyViewedSection refreshKey={refreshKey} />
-
-        <ProductHorizontalSection
-          title="New Arrivals"
-          subtitle="Fresh styles just for you"
-          products={newArrivalsProducts}
-          isLoading={loading}
-          banner={banners['new_arrivals_banner']?.[0]}
-        />
-
-        <ProductHorizontalSection
-          title="Trending Now"
-          subtitle="Top picks for you"
-          products={trendingProducts}
-          isLoading={loading}
-          banner={banners['trending_banner']?.[0]}
-        />
-
-        <ProductHorizontalSection
-          title="You May Like"
-          subtitle="Curated collection"
-          products={recommendedProducts}
-          isLoading={loading}
-          banner={banners['recommended_banner']?.[0]}
-        />
-
-
-        {/* <GenderHero /> */}
-
-        <View style={{ padding: 20 }}>
-
-          <View style={styles.footer}>
-            <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
-            <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-            <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+        
+        {tbAvailable === null ? (
+          // ── Loading Availability ──
+          <View style={{ padding: 20 }}>
+            <Skeleton width="100%" height={200} borderRadius={20} style={{ marginBottom: 24 }} />
+            <Skeleton width="60%" height={24} borderRadius={10} style={{ marginBottom: 16 }} />
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              <Skeleton width={width * 0.4} height={200} borderRadius={16} />
+              <Skeleton width={width * 0.4} height={200} borderRadius={16} />
+            </View>
           </View>
-        </View>
+        ) : tbAvailable === false ? (
+          // ── Service Not Available or Offline ──
+          tbOffline ? <TryOfflineSection /> : <TryComingSoonSection />
+        ) : (
+          // ── Service Available ──
+          <>
+            <MerchantLogosSection refreshKey={refreshKey} initialMerchants={merchants} />
+            <OfferBanner />
+            <RecentlyViewedSection refreshKey={refreshKey} />
+
+            <ProductHorizontalSection
+              title="New Arrivals"
+              subtitle="Fresh styles just for you"
+              products={newArrivalsProducts}
+              isLoading={loading}
+              banner={banners['new_arrivals_banner']?.[0]}
+            />
+
+            <ProductHorizontalSection
+              title="Trending Now"
+              subtitle="Top picks for you"
+              products={trendingProducts}
+              isLoading={loading}
+              banner={banners['trending_banner']?.[0]}
+            />
+
+            <ProductHorizontalSection
+              title="You May Like"
+              subtitle="Curated collection"
+              products={recommendedProducts}
+              isLoading={loading}
+              banner={banners['recommended_banner']?.[0]}
+            />
+
+            <View style={{ padding: 20 }}>
+              <View style={styles.footer}>
+                <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
+                <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+              </View>
+            </View>
+          </>
+        )}
+
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
     </View>
   );
 }
+const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {

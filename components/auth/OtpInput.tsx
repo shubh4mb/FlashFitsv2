@@ -12,24 +12,20 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import { verifyOtp, sendOtp } from "../../api/auth";
 import * as SecureStore from 'expo-secure-store';
+
+const OTP_LENGTH = 6;
 
 interface OtpInputProps {
   phone: string;
-  preFetchedToken?: string;
-  preFetchedUserId?: string;
-  isNewUser?: boolean;
 }
 
-const OtpInputComponent: React.FC<OtpInputProps> = ({ 
-  phone, 
-  preFetchedToken, 
-  preFetchedUserId, 
-  isNewUser = false 
-}) => {
+const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
   const router = useRouter();
-  const [otp, setOtp] = useState(["", "", "", ""]); // 4 Digits as requested
+  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const [timer, setTimer] = useState(30);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -43,9 +39,10 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
   const shakeAnimation = useRef(new Animated.Value(0)).current;
+  const errorOpacity = useRef(new Animated.Value(0)).current;
 
   // Individual OTP box animations
-  const boxAnimations = useRef(otp.map(() => new Animated.Value(1))).current;
+  const boxAnimations = useRef(Array(OTP_LENGTH).fill(0).map(() => new Animated.Value(1))).current;
 
   useEffect(() => {
     // Entrance animations
@@ -77,6 +74,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
     ]).start();
   }, []);
 
+  // Countdown timer
   useEffect(() => {
     if (timer > 0) {
       const interval = setInterval(() => {
@@ -85,6 +83,15 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
       return () => clearInterval(interval);
     }
   }, [timer]);
+
+  // Error message animation
+  useEffect(() => {
+    Animated.timing(errorOpacity, {
+      toValue: errorMessage ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [errorMessage]);
 
   const shakeInputs = () => {
     Vibration.vibrate(100);
@@ -97,7 +104,6 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
   };
 
   const animateBox = (index: number) => {
-    // Smooth upscale transition
     Animated.sequence([
       Animated.timing(boxAnimations[index], {
         toValue: 1.15,
@@ -113,8 +119,13 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
     ]).start();
   };
 
+  const clearError = () => {
+    setError(false);
+    setErrorMessage("");
+  };
+
   const handleChange = (text: string, index: number) => {
-    if (error) setError(false);
+    if (error) clearError();
 
     if (text.length > 1) {
       text = text.slice(-1);
@@ -129,15 +140,15 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
       animateBox(index);
     }
 
-    if (text && index < otp.length - 1) {
+    if (text && index < OTP_LENGTH - 1) {
       inputs.current[index + 1]?.focus();
     }
 
     // Auto-verify when all digits are entered
-    if (text && index === otp.length - 1) {
+    if (text && index === OTP_LENGTH - 1) {
       const fullOtp = [...newOtp];
       if (fullOtp.every((digit) => digit !== "")) {
-        setTimeout(() => verifyOtp(fullOtp.join("")), 300);
+        setTimeout(() => handleVerifyOtp(fullOtp.join("")), 300);
       }
     }
   };
@@ -148,59 +159,107 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
     }
   };
 
-  const verifyOtp = async (otpCode?: string) => {
+  // ── Verify OTP against backend ────────────────────────────────────
+  const handleVerifyOtp = async (otpCode?: string) => {
     try {
       setIsLoading(true);
+      clearError();
 
       // Button press animation
       Animated.sequence([
-        Animated.timing(buttonScale, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(buttonScale, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
+        Animated.timing(buttonScale, { toValue: 0.95, duration: 100, useNativeDriver: true }),
+        Animated.timing(buttonScale, { toValue: 1, duration: 100, useNativeDriver: true }),
       ]).start();
 
       const enteredOtp = otpCode || otp.join("");
 
-      if (enteredOtp.length !== 4) {
+      if (enteredOtp.length !== OTP_LENGTH) {
         setError(true);
+        setErrorMessage("Please enter the full verification code");
         shakeInputs();
         return;
       }
 
+      const fullPhone = `+91${phone}`;
+
+      // Call the real verify API
+      const response = await verifyOtp({ phone: fullPhone, otp: enteredOtp });
+
       // Save phone number for profile display
       await SecureStore.setItemAsync('phoneNumber', phone);
 
-      // Using props for verification
-      await signIn(preFetchedToken || "mock-token", preFetchedUserId || "mock-user", isNewUser);
+      // Sign in with the real token from the server
+      await signIn(response.token, response.userId, response.isNewUser);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("OTP verification failed:", err);
+
+      const status = err?.response?.status;
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        null;
+
       setError(true);
       shakeInputs();
-      setOtp(["", "", "", ""]);
+
+      // Handle specific error cases
+      if (status === 410) {
+        // Expired OTP
+        setErrorMessage(apiMessage || "Code expired. Please request a new one.");
+        setTimer(0); // Show resend button immediately
+      } else if (status === 429) {
+        // Too many attempts
+        setErrorMessage(apiMessage || "Too many failed attempts. Request a new code.");
+        setTimer(0);
+      } else if (status === 400) {
+        // Wrong OTP or validation error
+        setErrorMessage(apiMessage || "Invalid verification code. Please try again.");
+      } else if (!err?.response) {
+        setErrorMessage("Network error. Please check your connection.");
+      } else {
+        setErrorMessage(apiMessage || "Verification failed. Please try again.");
+      }
+
+      // Clear OTP inputs on error
+      setOtp(Array(OTP_LENGTH).fill(""));
       inputs.current[0]?.focus();
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ── Resend OTP ────────────────────────────────────────────────────
   const handleResendOtp = async () => {
     try {
       setIsResending(true);
+      clearError();
+
+      const fullPhone = `+91${phone}`;
+      await sendOtp(fullPhone);
+
       setTimer(30);
-      setOtp(["", "", "", ""]);
-      setError(false);
+      setOtp(Array(OTP_LENGTH).fill(""));
       inputs.current[0]?.focus();
-      // TODO: Add resend OTP API call here if needed
-    } catch (err) {
+    } catch (err: any) {
       console.error("Resend OTP failed:", err);
+
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        null;
+
+      const status = err?.response?.status;
+
+      setError(true);
+
+      if (status === 429) {
+        setErrorMessage(apiMessage || "Please wait before requesting a new code.");
+      } else if (!err?.response) {
+        setErrorMessage("Network error. Please check your connection.");
+      } else {
+        setErrorMessage(apiMessage || "Failed to resend code. Please try again.");
+      }
     } finally {
       setIsResending(false);
     }
@@ -271,7 +330,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
           <View style={styles.card}>
             <Text style={styles.title}>Enter Verification Code</Text>
             <Text style={styles.subtitle}>
-              We've sent a 4-digit code to your phone
+              We've sent a {OTP_LENGTH}-digit code to your phone
             </Text>
 
             {/* OTP Input */}
@@ -324,11 +383,12 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
             </Animated.View>
 
             {/* Error Message */}
-            {error && (
+            {errorMessage ? (
               <Animated.View
                 style={[
                   styles.errorContainer,
                   {
+                    opacity: errorOpacity,
                     transform: [{ translateX: shakeAnimation }],
                   },
                 ]}
@@ -339,10 +399,10 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
                   color="#EF4444"
                 />
                 <Text style={styles.errorText}>
-                  Invalid code. Please try again
+                  {errorMessage}
                 </Text>
               </Animated.View>
-            )}
+            ) : null}
 
             {/* Timer/Resend Section */}
             <View style={styles.timerContainer}>
@@ -365,7 +425,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
                 >
                   <Text style={styles.resendText}>
                     {isResending ? "Sending..." : "Didn't receive code? "}
-                    <Text style={styles.resendLink}>Resend</Text>
+                    {!isResending && <Text style={styles.resendLink}>Resend</Text>}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -382,7 +442,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({
                 styles.verifyButton,
                 (!isComplete || isLoading) && styles.verifyButtonDisabled,
               ]}
-              onPress={() => verifyOtp()}
+              onPress={() => handleVerifyOtp()}
               disabled={!isComplete || isLoading}
               activeOpacity={0.8}
             >
@@ -544,20 +604,21 @@ const styles = StyleSheet.create({
   },
   otpContainer: {
     flexDirection: "row",
-    justifyContent: "space-around", // Better spacing for 4 digits
+    justifyContent: "space-between",
     marginBottom: 24,
+    paddingHorizontal: 4,
   },
   otpInputWrapper: {
     position: "relative",
   },
   otpInput: {
-    width: 60, // Slightly wider for 4 digits
-    height: 68,
+    width: 46,
+    height: 56,
     borderWidth: 2,
     borderColor: "#E2E8F0",
-    borderRadius: 16,
+    borderRadius: 14,
     textAlign: "center",
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "700",
     color: "#1A1A1A",
     backgroundColor: "#F8FAFC",
@@ -578,15 +639,15 @@ const styles = StyleSheet.create({
   },
   filledIndicator: {
     position: "absolute",
-    bottom: 8,
+    bottom: 6,
     alignSelf: "center",
     width: "100%",
     alignItems: "center",
   },
   filledDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: "#1A1A1A",
   },
   errorContainer: {
@@ -605,6 +666,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     fontFamily: "Manrope-SemiBold",
+    flex: 1,
   },
   timerContainer: {
     alignItems: "center",

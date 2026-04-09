@@ -1,11 +1,13 @@
 import api from './axiosConfig';
 
 /**
- * Fetches all active merchants from the backend.
+ * Fetches all active nearby merchants from the backend.
  */
-export const fetchMerchants = async () => {
+export const fetchMerchants = async (lat?: number, lng?: number, gender?: string, strict: boolean = false) => {
     try {
-        const res = await api.get('admin/getMerchants');
+        const res = await api.get('user/merchants/nearby', {
+            params: { lat, lng, gender, strict }
+        });
         // Expected response structure:
         // return res.status(200).json(new ApiResponse(200, { merchants }, "Merchants retrieved successfully"));
         return res.data;

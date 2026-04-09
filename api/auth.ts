@@ -1,20 +1,21 @@
 import api from './axiosConfig';
 
 /**
- * In the legacy FlashFits backend, this endpoint handles the complete login
- * It creates the user if they don't exist and returns a JWT immediately.
- * No separate OTP verification is enforced by this particular endpoint.
+ * Send OTP to user's phone number via Twilio SMS
+ * @param phone - Full phone number with country code (e.g. +91XXXXXXXXXX)
  */
-export const phoneLogin = async (data: { phoneNumber: string }) => {
-    // Corrected route to match legacy backend and user preference for testing
-    const response = await api.post('/user/phoneLogin', data);
+export const sendOtp = async (phone: string) => {
+    const response = await api.post('/auth/send-otp', { phone });
     return response.data;
 };
 
-// Kept for future use when real OTP system is implemented
-export const verifyOtpToken = async (data: {
-  phoneNumber: string,
-  otp: string
+/**
+ * Verify OTP and authenticate user
+ * Returns { token, userId, isNewUser } on success
+ */
+export const verifyOtp = async (data: {
+  phone: string;
+  otp: string;
 }) => {
     const response = await api.post('/auth/verify-otp', data);
     return response.data;

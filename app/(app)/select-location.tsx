@@ -5,6 +5,7 @@ import { WebView } from "react-native-webview";
 import { router } from "expo-router";
 import * as Location from "expo-location";
 import { Ionicons } from '@expo/vector-icons';
+import { useAddress } from "@/context/AddressContext";
 
 const screen = Dimensions.get("window");
 
@@ -12,14 +13,27 @@ export default function SelectLocationScreen() {
     const webviewRef = useRef<WebView>(null);
 
     const [centerCoords, setCenterCoords] = useState({
-        latitude: 0,
-        longitude: 0,
+        latitude: 10.8505, // Default to Kerala if none
+        longitude: 76.2711,
     });
     const [mapReady, setMapReady] = useState(false);
     const [address, setAddress] = useState("Fetching Address...");
     const [paramAddress, setParamAddress] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [locating, setLocating] = useState(false);
+    const { selectedAddress } = useAddress();
+
+    // If a saved address is selected, maybe we should close and go back?
+    // But usually select-location is for NEW ones. 
+    // However, the user said "show him existing also before saving another".
+    
+    useEffect(() => {
+        if (selectedAddress) {
+            // If the user picked a saved address from the modal here,
+            // they probably want to use it for checkout.
+            // For now, let's just stay on the screen but we could nav back.
+        }
+    }, [selectedAddress]);
 
     const requestAndFetchLocation = async () => {
         if (locating) return;
@@ -42,6 +56,8 @@ export default function SelectLocationScreen() {
 
             setCenterCoords({ latitude: lat, longitude: lng });
             reverseGeocode(lat, lng);
+            
+            // Move map via JS instead of source update
             sendToWebview(`moveTo(${lat}, ${lng})`);
             setMapReady(true);
         } catch (err) {
@@ -51,14 +67,18 @@ export default function SelectLocationScreen() {
         }
     };
 
+    // Debounce state updates for intermediate movements
+    const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
         requestAndFetchLocation();
     }, []);
 
     const reverseGeocode = async (lat: number, lng: number) => {
         try {
+            // Use format=jsonv2 and addressdetails=1 for better data
             const resp = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1`,
                 {
                     headers: {
                         "User-Agent": "FlashFitsApp/1.0 (contact@flashfits.com)",
@@ -67,7 +87,7 @@ export default function SelectLocationScreen() {
             );
             const json = await resp.json();
             setAddress(json.display_name || "Unknown location");
-            setParamAddress(json.address || "Unknown location");
+            setParamAddress(json.address || null);
         } catch (error) {
             console.error('Reverse geocode error:', error);
             setAddress("Unable to fetch address");
@@ -83,8 +103,13 @@ export default function SelectLocationScreen() {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === "centerChanged") {
                 const { lat, lng } = data;
-                setCenterCoords({ latitude: lat, longitude: lng });
-                reverseGeocode(lat, lng);
+                
+                // Debounce reverse geocoding to avoid lag and rate limits
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = setTimeout(() => {
+                    setCenterCoords({ latitude: lat, longitude: lng });
+                    reverseGeocode(lat, lng);
+                }, 500); 
             }
         } catch (e) {
             console.error('WebView message error:', e);
@@ -117,28 +142,51 @@ export default function SelectLocationScreen() {
     };
 
     // ---------- WebView HTML ----------
-    const mapHTML = (lat: number, lng: number) => `
+    // We use a constant HTML to prevent WebView reloads on every state change
+    const mapHTML = `
     <!DOCTYPE html>
     <html>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
-          html, body, #map { height: 100%; margin: 0; }
-          .leaflet-control-zoom { display: none !important; }
+          html, body, #map { height: 100%; margin: 0; padding: 0; }
+          /* Zoom controls are visible by default now */
+          .leaflet-control-zoom { margin-top: 100px !important; }
         </style>
       </head>
       <body>
         <div id="map"></div>
         <script>
-          const map = L.map('map', { zoomControl: false }).setView([${lat}, ${lng}], 17);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-          map.on("moveend", () => {
-            const c = map.getCenter();
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: "centerChanged", lat: c.lat, lng: c.lng }));
-          });
-          function moveTo(lat, lng) { map.setView([lat, lng], 17); }
+          let map;
+          let centerMarker;
+
+          function initMap(lat, lng) {
+            map = L.map('map', { zoomControl: true }).setView([lat, lng], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+              maxZoom: 19,
+              attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            map.on("moveend", () => {
+              const c = map.getCenter();
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: "centerChanged", lat: c.lat, lng: c.lng }));
+            });
+          }
+
+          function moveTo(lat, lng) {
+            if (map) {
+              map.setView([lat, lng], map.getZoom() || 16);
+            } else {
+              initMap(lat, lng);
+            }
+          }
+
+          // Handle initial load if coordinates are provided later
+          window.onload = function() {
+            // Initial map placeholder if needed, or wait for moveTo
+          };
         </script>
       </body>
     </html>
@@ -165,8 +213,14 @@ export default function SelectLocationScreen() {
                 <WebView
                     ref={webviewRef}
                     onMessage={onMessage}
-                    source={{ html: mapHTML(centerCoords.latitude, centerCoords.longitude) }}
+                    source={{ html: mapHTML }}
+                    onLoadEnd={() => {
+                        // Initial move to center coords
+                        sendToWebview(`moveTo(${centerCoords.latitude}, ${centerCoords.longitude})`);
+                    }}
                     style={{ flex: 1 }}
+                    javaScriptEnabled={true}
+                    domStorageEnabled={true}
                 />
             )}
 
@@ -208,7 +262,7 @@ export default function SelectLocationScreen() {
                         });
                     }}
                 >
-                    <Text style={styles.setLocationText}>Set Location</Text>
+                    <Text style={styles.setLocationText}>Confirm Address</Text>
                 </TouchableOpacity>
             </View>
         </View>

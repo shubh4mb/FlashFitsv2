@@ -3,62 +3,78 @@ import { useGender } from '@/context/GenderContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
-  Easing,
   Platform,
   Text,
-  View,
+  View
 } from 'react-native';
 
-const AnimatedIconWrapper = ({ focused, iconName, color, label }: { focused: boolean, iconName: any, color: string, label: string }) => {
+const AnimatedIconWrapper = ({ focused, iconName, color, label, isMain }: { focused: boolean, iconName: any, color: string, label: string, isMain?: boolean }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const bgAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, {
-        toValue: focused ? 1.2 : 1,
-        useNativeDriver: false,
-      }),
-      Animated.timing(bgAnim, {
-        toValue: focused ? 1 : 0,
-        duration: 300,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: false,
-      }),
-    ]).start();
+    Animated.spring(scaleAnim, {
+      toValue: focused ? 1.15 : 1,
+      friction: 8,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
   }, [focused]);
 
-  const backgroundColor = bgAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['transparent', '#F1F5F9'],
-  });
+  const size = isMain ? 68 : 72;
 
   return (
     <Animated.View
       style={{
-        backgroundColor,
-        borderRadius: 18,
+        width: isMain ? 75 : 85,
+        height: isMain ? 75 : 60,
         alignItems: 'center',
         justifyContent: 'center',
-        width: 55,
-        height: 55,
         transform: [{ scale: scaleAnim }],
+        ...(isMain && { marginTop: -35 })
       }}
     >
-      <Ionicons name={iconName} size={focused ? 25 : 22} color={color} />
-      <Text
+      <View
         style={{
-          fontSize: focused ? 6 : 10,
-          marginTop: 2,
-          color: color, // Use the active/inactive tint color instead of hardcoded
-          fontWeight: focused ? 'bold' : 'normal',
+          width: size,
+          height: size,
+          borderRadius: 100, // Large value ensures perfect circle
+          backgroundColor: isMain ? '#FFFFFF' : (focused ? '#F1F5F9' : 'transparent'),
+          alignItems: 'center',
+          justifyContent: 'center',
+          ...(isMain && {
+            // Standard shadow/elevation for center buttons
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: focused ? 0.25 : 0.12,
+            shadowRadius: 12,
+            elevation: focused ? 12 : 6,
+            borderWidth: 2,
+            borderColor: focused ? '#F1F5F9' : '#FFFFFF',
+          })
         }}
       >
-        {label}
-      </Text>
+        <Ionicons
+          name={iconName}
+          size={isMain ? (focused ? 32 : 28) : (focused ? 24 : 22)}
+          color={color}
+        />
+        {(!isMain || focused) && (
+          <Text
+            style={{
+              fontSize: isMain ? 8 : 10,
+              marginTop: 1,
+              color: color,
+              fontWeight: 'bold',
+            }}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        )}
+      </View>
     </Animated.View>
   );
 };
@@ -70,6 +86,8 @@ function TabsContainer() {
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
       <Tabs
+        initialRouteName="index"
+        backBehavior="initialRoute"
         screenOptions={({ route }) => ({
           headerShown: false,
           animation: 'none',
@@ -104,12 +122,15 @@ function TabsContainer() {
           tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: theme.primary,
           tabBarIcon: ({ color, focused }) => {
-            let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'home-outline';
-            let label = 'Home';
+            let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'flash-outline';
+            let label = '⚡ Try';
 
             if (route.name === 'index') {
-              iconName = focused ? 'home' : 'home-outline';
-              label = 'Home';
+              iconName = focused ? 'flash' : 'flash-outline';
+              label = '⚡ Try';
+            } else if (route.name === 'explore') {
+              iconName = focused ? 'compass' : 'compass-outline';
+              label = 'Explore';
             } else if (route.name === 'categories') {
               iconName = focused ? 'grid' : 'grid-outline';
               label = 'Categories';
@@ -122,20 +143,22 @@ function TabsContainer() {
             }
 
             return (
-              <View style={{ opacity: focused ? 1 : 0.6 }}>
+              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                 <AnimatedIconWrapper
                   focused={focused}
                   iconName={iconName}
                   color={color}
                   label={label}
+                  isMain={route.name === 'index'}
                 />
               </View>
             );
           },
         })}
       >
-        <Tabs.Screen name="index" />
+        <Tabs.Screen name="explore" />
         <Tabs.Screen name="categories" />
+        <Tabs.Screen name="index" />
         <Tabs.Screen name="stores" />
         <Tabs.Screen name="wishlist" />
       </Tabs>

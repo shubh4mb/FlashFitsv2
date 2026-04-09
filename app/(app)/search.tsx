@@ -4,41 +4,38 @@ import {
   View, 
   TextInput, 
   TouchableOpacity, 
-  FlatList, 
   Keyboard,
   Text,
-  SafeAreaView,
-  Platform,
   Dimensions,
   ScrollView
 } from 'react-native';
-import Loader from '@/components/common/Loader';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { fetchFilteredProducts } from '@/api/products';
-import ProductCard from '@/components/common/ProductCard';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { ThemedText } from '@/components/common/themed-text';
 import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
+import { fetchSearchSuggestions } from '@/api/products';
 
-const { width } = Dimensions.get('window');
 const RECENT_SEARCHES_KEY = '@flashfits_recent_searches';
 const POPULAR_TAGS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets', 'Perfumes', 'Belts'];
+const DEBOUNCE_MS = 300;
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<{ text: string; type: string }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const insets = useSafeAreaInsets();
   
   const inputRef = useRef<TextInput>(null);
-  const searchTimeout = useRef<any>(null);
+  const debounceTimer = useRef<any>(null);
 
   useEffect(() => {
     loadRecentSearches();
@@ -61,50 +58,68 @@ export default function SearchScreen() {
     await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(newSearches));
   };
 
-  const handleSearch = async (text: string) => {
-    setQuery(text);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-
-    if (!text.trim()) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    searchTimeout.current = setTimeout(async () => {
-      try {
-        const response = await fetchFilteredProducts({ search: text });
-        setResults(response.products || response.data || []);
-      } catch (error) {
-        console.error('Search error:', error);
-      } finally {
-        setLoading(false);
-      }
-    }, 500);
+  const handleSearchNavigation = (term: string) => {
+    if (!term.trim()) return;
+    saveSearch(term.trim());
+    setShowSuggestions(false);
+    setSuggestions([]);
+    router.push({
+      pathname: '/(app)/search-results',
+      params: { query: term.trim() }
+    } as any);
   };
 
   const onSearchSubmit = () => {
-    if (query.trim()) {
-      saveSearch(query.trim());
-      Keyboard.dismiss();
-    }
+    handleSearchNavigation(query);
+    Keyboard.dismiss();
   };
 
   const clearSearch = () => {
     setQuery('');
-    setResults([]);
+    setSuggestions([]);
+    setShowSuggestions(false);
     inputRef.current?.focus();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  // Debounced suggestions fetch
+  const handleTextChange = (text: string) => {
+    setQuery(text);
+    
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+
+    if (text.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    debounceTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetchSearchSuggestions(text.trim());
+        setSuggestions(res.suggestions || []);
+        setShowSuggestions(true);
+      } catch (error) {
+        console.error('Suggestion error:', error);
+      }
+    }, DEBOUNCE_MS);
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'product': return 'pricetag-outline';
+      case 'brand': return 'diamond-outline';
+      case 'category': return 'grid-outline';
+      default: return 'search-outline';
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
       
       {/* Search Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity 
           onPress={() => router.back()}
           style={styles.backButton}
@@ -120,7 +135,7 @@ export default function SearchScreen() {
             placeholder="Search products, brands..."
             placeholderTextColor="#94A3B8"
             value={query}
-            onChangeText={handleSearch}
+            onChangeText={handleTextChange}
             onSubmitEditing={onSearchSubmit}
             returnKeyType="search"
             autoCorrect={false}
@@ -133,12 +148,29 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {loading ? (
-        <View style={styles.centered}>
-          <Loader size={60} />
-          <Text style={styles.loadingText}>Searching for "{query}"...</Text>
+      {/* Suggestions dropdown */}
+      {showSuggestions && suggestions.length > 0 ? (
+        <View style={styles.suggestionsContainer}>
+          {suggestions.map((item, index) => (
+            <TouchableOpacity
+              key={`${item.text}-${index}`}
+              style={styles.suggestionItem}
+              onPress={() => handleSearchNavigation(item.text)}
+            >
+              <Ionicons 
+                name={getTypeIcon(item.type) as any} 
+                size={16} 
+                color="#94A3B8" 
+                style={{ marginRight: 12 }} 
+              />
+              <Text style={styles.suggestionText} numberOfLines={1}>{item.text}</Text>
+              <View style={[styles.suggestionBadge, { backgroundColor: theme.primary + '15' }]}>
+                <Text style={[styles.suggestionBadgeText, { color: theme.primary }]}>{item.type}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
-      ) : query.length === 0 ? (
+      ) : (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {recentSearches.length > 0 && (
             <View style={styles.section}>
@@ -161,7 +193,7 @@ export default function SearchScreen() {
                   <TouchableOpacity 
                     key={item} 
                     style={[styles.tag, { backgroundColor: '#F1F5F9' }]}
-                    onPress={() => handleSearch(item)}
+                    onPress={() => handleSearchNavigation(item)}
                     activeOpacity={0.6}
                   >
                     <Ionicons name="time-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
@@ -186,10 +218,7 @@ export default function SearchScreen() {
                 <TouchableOpacity 
                   key={tag} 
                   style={[styles.tag, { backgroundColor: '#F8FAFC' }]}
-                  onPress={() => {
-                    handleSearch(tag);
-                    saveSearch(tag);
-                  }}
+                  onPress={() => handleSearchNavigation(tag)}
                   activeOpacity={0.6}
                 >
                   <Text style={styles.tagText}>{tag}</Text>
@@ -199,47 +228,20 @@ export default function SearchScreen() {
           </View>
           
           <View style={styles.trendingBanner}>
-             <LinearGradient
-               colors={['#F8FAFC', '#F1F5F9']}
-               style={styles.bannerContent}
-             >
-               <View>
-                 <Text style={styles.bannerLabel}>TRENDING NOW</Text>
-                 <Text style={styles.bannerTitle}>Summer Essentials</Text>
-               </View>
-               <Ionicons name="flash" size={24} color={theme.primary} />
-             </LinearGradient>
+              <LinearGradient
+                colors={['#F8FAFC', '#F1F5F9']}
+                style={styles.bannerContent}
+              >
+                <View>
+                  <Text style={styles.bannerLabel}>TRENDING NOW</Text>
+                  <Text style={styles.bannerTitle}>Summer Essentials</Text>
+                </View>
+                <Ionicons name="flash" size={24} color={theme.primary} />
+              </LinearGradient>
           </View>
         </ScrollView>
-      ) : results.length > 0 ? (
-        <FlatList
-          data={results}
-          renderItem={({ item }) => <ProductCard product={item} containerStyle={styles.cardContainer} />}
-          keyExtractor={(item, index) => `${item._id || index}-${item.variantId || index}`}
-          numColumns={2}
-          contentContainerStyle={styles.resultsList}
-          showsVerticalScrollIndicator={false}
-          columnWrapperStyle={styles.columnWrapper}
-          keyboardShouldPersistTaps="handled"
-        />
-      ) : (
-        <View style={styles.centered}>
-          <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
-            <Ionicons name="search-outline" size={60} color={theme.primary} />
-          </View>
-          <ThemedText type="subtitle" style={styles.emptyTitle}>No results found</ThemedText>
-          <Text style={styles.emptyText}>
-            We couldn't find anything for "{query}". Try searching for categories like "Shoes" or "Jackets".
-          </Text>
-          <TouchableOpacity 
-            style={[styles.retryButton, { backgroundColor: theme.primary }]}
-            onPress={clearSearch}
-          >
-            <Text style={styles.retryButtonText}>Clear Search</Text>
-          </TouchableOpacity>
-        </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -291,23 +293,40 @@ const styles = StyleSheet.create({
   clearButton: {
     padding: 6,
   },
+  suggestionsContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 8,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  suggestionText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#0F172A',
+    fontFamily: Typography.fontFamily.medium,
+  },
+  suggestionBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  suggestionBadgeText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    textTransform: 'capitalize',
+  },
   content: {
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 24,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-    backgroundColor: '#FFFFFF',
-  },
-  loadingText: {
-    marginTop: 20,
-    fontSize: 15,
-    color: '#64748B',
-    fontFamily: Typography.fontFamily.medium,
   },
   section: {
     marginBottom: 20,
@@ -327,28 +346,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#EF4444',
     fontFamily: Typography.fontFamily.bold,
-  },
-  recentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8FAFC',
-  },
-  recentIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  recentText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#334155',
-    fontFamily: Typography.fontFamily.medium,
   },
   tagScrollView: {
     marginHorizontal: -20,
@@ -393,55 +390,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: Typography.fontFamily.serifBold,
     color: '#0F172A',
-  },
-  resultsList: {
-    padding: 16,
-    paddingTop: 12,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  cardContainer: {
-    width: (width - 48) / 2,
-    marginBottom: 16,
-    marginRight: 0,
-  },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontFamily: Typography.fontFamily.serifBold,
-    color: '#0F172A',
-  },
-  emptyText: {
-    fontSize: 15,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginTop: 10,
-    fontFamily: Typography.fontFamily.medium,
-  },
-  retryButton: {
-    marginTop: 30,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.bold,
   },
 });

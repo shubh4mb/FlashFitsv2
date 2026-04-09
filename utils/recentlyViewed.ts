@@ -19,6 +19,8 @@ export interface Product {
   gender?: string | string[];
   brand?: string;
   brandId?: string;
+  isNearby?: boolean;
+  isOnline?: boolean;
 }
 
 /**

@@ -9,6 +9,7 @@ import {
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
+import { useAddress } from '@/context/AddressContext';
 import { fetchMerchants } from '@/api/merchants';
 import { ThemedText } from '@/components/common/themed-text';
 import { GenderThemes, Typography } from '@/constants/theme';
@@ -39,24 +40,41 @@ interface Merchant {
     url: string;
   };
   genderCategory: string[];
+  shipsWithinHours: number;
+  isOnline: boolean;
+  isNearby: boolean;
 }
 
-export default function MerchantLogosSection({ refreshKey = 0 }: { refreshKey?: number }) {
+export default function MerchantLogosSection({ 
+  refreshKey = 0, 
+  initialMerchants 
+}: { 
+  refreshKey?: number; 
+  initialMerchants?: Merchant[];
+}) {
   const router = useRouter();
   const { selectedGender } = useGender();
+  const { userLocation, selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   
-  const [merchants, setMerchants] = useState<Merchant[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [merchants, setMerchants] = useState<Merchant[]>(initialMerchants || []);
+  const [loading, setLoading] = useState(!initialMerchants);
 
   useEffect(() => {
-    loadMerchants();
-  }, [refreshKey]);
+    if (initialMerchants && initialMerchants.length > 0) {
+      setMerchants(initialMerchants);
+      setLoading(false);
+    } else {
+      loadMerchants();
+    }
+  }, [refreshKey, userLocation, selectedAddress, initialMerchants]);
 
   const loadMerchants = async () => {
     try {
       setLoading(true);
-      const response = await fetchMerchants();
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const response = await fetchMerchants(lat, lng, selectedGender, true); // strict=true
       const merchantsList = response?.merchants || response?.data?.merchants || [];
       setMerchants(merchantsList);
     } catch (error) {
@@ -67,14 +85,10 @@ export default function MerchantLogosSection({ refreshKey = 0 }: { refreshKey?: 
   };
 
   const filteredMerchants = useMemo(() => {
-    return merchants.filter(m => 
-      m.genderCategory && (
-        m.genderCategory.includes(selectedGender) || 
-        m.genderCategory.includes('Unisex') ||
-        m.genderCategory.some(g => g.toUpperCase() === selectedGender.toUpperCase())
-      )
-    );
-  }, [merchants, selectedGender]);
+    // Backend with strict=true already handles online, nearby, and zone filtering.
+    // We just return the list as is.
+    return merchants;
+  }, [merchants]);
 
   if (loading) {
     return <MerchantLogosSkeleton />;

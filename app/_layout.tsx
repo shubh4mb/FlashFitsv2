@@ -1,6 +1,9 @@
+import { AddressProvider } from '@/context/AddressContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
+import { CourierCartProvider } from '@/context/CourierCartContext';
 import { WishlistProvider } from '@/context/WishlistContext';
+import { OffersProvider } from '@/context/OffersContext';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -57,12 +60,18 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <AuthProvider>
-        <WishlistProvider>
-          <CartProvider>
-            <RootNavigator />
-            <StatusBar style="dark" />
-          </CartProvider>
-        </WishlistProvider>
+        <AddressProvider>
+          <WishlistProvider>
+            <CartProvider>
+              <CourierCartProvider>
+                <OffersProvider>
+                  <RootNavigator />
+                  <StatusBar style="dark" />
+                </OffersProvider>
+              </CourierCartProvider>
+            </CartProvider>
+          </WishlistProvider>
+        </AddressProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );

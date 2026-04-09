@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { phoneLogin } from "../../api/auth";
+import { sendOtp } from "../../api/auth";
 import logo from "../../assets/images/logo/logo.png";
 
 const { width, height } = Dimensions.get("window");
@@ -25,6 +25,7 @@ export default function PhoneLogin() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   // ── Animations ─────────────────────────────────────────────────────
   const logoScale = useRef(new Animated.Value(0)).current;
@@ -34,6 +35,7 @@ export default function PhoneLogin() {
   const inputScale = useRef(new Animated.Value(1)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
   const progressWidth = useRef(new Animated.Value(0)).current;
+  const errorOpacity = useRef(new Animated.Value(0)).current;
 
   // Entrance
   useEffect(() => {
@@ -55,30 +57,62 @@ export default function PhoneLogin() {
     }).start();
   }, [phoneNumber]);
 
+  // Error animation
+  useEffect(() => {
+    Animated.timing(errorOpacity, {
+      toValue: errorMessage ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [errorMessage]);
+
+  // Clear error when user types
+  useEffect(() => {
+    if (errorMessage && phoneNumber.length > 0) {
+      setErrorMessage("");
+    }
+  }, [phoneNumber]);
+
   // ── Handlers ───────────────────────────────────────────────────────
   const handleSendOTP = async () => {
     try {
       setIsLoading(true);
+      setErrorMessage("");
+
       Animated.sequence([
         Animated.timing(buttonScale, { toValue: 0.96, duration: 80, useNativeDriver: true }),
         Animated.timing(buttonScale, { toValue: 1, duration: 80, useNativeDriver: true }),
       ]).start();
 
-      // Call real phoneLogin API which returns the token immediately
-      const response = await phoneLogin({ phoneNumber: phoneNumber });
-      
+      // Prepend +91 country code
+      const fullPhone = `+91${phoneNumber}`;
+
+      await sendOtp(fullPhone);
+
       router.replace({
         pathname: "/(auth)/otpVerification",
-        params: { 
-          phone: phoneNumber,
-          token: response.token,
-          userId: response.userId,
-          isNewUser: response.isNewUser ? "true" : "false"
-        },
+        params: { phone: phoneNumber },
       });
-    } catch (error) {
-       console.error("Phone login failed:", error);
-       alert("Failed to connect to backend. Please check your connection.");
+    } catch (error: any) {
+      console.error("Send OTP failed:", error);
+
+      // Extract error message from API response
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        null;
+
+      const status = error?.response?.status;
+
+      if (apiMessage) {
+        setErrorMessage(apiMessage);
+      } else if (status === 429) {
+        setErrorMessage("Too many requests. Please wait before trying again.");
+      } else if (!error?.response) {
+        setErrorMessage("Network error. Please check your connection.");
+      } else {
+        setErrorMessage("Something went wrong. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -144,8 +178,16 @@ export default function PhoneLogin() {
                     styles.inputBox,
                     {
                       transform: [{ scale: inputScale }],
-                      borderColor: isFocused ? "#78787cff" : "#e2e8f0",
-                      backgroundColor: isFocused ? "#ffffff" : "#f8fafc",
+                      borderColor: errorMessage
+                        ? "#EF4444"
+                        : isFocused
+                        ? "#78787cff"
+                        : "#e2e8f0",
+                      backgroundColor: errorMessage
+                        ? "#FEF2F2"
+                        : isFocused
+                        ? "#ffffff"
+                        : "#f8fafc",
                     },
                   ]}
                 >
@@ -175,6 +217,14 @@ export default function PhoneLogin() {
                     editable={!isLoading}
                   />
                 </Animated.View>
+
+                {/* Error Message */}
+                {errorMessage ? (
+                  <Animated.View style={[styles.errorBox, { opacity: errorOpacity }]}>
+                    <AntDesign name="exclamationcircleo" size={14} color="#EF4444" />
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  </Animated.View>
+                ) : null}
 
                 {/* Progress */}
                 <View style={styles.progressBox}>
@@ -214,7 +264,7 @@ export default function PhoneLogin() {
                           phoneNumber.length === 10 ? styles.txtActive : styles.txtDisabled,
                         ]}
                       >
-                         {isLoading ? "Sending..." : "Continue"}
+                         {isLoading ? "Sending OTP..." : "Continue"}
                       </Text>
                       {phoneNumber.length === 10 && !isLoading && (
                         <AntDesign name="right" size={20} color="#fff" />
@@ -249,12 +299,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 48,
     alignItems: "center",
-    justifyContent: "center", // <-- Center vertically
+    justifyContent: "center",
   },
   centerWrapper: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center", // <-- Vertically center
+    justifyContent: "center",
   },
 
   /* ── LOGO ── */
@@ -285,7 +335,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 18,
     paddingVertical: 16,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   countryPicker: { flexDirection: "row", alignItems: "center", },
   flag: { width: 28, height: 20, borderRadius: 4, marginRight: 8 },
@@ -298,6 +348,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#1e293b",
     fontFamily: "Manrope-SemiBold",
+  },
+
+  /* ── ERROR ── */
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  errorText: {
+    fontSize: 13,
+    color: "#EF4444",
+    fontWeight: "500",
+    fontFamily: "Manrope-Medium",
+    flex: 1,
   },
 
   /* ── PROGRESS ── */

@@ -1,5 +1,6 @@
 import { fetchMerchantById } from '@/api/merchants';
 import { fetchFilteredProducts } from '@/api/products';
+import { getMerchantOffers } from '@/api/offers';
 import { Image } from 'expo-image';
 import ProductCard from '@/components/common/ProductCard';
 import { GenderThemes, Typography } from '@/constants/theme';
@@ -44,6 +45,7 @@ export default function MerchantDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [merchant, setMerchant] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
+  const [merchantOffers, setMerchantOffers] = useState<any[]>([]);
   const [localSelectedGender, setLocalSelectedGender] = useState<string | null>(null);
 
   const distanceInfo = useMemo(() => {
@@ -71,14 +73,16 @@ export default function MerchantDetailScreen() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [mRes, pRes] = await Promise.all([
+        const [mRes, pRes, oRes] = await Promise.all([
           fetchMerchantById(id),
-          fetchFilteredProducts({ selectedStores: [id] })
+          fetchFilteredProducts({ selectedStores: [id] }),
+          getMerchantOffers(id as string)
         ]);
         
         const merchantData = mRes?.merchant || mRes?.data?.merchant;
         setMerchant(merchantData);
         setProducts(pRes?.products || pRes?.data || []);
+        setMerchantOffers(oRes || []);
       } catch (error) {
         console.error('Error fetching merchant details or products:', error);
       } finally {
@@ -200,11 +204,20 @@ export default function MerchantDetailScreen() {
           <View style={styles.logoNameRow}>
             <View style={styles.logoWrapper}>
               <Image source={{ uri: merchant.logo.url }} style={styles.storeLogo} contentFit="contain" />
+              {merchant.isOnline && (
+                <View style={styles.onlineDotOverlay} />
+              )}
             </View>
             <View style={{ flex: 1, marginLeft: 14 }}>
               <Text style={styles.storeName} numberOfLines={1}>
                 {merchant.shopName}
               </Text>
+              {merchant.isOnline && (
+                <View style={styles.liveIndicator}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>LIVE</Text>
+                </View>
+              )}
               <View style={styles.locationChip}>
                 <Ionicons name="location" size={12} color={theme.primary} />
                 <Text style={styles.locationText}>
@@ -235,18 +248,34 @@ export default function MerchantDetailScreen() {
             </View>
           </View>
 
-          <LinearGradient
-            colors={['#F1F5F9', '#E2E8F0']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.offerStrip}
-          >
-            <View style={styles.offerIconCircle}>
-              <Ionicons name="pricetag" size={14} color={theme.primary} />
-            </View>
-            <Text style={[styles.offerStripText, { color: theme.primary }]}>Flat ₹175 OFF above ₹1399</Text>
-            <Ionicons name="chevron-forward" size={16} color={theme.primary} />
-          </LinearGradient>
+          {merchantOffers.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 20, marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}>
+              {merchantOffers.map((offer, idx) => (
+                <View key={offer._id || idx} style={[styles.couponTicket, { backgroundColor: theme.primary + '0A', borderColor: theme.primary + '20' }]}>
+                  <View style={styles.couponLeft}>
+                    <View style={[styles.couponDot, { backgroundColor: theme.primary }]} />
+                    <View style={styles.couponMain}>
+                      <Text style={[styles.couponTitle, { color: theme.primary }]} numberOfLines={1}>
+                        {offer.title}
+                      </Text>
+                      <Text style={styles.couponDesc} numberOfLines={1}>
+                        {offer.description || (offer.conditions?.minCartValue ? `Min. ₹${offer.conditions.minCartValue}` : 'Store Offer')}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {offer.requiresCoupon && offer.couponCode && (
+                    <View style={styles.couponRight}>
+                      <View style={[styles.dashedDivider, { borderColor: theme.primary + '40' }]} />
+                      <View style={[styles.couponCodeBadge, { backgroundColor: theme.primary }]}>
+                        <Text style={styles.couponCodeText}>{offer.couponCode}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Gender Switcher */}
@@ -478,28 +507,66 @@ const styles = StyleSheet.create({
     height: 16,
     backgroundColor: '#E2E8F0',
   },
-  offerStrip: {
+  couponTicket: {
+    height: 64,
+    minWidth: 180,
+    borderRadius: 12,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
-    gap: 10,
+    overflow: 'hidden',
+    paddingRight: 4,
   },
-  offerIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  offerStripText: {
+  couponLeft: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 12,
+  },
+  couponDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 10,
+  },
+  couponMain: {
+    flex: 1,
+  },
+  couponTitle: {
+    fontSize: 14,
+    fontWeight: '800',
     fontFamily: Typography.fontFamily.bold,
+  },
+  couponDesc: {
+    fontSize: 10,
+    color: '#64748B',
+    fontFamily: Typography.fontFamily.medium,
+    marginTop: 1,
+  },
+  couponRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: '100%',
+  },
+  dashedDivider: {
+    width: 1,
+    height: '60%',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginRight: 12,
+  },
+  couponCodeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  couponCodeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.5,
   },
   genderSwitcherContainer: {
     paddingHorizontal: 16,
@@ -592,5 +659,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#94A3B8',
     fontFamily: Typography.fontFamily.medium,
+  },
+  onlineDotOverlay: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#22C55E',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    zIndex: 10,
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7', // Light green
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    gap: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#22C55E',
+  },
+  liveText: {
+    fontSize: 9,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#15803D',
+    letterSpacing: 0.5,
   },
 });

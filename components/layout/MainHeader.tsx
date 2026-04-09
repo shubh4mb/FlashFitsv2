@@ -20,6 +20,7 @@ import { GenderThemes, Typography } from "../../constants/theme";
 import { useAddress } from "../../context/AddressContext";
 import { Gender, useGender } from "../../context/GenderContext";
 import Skeleton from "../common/Skeleton";
+import AddressSelectorModal from "../common/AddressSelectorModal";
 
 interface MainHeaderProps {
     cartCount?: number;
@@ -42,7 +43,15 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
 
     const cartCount = cart?.totalItems || 0;
     const router = useRouter();
-    const { locationAddress, deliveryAvailable, locationLoading, detectLocation, locationPermission } = useAddress();
+    const { 
+        locationAddress, 
+        deliveryAvailable, 
+        locationLoading, 
+        detectLocation, 
+        locationPermission,
+        selectedAddress,
+        tbAvailable,
+    } = useAddress();
 
     const insets = useSafeAreaInsets();
 
@@ -56,6 +65,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
     const [categories, setCategories] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+    const [addressModalVisible, setAddressModalVisible] = useState(false);
 
     // 3D Gender Switcher animations
     const genderAnim = useRef(new Animated.Value(0)).current;
@@ -205,11 +215,11 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                 {/* <View style={styles.decorativeOrb} /> */}
 
                 {/* ── Top Row: Location & Icons ── */}
-                <Animated.View style={[styles.topRow, { opacity: topRowOpacity }]}>
+                <Animated.View style={[styles.topRow, { opacity: topRowOpacity, elevation: 12, zIndex: 20 }]}>
                     <TouchableOpacity
                         style={styles.locationContainer}
                         activeOpacity={0.7}
-                        onPress={() => router.push("/(app)/select-location" as any)}
+                        onPress={() => setAddressModalVisible(true)}
                     >
                         <View style={styles.locationPin}>
                             <Ionicons name="location" size={18} color={theme.text} />
@@ -217,29 +227,32 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                         <View style={styles.addressInfo}>
                             {/* Top row: Status */}
                             <View style={styles.statusRow}>
-                                {!locationLoading && locationPermission === 'granted' && deliveryAvailable !== null ? (
+                                {(!locationLoading && (deliveryAvailable !== null || selectedAddress)) ? (
                                     <>
                                         <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} />
                                         <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
-                                            {deliveryAvailable ? 'Try & Buy Now !!!' : 'Oops, We aren\'t here yet!'}
+                                            {tbAvailable ? 'Try in 60 mins' : (deliveryAvailable === false ? 'Delivery Unavailable' : 'FlashFits Delivery')}
                                         </Text>
                                     </>
                                 ) : (
                                     <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
-                                        {locationLoading || (locationPermission === 'granted' && deliveryAvailable === null) ? 'Locating...' : 'FlashFits Delivery'}
+                                        {locationLoading ? 'Locating...' : 'FlashFits Delivery'}
                                     </Text>
                                 )}
                             </View>
                             
                             {/* Bottom row: Address */}
                             <Text style={[styles.subText, { color: theme.text }]} numberOfLines={1}>
-                                {locationLoading 
+                                {selectedAddress 
+                                    ? `${capitalize(selectedAddress.addressType)} - ${selectedAddress.addressLine1}`
+                                    : locationLoading 
                                     ? 'Fetching your location...' 
                                     : locationPermission !== 'granted'
                                     ? 'Enable location permission'
                                     : (locationAddress || 'Tap to select delivery location')}
                             </Text>
                         </View>
+                        <Ionicons name="chevron-down" size={16} color={theme.text} style={{ marginLeft: 6 }} />
                     </TouchableOpacity>
 
                     <View style={styles.actionIcons}>
@@ -248,6 +261,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                             style={styles.iconButton}
                             activeOpacity={0.7}
                             onPress={() => router.push("/cart" as any)}
+                            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                         >
                             <Ionicons name="bag-handle-outline" size={22} color={theme.text} />
                             {cartCount > 0 && (
@@ -260,6 +274,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                         <TouchableOpacity
                             activeOpacity={0.7}
                             onPress={() => router.push("/(app)/profile" as any)}
+                            hitSlop={{ top: 15, bottom: 15, left: 10, right: 20 }}
                         >
                             <View style={styles.profileCircle}>
                                 <Ionicons name="person-outline" size={16} color={theme.text} />
@@ -269,20 +284,26 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                 </Animated.View>
 
                 {/* ── Sticky Section Header ── */}
-                <Animated.View style={{ transform: [{ translateY: stickyCounterY }], zIndex: 10, elevation: 10 }}>
+                <Animated.View 
+                    style={{ transform: [{ translateY: stickyCounterY }], zIndex: 10, elevation: 10 }}
+                    pointerEvents="box-none"
+                >
                     {/* Opaque Background for Sticky Section */}
-                    <Animated.View style={{
-                        position: 'absolute',
-                        top: -insets.top - 10,
-                        bottom: -15,
-                        left: -16,
-                        right: -16,
-                        opacity: stickyBgOpacity,
-                        ...Platform.select({
-                            ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
-                            android: { elevation: 8 }
-                        }),
-                    }}>
+                    <Animated.View 
+                        style={{
+                            position: 'absolute',
+                            top: -insets.top - 10,
+                            bottom: -15,
+                            left: -16,
+                            right: -16,
+                            opacity: stickyBgOpacity,
+                            ...Platform.select({
+                                ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+                                android: { elevation: 8 }
+                            }),
+                        }}
+                        pointerEvents="none"
+                    >
                         <LinearGradient
                             colors={[theme?.primary || '#011441', '#FFFFFF', '#FFFFFF']}
                             locations={[0, 0.7, 1]}
@@ -422,7 +443,13 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     <TouchableOpacity
                                         key={cat._id}
                                         style={styles.categoryItem}
-                                        onPress={() => setSelectedCategoryId(cat._id)}
+                                        onPress={() => router.push({
+                                            pathname: '/search-results' as any,
+                                            params: {
+                                                categoryId: cat._id,
+                                                gender: selectedGender.toUpperCase(),
+                                            }
+                                        })}
                                     >
                                         <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
                                             {logoUrl ? (
@@ -447,6 +474,12 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                     </Animated.ScrollView>
                 )}
             </LinearGradient>
+
+            {/* Address Selector Modal */}
+            <AddressSelectorModal 
+                visible={addressModalVisible} 
+                onClose={() => setAddressModalVisible(false)} 
+            />
         </Animated.View>
     );
 }
@@ -504,7 +537,8 @@ const styles = StyleSheet.create({
         marginRight: 10,
     },
     addressInfo: {
-        flex: 1,
+        marginRight: 4,
+        flexShrink: 1,
     },
     statusRow: {
         flexDirection: 'row',

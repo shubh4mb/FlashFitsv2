@@ -65,22 +65,34 @@ export default function HomeHeader({
               <Text style={styles.addressText} numberOfLines={1}>{address}</Text>
               <AntDesign name="down" size={12} color="#666" style={styles.chevron} />
             </View>
-            <Text style={styles.subText}>Delivering to your doorstep</Text>
+            <Text style={styles.subText}>Try in 60 mins</Text>
           </View>
         </TouchableOpacity>
 
         <View style={styles.actionIcons}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => router.push("/(app)/(tabs)/wishlist" as any)}>
+          <TouchableOpacity 
+            style={styles.iconButton} 
+            onPress={() => router.push("/(app)/(tabs)/wishlist" as any)}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          >
             <Ionicons name="heart-outline" size={24} color="#000" />
             {wishlistCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{wishlistCount}</Text></View>}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.iconButton} onPress={() => {/* TODO: Cart Screen */}}>
+          <TouchableOpacity 
+            style={styles.iconButton} 
+            onPress={() => router.push("/cart" as any)}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          >
             <Ionicons name="bag-handle-outline" size={24} color="#000" />
             {cartCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{cartCount}</Text></View>}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.profileButton} onPress={() => router.push("/(app)/(tabs)" as any)}>
+          <TouchableOpacity 
+            style={styles.profileButton} 
+            onPress={() => router.push("/(app)/profile" as any)}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          >
              <View style={styles.profileCircle}>
                 <Ionicons name="person-outline" size={18} color="#000" />
              </View>

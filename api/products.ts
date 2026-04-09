@@ -1,9 +1,9 @@
 import api from './axiosConfig';
 
-export const fetchnewArrivalsProductsData = async (gender?: string) => {
+export const fetchnewArrivalsProductsData = async (gender?: string, lat?: number, lng?: number) => {
     try {
         const res = await api.get('user/products/newArrivals', {
-            params: { gender }
+            params: { gender, lat, lng }
         });
         return res.data;
     } catch (error) {
@@ -12,10 +12,10 @@ export const fetchnewArrivalsProductsData = async (gender?: string) => {
     }
 };
 
-export const fetchTrendingProductsData = async (gender?: string) => {
+export const fetchTrendingProductsData = async (gender?: string, lat?: number, lng?: number) => {
     try {
         const res = await api.get('user/products/trending', {
-            params: { gender }
+            params: { gender, lat, lng }
         });
         return res.data;
     } catch (error) {
@@ -24,10 +24,10 @@ export const fetchTrendingProductsData = async (gender?: string) => {
     }
 };
 
-export const fetchRecommendedProductsData = async (gender?: string) => {
+export const fetchRecommendedProductsData = async (gender?: string, lat?: number, lng?: number) => {
     try {
         const res = await api.get('user/products/recommended', {
-            params: { gender }
+            params: { gender, lat, lng }
         });
         return res.data;
     } catch (error) {
@@ -58,11 +58,18 @@ export const productDetailPage = async (id: string) => {
 
 export const fetchFilteredProducts = async (filters: {
     search?: string;
+    page?: number;
+    limit?: number;
+    gender?: string;
+    deliveryMode?: 'tryAndBuy' | 'courier' | null;
     priceRange?: number[];
     selectedCategoryIds?: string[];
+    subCategoryIds?: string[];
     selectedColors?: string[];
     selectedStores?: string[];
     sortBy?: string;
+    lat?: number;
+    lng?: number;
 }) => {
     try {
         const res = await api.post('user/products/filtered', filters);
@@ -73,3 +80,45 @@ export const fetchFilteredProducts = async (filters: {
     }
 };
 
+/**
+ * Fetch search suggestions (autocomplete) from backend.
+ * Returns { suggestions: [{ text, type }] }
+ */
+export const fetchSearchSuggestions = async (query: string) => {
+    try {
+        const res = await api.get('user/products/search-suggestions', {
+            params: { q: query }
+        });
+        return res.data;
+    } catch (error) {
+        console.error('Axios error in search suggestions:', error);
+        throw error;
+    }
+};
+
+/**
+ * Fetch products from courier-enabled merchants (no distance limit)
+ */
+export const fetchCourierProducts = async (gender?: string, page: number = 1, lat?: number, lng?: number) => {
+    try {
+        const res = await api.get('user/products/courier', {
+            params: { gender, page, limit: 20, lat, lng },
+        });
+        return res.data;
+    } catch (error) {
+        console.error('Axios error in courier products:', error);
+        throw error;
+    }
+};
+
+export const fetchRelatedProducts = async (id: string, lat?: number, lng?: number) => {
+    try {
+        const res = await api.get(`user/products/${id}/related`, {
+            params: { lat, lng }
+        });
+        return res.data;
+    } catch (error) {
+        console.error('Axios error in related products:', error);
+        throw error;
+    }
+};
