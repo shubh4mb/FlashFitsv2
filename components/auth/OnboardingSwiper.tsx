@@ -9,7 +9,9 @@ import {
     Text,
     TouchableOpacity,
     View,
+    Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
@@ -17,38 +19,38 @@ const SLIDES = [
     {
         id: '1',
         icon: 'bag-handle-outline',
-        title: 'Order Your Style',
+        title: 'Style, Delivered.',
         description:
-            'Browse & order multiple styles and sizes — no upfront product cost, just a small delivery fee.',
-        gradient: ['#0F0F0F', '#1A1A2E'] as const,
-        accentColor: '#00F5A0',
+            'Order multiple sizes and styles to your doorstep. No upfront payment—just a tiny delivery fee.',
+        gradient: ['#FFFFFF', '#FAFAFA'] as const,
+        accentColor: '#000000',
     },
     {
         id: '2',
         icon: 'shirt-outline',
-        title: 'Try at Home',
+        title: 'Try Before You Buy',
         description:
-            'A rider delivers your picks in ~60 minutes. Try everything on in the comfort of your home.',
-        gradient: ['#0F0F0F', '#1E1B2E'] as const,
-        accentColor: '#00D4FF',
+            'Your room is the fitting room. Our rider brings your picks in 60 minutes for a relaxed home try-on.',
+        gradient: ['#FFFFFF', '#F5F5F5'] as const,
+        accentColor: '#000000',
     },
     {
         id: '3',
         icon: 'heart-outline',
-        title: 'Keep What You Love',
+        title: 'Keep What Fits',
         description:
-            "Love it? Keep it and pay only for what you want. Discounts auto-applied.",
-        gradient: ['#0F0F0F', '#2E1A24'] as const,
-        accentColor: '#FF6B9D',
+            "Found your perfect match? Keep it and pay securely. Smart discounts are applied instantly.",
+        gradient: ['#FFFFFF', '#FAFAFA'] as const,
+        accentColor: '#000000',
     },
     {
         id: '4',
         icon: 'refresh-circle-outline',
-        title: 'Return the Rest',
+        title: 'Instant Returns',
         description:
-            "Don't love it? Hand it back to the rider instantly — zero hassle, zero cost.",
-        gradient: ['#0F0F0F', '#1A2E1F'] as const,
-        accentColor: '#00F5A0',
+            "Not your vibe? Hand it back to the rider right away. Zero return hassle, zero extra cost.",
+        gradient: ['#FFFFFF', '#F5F5F5'] as const,
+        accentColor: '#000000',
     },
 ];
 
@@ -60,6 +62,7 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
     const flatListRef = useRef<FlatList>(null);
     const scrollX = useRef(new Animated.Value(0)).current;
     const [currentIndex, setCurrentIndex] = useState(0);
+    const { top, bottom } = useSafeAreaInsets();
 
     const handleNext = () => {
         if (currentIndex < SLIDES.length - 1) {
@@ -82,6 +85,9 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
 
     const isLastSlide = currentIndex === SLIDES.length - 1;
     const currentSlide = SLIDES[currentIndex];
+
+    // Attempting to resolve the logo
+    const logoSource = require('../../assets/images/logo/logo.png');
 
     const renderSlide = ({ item, index }: { item: typeof SLIDES[0]; index: number }) => {
         const inputRange = [(index - 1) * width, index * width, (index + 1) * width];
@@ -111,29 +117,29 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
         });
 
         return (
-            <View style={{ width }} className="items-center justify-center px-8 pb-[120px]">
+            <View style={{ width }} className="flex-1 items-center justify-center px-8">
                 <Animated.View
                     style={{ transform: [{ scale: iconScaleInterp }], opacity: iconOpacity }}
-                    className="mb-10"
+                    className="mb-12"
                 >
-                    <View style={{ backgroundColor: item.accentColor + '15' }} className="w-[180px] h-[180px] rounded-full items-center justify-center">
-                        <View style={{ backgroundColor: item.accentColor + '25' }} className="w-[140px] h-[140px] rounded-full items-center justify-center">
-                            <Ionicons name={item.icon as any} size={72} color={item.accentColor} />
+                    <View style={{ backgroundColor: '#00000008', shadowColor: item.accentColor, shadowOpacity: 0.1, shadowRadius: 20, elevation: 5 }} className="w-[200px] h-[200px] rounded-full items-center justify-center border border-black/5">
+                        <View style={{ backgroundColor: '#00000005' }} className="w-[150px] h-[150px] rounded-full items-center justify-center border border-black/5">
+                            <Ionicons name={item.icon as any} size={76} color={item.accentColor} />
                         </View>
                     </View>
                 </Animated.View>
 
-                <Animated.View style={{ opacity: textOpacity, backgroundColor: item.accentColor + '20' }} className="px-3.5 py-1.5 rounded-xl mb-5">
-                    <Text style={{ color: item.accentColor }} className="text-[11px] font-bold tracking-[1.5px]">
+                <Animated.View style={{ opacity: textOpacity, backgroundColor: '#00000008', borderWidth: 1, borderColor: '#00000015' }} className="px-4 py-1.5 rounded-full mb-6">
+                    <Text style={{ color: item.accentColor }} className="text-[10px] font-black tracking-[2px] uppercase">
                         STEP {index + 1} OF {SLIDES.length}
                     </Text>
                 </Animated.View>
 
-                <Animated.Text style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }} className="text-4xl text-white font-bold text-center mb-4 leading-[40px]">
+                <Animated.Text style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }} className="text-[34px] text-black font-extrabold text-center mb-5 tracking-tight leading-[42px]">
                     {item.title}
                 </Animated.Text>
 
-                <Animated.Text style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }} className="text-base text-white/60 font-medium text-center leading-6 max-w-[300px]">
+                <Animated.Text style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }} className="text-[16px] text-black/60 font-medium text-center leading-[26px] px-2">
                     {item.description}
                 </Animated.Text>
             </View>
@@ -142,42 +148,49 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
 
     return (
         <LinearGradient colors={currentSlide.gradient} className="flex-1">
-            <StatusBar barStyle="light-content" />
+            <StatusBar barStyle="dark-content" />
+
+            <View style={{ top: Math.max(top, 20) + 12 }} className="absolute left-6 z-10">
+                <Image source={logoSource} style={{ width: 110, height: 28 }} resizeMode="contain" />
+            </View>
 
             {!isLastSlide && (
                 <TouchableOpacity 
-                    className="absolute top-14 right-6 z-10 px-4 py-2 rounded-full border border-white/20 bg-white/10" 
+                    style={{ top: Math.max(top, 20) + 10 }}
+                    className="absolute right-6 z-10 px-5 py-2 rounded-full border border-black/5 bg-black/5" 
                     onPress={onComplete} 
                     activeOpacity={0.7}
                 >
-                    <Text className="text-white/70 text-sm tracking-widest">Skip</Text>
+                    <Text className="text-black/80 text-[13px] font-bold tracking-widest uppercase">Skip</Text>
                 </TouchableOpacity>
             )}
 
-            <Animated.FlatList
-                ref={flatListRef}
-                data={SLIDES}
-                renderItem={renderSlide}
-                keyExtractor={(item) => item.id}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                bounces={false}
-                onScroll={Animated.event(
-                    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                    { useNativeDriver: false }
-                )}
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={viewabilityConfig}
-                scrollEventThrottle={16}
-            />
+            <View className="flex-1">
+                <Animated.FlatList
+                    ref={flatListRef}
+                    data={SLIDES}
+                    renderItem={renderSlide}
+                    keyExtractor={(item) => item.id}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    bounces={false}
+                    onScroll={Animated.event(
+                        [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                        { useNativeDriver: false }
+                    )}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfig={viewabilityConfig}
+                    scrollEventThrottle={16}
+                />
+            </View>
 
-            <View className="absolute bottom-0 left-0 right-0 pb-12 px-8 items-center">
-                <View className="flex-row items-center mb-8 gap-2">
+            <View style={{ paddingBottom: Math.max(bottom, 20) + 10 }} className="px-8 pt-4 w-full items-center bg-transparent">
+                <View className="flex-row items-center mb-10 gap-2.5">
                     {SLIDES.map((slide, index) => {
                         const dotWidth = scrollX.interpolate({
                             inputRange: [(index - 1) * width, index * width, (index + 1) * width],
-                            outputRange: [8, 28, 8],
+                            outputRange: [8, 32, 8],
                             extrapolate: 'clamp',
                         });
 
@@ -199,21 +212,23 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
 
                 <TouchableOpacity
                     style={{ backgroundColor: currentSlide.accentColor }}
-                    className="flex-row items-center justify-center w-full py-4 rounded-2xl gap-2"
+                    className="flex-row items-center justify-center w-full py-4 rounded-2xl gap-2 shadow-sm"
                     onPress={isLastSlide ? onComplete : handleNext}
                     activeOpacity={0.85}
                 >
-                    <Text className="text-[17px] font-bold text-black tracking-tight">
+                    <Text className="text-[17px] font-bold text-white tracking-tight">
                         {isLastSlide ? 'Get Started' : 'Next'}
                     </Text>
-                    <Ionicons name={isLastSlide ? 'arrow-forward' : 'chevron-forward'} size={22} color="#0F0F0F" />
+                    <Ionicons name={isLastSlide ? 'arrow-forward' : 'chevron-forward'} size={22} color="#FFFFFF" />
                 </TouchableOpacity>
 
-                {isLastSlide && (
-                    <TouchableOpacity className="mt-4 py-2" onPress={onComplete} activeOpacity={0.7}>
-                        <Text className="text-white/50 text-sm font-medium tracking-tight">Explore FlashFits →</Text>
-                    </TouchableOpacity>
-                )}
+                <View className="h-4 mt-4 w-full items-center justify-center">
+                    {isLastSlide && (
+                        <TouchableOpacity onPress={onComplete} activeOpacity={0.7} className="py-2">
+                            <Text className="text-black/50 text-sm font-semibold tracking-tight">Explore FlashFits →</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
         </LinearGradient>
     );

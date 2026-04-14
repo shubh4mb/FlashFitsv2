@@ -116,7 +116,7 @@ export default function MerchantLogosSection({
             style={styles.merchantCard}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push({ pathname: '/merchant/[id]', params: { id: merchant._id } } as any);
+              router.push({ pathname: '/merchant/[id]', params: { id: merchant._id, fromExplore: 'false' } } as any);
             }}
           >
             <View style={styles.logoContainer}>

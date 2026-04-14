@@ -3,6 +3,7 @@ import {
   getAvailableOffers,
   getFlashSales,
   getBestOffersForCart,
+  getPromotionalBanners,
   applyCoupon as applyCouponApi,
   Offer,
   AppliedOffers,
@@ -13,12 +14,14 @@ interface OffersContextType {
   offers: Offer[];
   flashSales: Offer[];
   appliedOffers: AppliedOffers | null;
+  promotionalBanners: Offer[];
   couponCode: string | null;
   loading: boolean;
   couponLoading: boolean;
   couponError: string | null;
   refreshOffers: () => Promise<void>;
   refreshFlashSales: () => Promise<void>;
+  refreshPromotionalBanners: () => Promise<void>;
   computeBestOffers: (cartContext: any, couponCode?: string) => Promise<void>;
   applyCoupon: (code: string, cartContext: any) => Promise<boolean>;
   removeCoupon: () => void;
@@ -31,6 +34,7 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated } = useAuth();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [flashSales, setFlashSales] = useState<Offer[]>([]);
+  const [promotionalBanners, setPromotionalBanners] = useState<Offer[]>([]);
   const [appliedOffers, setAppliedOffers] = useState<AppliedOffers | null>(null);
   const [couponCode, setCouponCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,6 +60,15 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
       setFlashSales(data);
     } catch (error) {
       console.error('Failed to fetch flash sales:', error);
+    }
+  }, []);
+
+  const refreshPromotionalBanners = useCallback(async () => {
+    try {
+      const data = await getPromotionalBanners();
+      setPromotionalBanners(data);
+    } catch (error) {
+      console.error('Failed to fetch promotional banners:', error);
     }
   }, []);
 
@@ -102,7 +115,8 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
   // Fetch flash sales on mount (public)
   useEffect(() => {
     refreshFlashSales();
-  }, []);
+    refreshPromotionalBanners();
+  }, [refreshFlashSales, refreshPromotionalBanners]);
 
   // Fetch offers when authenticated
   useEffect(() => {
@@ -113,7 +127,7 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
       setAppliedOffers(null);
       setCouponCode(null);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshOffers]);
 
   return (
     <OffersContext.Provider
@@ -121,12 +135,14 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
         offers,
         flashSales,
         appliedOffers,
+        promotionalBanners,
         couponCode,
         loading,
         couponLoading,
         couponError,
         refreshOffers,
         refreshFlashSales,
+        refreshPromotionalBanners,
         computeBestOffers,
         applyCoupon,
         removeCoupon,

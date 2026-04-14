@@ -19,7 +19,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.efron.flashfitsrefactor"
     },
     "web": {
       "bundler": "metro",
@@ -54,8 +59,11 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "http://192.168.29.230:5000"
-      
+      "BACKEND_URL": "https://055c-2405-201-f001-8ff-e160-e426-ba3-7b56.ngrok-free.app",
+      "router": {},
+      "eas": {
+        "projectId": "dfa49865-a825-4feb-8a4c-a3e63421c995"
+      }
     }
   }
 }

@@ -7,7 +7,7 @@ export const fetchnewArrivalsProductsData = async (gender?: string, lat?: number
         });
         return res.data;
     } catch (error) {
-        console.error('Axios error in new arrivals:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -19,7 +19,7 @@ export const fetchTrendingProductsData = async (gender?: string, lat?: number, l
         });
         return res.data;
     } catch (error) {
-        console.error('Axios error in trending:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -31,7 +31,7 @@ export const fetchRecommendedProductsData = async (gender?: string, lat?: number
         });
         return res.data;
     } catch (error) {
-        console.error('Axios error in recommended:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -41,7 +41,7 @@ export const fetchBanners = async () => {
         const res = await api.get('user/banners');
         return res.data;
     } catch (error) {
-        console.error('Axios error in banners:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -68,6 +68,7 @@ export const fetchFilteredProducts = async (filters: {
     selectedColors?: string[];
     selectedStores?: string[];
     sortBy?: string;
+    collectionId?: string;
     lat?: number;
     lng?: number;
 }) => {
@@ -75,7 +76,7 @@ export const fetchFilteredProducts = async (filters: {
         const res = await api.post('user/products/filtered', filters);
         return res.data;
     } catch (error) {
-        console.error('Axios error in filtered products:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -91,7 +92,7 @@ export const fetchSearchSuggestions = async (query: string) => {
         });
         return res.data;
     } catch (error) {
-        console.error('Axios error in search suggestions:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -106,7 +107,7 @@ export const fetchCourierProducts = async (gender?: string, page: number = 1, la
         });
         return res.data;
     } catch (error) {
-        console.error('Axios error in courier products:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -118,7 +119,28 @@ export const fetchRelatedProducts = async (id: string, lat?: number, lng?: numbe
         });
         return res.data;
     } catch (error) {
-        console.error('Axios error in related products:', error);
+    // Auth errors are ignored gracefully
+        throw error;
+    }
+};
+
+export const fetchProductsByCollection = async (merchantId: string, collectionId: string) => {
+    try {
+        const res = await api.get('user/products/collection', {
+            params: { merchantId, collectionId }
+        });
+        return res.data;
+    } catch (error) {
+    // Auth errors are ignored gracefully
+        throw error;
+    }
+};
+export const fetchProductsByMerchant = async (merchantId: string) => {
+    try {
+        const res = await api.get(`user/products/merchant/${merchantId}`);
+        return res.data;
+    } catch (error) {
+        console.error('Error fetching merchant products:', error);
         throw error;
     }
 };

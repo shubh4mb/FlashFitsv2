@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import * as Haptics from 'expo-haptics';
 import {
   addToCourierCart as addToCourierCartApi,
@@ -53,7 +53,7 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
   const [courierCart, setCourierCart] = useState<CourierCartData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchCart = async () => {
+  const fetchCart = useCallback(async () => {
     if (!isAuthenticated) {
       setLoading(false);
       return;
@@ -67,7 +67,7 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated) {

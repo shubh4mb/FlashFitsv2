@@ -29,6 +29,7 @@ interface ProductHorizontalSectionProps {
     imageUrl: string;
     actionUrl?: string;
   };
+  collectionId?: string;
   refreshKey?: number;
 }
 
@@ -59,6 +60,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
   products,
   isLoading = false,
   banner,
+  collectionId,
 }) => {
   const router = useRouter();
   const { selectedGender } = useGender();
@@ -79,7 +81,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
       onPress={() => {
         router.push({
           pathname: '/(app)/product/[id]' as any,
-          params: { id: item._id || item.id },
+          params: { id: item._id || item.id, fromExplore: 'false' },
         });
       }}
     />
@@ -104,6 +106,11 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
           onPress={() => {
             if (banner.actionUrl) {
               router.push(banner.actionUrl as any);
+            } else if (collectionId) {
+              router.push({
+                pathname: '/(app)/search-results' as any,
+                params: { collectionId, title }
+              });
             }
           }}
         >

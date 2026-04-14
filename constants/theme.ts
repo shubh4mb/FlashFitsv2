@@ -18,7 +18,7 @@ export const Palette = {
 
 export const GenderThemes = {
   Men: {
-    primary: "#011441ff",
+    primary: "#011441",
     secondary: "#012258ff",
     background: "#01184eff",
     text: "#FFFFFF",

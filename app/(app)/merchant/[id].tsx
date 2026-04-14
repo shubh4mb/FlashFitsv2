@@ -1,8 +1,9 @@
 import { fetchMerchantById } from '@/api/merchants';
-import { fetchFilteredProducts } from '@/api/products';
+import { fetchFilteredProducts, fetchProductsByMerchant } from '@/api/products';
 import { getMerchantOffers } from '@/api/offers';
 import { Image } from 'expo-image';
 import ProductCard from '@/components/common/ProductCard';
+import MerchantCollectionBanners from '@/components/sections/MerchantCollectionBanners';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
@@ -35,7 +36,7 @@ const GENDER_ICON_MAP: Record<string, any> = {
 
 export default function MerchantDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, fromExplore } = useLocalSearchParams<{ id: string, fromExplore?: string }>();
   const router = useRouter();
   
   const { selectedGender, setSelectedGender } = useGender();
@@ -75,7 +76,7 @@ export default function MerchantDetailScreen() {
         setLoading(true);
         const [mRes, pRes, oRes] = await Promise.all([
           fetchMerchantById(id),
-          fetchFilteredProducts({ selectedStores: [id] }),
+          fetchProductsByMerchant(id),
           getMerchantOffers(id as string)
         ]);
         
@@ -276,6 +277,8 @@ export default function MerchantDetailScreen() {
               ))}
             </ScrollView>
           )}
+
+          <MerchantCollectionBanners merchantId={id as string} theme={theme} />
         </View>
 
         {/* Gender Switcher */}
@@ -340,6 +343,7 @@ export default function MerchantDetailScreen() {
                   product={p}
                   width={150}
                   containerStyle={{ marginRight: 15 }}
+                  fromExplore={fromExplore === 'true'}
                 />
               ))}
             </ScrollView>

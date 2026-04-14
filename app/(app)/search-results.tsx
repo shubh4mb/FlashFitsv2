@@ -29,11 +29,13 @@ type SortOption = 'relevance' | 'price_low' | 'price_high' | 'newest';
 type DeliveryMode = 'tryAndBuy' | 'courier' | null;
 
 export default function SearchResultsScreen() {
-  const { query, categoryId, subCategoryId, gender } = useLocalSearchParams<{ 
+  const { query, categoryId, subCategoryId, gender, collectionId, title } = useLocalSearchParams<{ 
     query?: string; 
     categoryId?: string; 
     subCategoryId?: string; 
     gender?: string;
+    collectionId?: string;
+    title?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -58,6 +60,7 @@ export default function SearchResultsScreen() {
   const [priceRange, setPriceRange] = useState<number[]>([0, 10000]);
   const [genderFilter, setGenderFilter] = useState<string>(gender || '');
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(null);
+  const [collectionFilter, setCollectionFilter] = useState<string | undefined>(collectionId);
   
   const [isSortModalVisible, setIsSortModalVisible] = useState(false);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -89,6 +92,7 @@ export default function SearchResultsScreen() {
         priceRange: (priceRange[0] !== 0 || priceRange[1] !== 10000) ? priceRange : undefined,
         gender: genderFilter || undefined,
         deliveryMode: deliveryMode,
+        collectionId: collectionFilter,
         lat,
         lng,
       });
@@ -105,7 +109,7 @@ export default function SearchResultsScreen() {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [query, sortBy, selectedCategoryIds, selectedSubCategoryIds, priceRange, genderFilter, deliveryMode, getCoords]);
+  }, [query, sortBy, selectedCategoryIds, selectedSubCategoryIds, priceRange, genderFilter, deliveryMode, collectionFilter, getCoords]);
 
   // Reload from page 1 when filters change
   useEffect(() => {
@@ -151,7 +155,8 @@ export default function SearchResultsScreen() {
 
   const activeFilterCount = selectedCategoryIds.length + selectedSubCategoryIds.length 
     + (genderFilter ? 1 : 0) + (deliveryMode ? 1 : 0) 
-    + ((priceRange[0] !== 0 || priceRange[1] !== 10000) ? 1 : 0);
+    + ((priceRange[0] !== 0 || priceRange[1] !== 10000) ? 1 : 0)
+    + (collectionFilter ? 1 : 0);
 
   const availableSubCategories = useMemo(() => {
     if (selectedCategoryIds.length === 0) return [];
@@ -248,6 +253,22 @@ export default function SearchResultsScreen() {
           </View>
 
           <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>
+            {/* Collection Filter (if active) */}
+            {collectionFilter && (
+              <>
+                <Text style={styles.filterSectionTitle}>Collection</Text>
+                <View style={styles.categoryFilterContainer}>
+                  <TouchableOpacity
+                    style={[styles.filterTag, { backgroundColor: theme.primary, borderColor: theme.primary }]}
+                    onPress={() => setCollectionFilter(undefined)}
+                  >
+                    <Text style={[styles.filterTagText, { color: '#FFFFFF' }]}>{title || 'Collection'}  ✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ height: 24 }} />
+              </>
+            )}
+
             {/* Delivery Mode */}
             <Text style={styles.filterSectionTitle}>Delivery</Text>
             <View style={styles.deliveryFilterContainer}>
@@ -370,7 +391,7 @@ export default function SearchResultsScreen() {
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerLabel}>Search results for</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {query ? `"${query}"` : (categories.find(c => c._id === categoryId || c._id === subCategoryId)?.name || 'Category')}
+            {title || query || (categories.find(c => c._id === categoryId || c._id === subCategoryId)?.name || 'Products')}
           </Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/search')} style={styles.searchButton}>
@@ -451,6 +472,7 @@ export default function SearchResultsScreen() {
               product={item} 
               containerStyle={styles.productCard}
               width={(width - 48) / 2} 
+              fromExplore={deliveryMode !== 'tryAndBuy'}
             />
           )}
           keyExtractor={(item, index) => `${item._id || index}-${item.variantId || index}`}
@@ -477,6 +499,7 @@ export default function SearchResultsScreen() {
               setPriceRange([0, 10000]);
               setGenderFilter('');
               setDeliveryMode(null);
+              setCollectionFilter(undefined);
               setSortBy('relevance');
             }}
           >

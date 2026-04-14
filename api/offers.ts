@@ -23,6 +23,7 @@ export interface Offer {
     genders?: string[];
     firstTimeUserOnly?: boolean;
     minOrderValue?: number;
+    collectionId?: string;
   };
   startDate: string;
   endDate: string;
@@ -39,8 +40,7 @@ export interface Offer {
 }
 
 export interface AppliedOffers {
-  adminOffer: (Offer & { discountAmount: number }) | null;
-  merchantOffer: (Offer & { discountAmount: number }) | null;
+  appliedOffers: (Offer & { discountAmount: number })[];
   totalDiscount: number;
   freeDelivery?: boolean;
 }
@@ -89,7 +89,7 @@ export const getBestOffersForCart = async (
     return res.data;
   } catch (error) {
     console.error('Get best offers error:', error);
-    return { adminOffer: null, merchantOffer: null, totalDiscount: 0 };
+    return { appliedOffers: [], totalDiscount: 0 };
   }
 };
 
@@ -115,6 +115,19 @@ export const getFlashSales = async (): Promise<Offer[]> => {
     return res.data?.offers || [];
   } catch (error) {
     console.error('Get flash sales error:', error);
+    return [];
+  }
+};
+
+/**
+ * Get active promotional banners for the homepage.
+ */
+export const getPromotionalBanners = async (): Promise<Offer[]> => {
+  try {
+    const res = await api.get('user/offers/promotional-banners');
+    return res.data?.banners || [];
+  } catch (error) {
+    console.error('Get promotional banners error:', error);
     return [];
   }
 };

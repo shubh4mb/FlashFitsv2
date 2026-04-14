@@ -40,43 +40,27 @@ export default function CouponInput({ cartContext, themeColor = '#0F172A' }: Cou
       {/* Applied Offers Summary */}
       {appliedOffers && (appliedOffers.totalDiscount > 0 || appliedOffers.freeDelivery) && (
         <View style={styles.appliedSection}>
-          {appliedOffers.adminOffer && (
-            <View style={styles.appliedRow}>
-              <View style={[styles.appliedDot, { backgroundColor: '#16A34A' }]} />
-              <View style={styles.appliedDetails}>
-                <Text style={styles.appliedTitle} numberOfLines={1}>
-                  {appliedOffers.adminOffer.title}
-                </Text>
-                <Text style={styles.appliedDiscount}>
-                  -₹{appliedOffers.adminOffer.discountAmount}
-                </Text>
+          {(appliedOffers.appliedOffers || []).map((offer: any, index: number) => {
+            const dotColor = offer.scope === 'admin' ? '#16A34A' : '#7C3AED';
+            return (
+              <View key={offer._id || index} style={styles.appliedRow}>
+                <View style={[styles.appliedDot, { backgroundColor: dotColor }]} />
+                <View style={styles.appliedDetails}>
+                  <Text style={styles.appliedTitle} numberOfLines={1}>
+                    {offer.title}
+                  </Text>
+                  <Text style={styles.appliedDiscount}>
+                    -₹{offer.discountAmount}
+                  </Text>
+                </View>
+                {offer.couponCode && (
+                  <TouchableOpacity onPress={removeCoupon} style={styles.removeBtn}>
+                    <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                )}
               </View>
-              {appliedOffers.adminOffer.couponCode && (
-                <TouchableOpacity onPress={removeCoupon} style={styles.removeBtn}>
-                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-
-          {appliedOffers.merchantOffer && (
-            <View style={styles.appliedRow}>
-              <View style={[styles.appliedDot, { backgroundColor: '#7C3AED' }]} />
-              <View style={styles.appliedDetails}>
-                <Text style={styles.appliedTitle} numberOfLines={1}>
-                  {appliedOffers.merchantOffer.title}
-                </Text>
-                <Text style={styles.appliedDiscount}>
-                  -₹{appliedOffers.merchantOffer.discountAmount}
-                </Text>
-              </View>
-              {appliedOffers.merchantOffer.couponCode && (
-                <TouchableOpacity onPress={removeCoupon} style={styles.removeBtn}>
-                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+            );
+          })}
 
           <View style={styles.savingsRow}>
             <Ionicons name="checkmark-circle" size={14} color="#16A34A" />

@@ -8,7 +8,7 @@ export const addToWishlist = async (productId: string, variantId: string) => {
         const res = await api.post('user/wishlist/add', { productId, variantId });
         return res.data;
     } catch (error) {
-        console.error('Axios error in addToWishlist:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -18,7 +18,7 @@ export const removeFromWishlist = async (wishlistItemId: string) => {
         const res = await api.delete(`user/wishlist/delete/${wishlistItemId}`);
         return res.data;
     } catch (error) {
-        console.error('Axios error in removeFromWishlist:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -28,7 +28,7 @@ export const getMyWishlist = async () => {
         const res = await api.get('user/wishlist/my');
         return res.data;
     } catch (error) {
-        console.error('Axios error in getMyWishlist:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };
@@ -38,7 +38,7 @@ export const getMyWishlistIds = async () => {
         const res = await api.get('user/wishlist/ids');
         return res.data;
     } catch (error) {
-        console.error('Axios error in getMyWishlistIds:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };

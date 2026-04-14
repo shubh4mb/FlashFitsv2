@@ -107,7 +107,7 @@ export default function WishlistScreen() {
                 <ProductCard
                   product={product}
                   width={COLUMN_WIDTH}
-                  onPress={() => { }} // Navigate to product detail later
+                  fromExplore={true}
                 />
               </View>
             ))}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import * as Haptics from 'expo-haptics';
 import { 
   addToCart as addToCartApi, 
@@ -27,21 +27,37 @@ interface CartItem {
   merchantDelivery?: any;
 }
 
+interface MerchantCartTotals {
+  subtotal: number;
+  mrpTotal: number;
+  discount: number;
+  totalDeliveryCharge: number;
+  totalReturnCharge: number;
+  deliveryTip: number;
+  serviceGST: number;
+  totalUpfrontPayable: number;
+  finalTotal: number;
+}
+
+interface MerchantCart {
+  merchantId: string;
+  merchantDetails: {
+    _id: string;
+    shopName: string;
+    isOnline: boolean;
+  };
+  items: CartItem[];
+  deliveryDetails: any;
+  totals: MerchantCartTotals;
+  appliedOffers: any;
+}
+
 interface CartData {
+  merchantCarts: MerchantCart[];
+  // Legacy flat fields for backward compat (header badge, etc.)
   items: CartItem[];
   totalItems: number;
   deliveryDetails?: any;
-  totals?: {
-    subtotal: number;
-    mrpTotal: number;
-    discount: number;
-    totalDeliveryCharge: number;
-    totalReturnCharge: number;
-    deliveryTip: number;
-    serviceGST: number;
-    totalUpfrontPayable: number;
-    finalTotal: number;
-  };
 }
 
 interface CartContextType {
@@ -66,7 +82,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [deliveryTip, setDeliveryTip] = useState(0);
   const { isAuthenticated } = useAuth();
 
-  const fetchCart = async () => {
+  const fetchCart = useCallback(async () => {
     if (!isAuthenticated) {
       setLoading(false);
       return;
@@ -94,7 +110,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated, selectedAddress, userLocation, deliveryTip]);
 
   useEffect(() => {
     fetchCart();
@@ -109,7 +125,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated]);
 
-  const addToCart = async (params: AddToCartParams) => {
+  const addToCart = useCallback(async (params: AddToCartParams) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       await addToCartApi(params);
@@ -120,9 +136,9 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error;
     }
-  };
+  }, [fetchCart]);
 
-  const updateQuantity = async (cartId: string, quantity: number) => {
+  const updateQuantity = useCallback(async (cartId: string, quantity: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       // Optimistic update
@@ -131,7 +147,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           ...cart,
           items: cart.items.map(item => 
             item._id === cartId ? { ...item, quantity } : item
-          )
+          ),
+          merchantCarts: cart.merchantCarts.map(mc => ({
+            ...mc,
+            items: mc.items.map(item =>
+              item._id === cartId ? { ...item, quantity } : item
+            ),
+          })),
         });
       }
 
@@ -141,16 +163,20 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       console.error('Update quantity failed:', error);
       await fetchCart(); // Revert on error
     }
-  };
+  }, [cart, fetchCart]);
 
-  const removeItem = async (itemId: string) => {
+  const removeItem = useCallback(async (itemId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       // Optimistic update
       if (cart) {
         setCart({
           ...cart,
-          items: cart.items.filter(item => item._id !== itemId)
+          items: cart.items.filter(item => item._id !== itemId),
+          merchantCarts: cart.merchantCarts.map(mc => ({
+            ...mc,
+            items: mc.items.filter(item => item._id !== itemId),
+          })).filter(mc => mc.items.length > 0),
         });
       }
 
@@ -160,32 +186,29 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       console.error('Remove item failed:', error);
       await fetchCart();
     }
-  };
+  }, [cart, fetchCart]);
 
-  const clearCart = async () => {
+  const clearCart = useCallback(async () => {
     try {
       await clearCartApi();
-      setCart({ items: [], totalItems: 0 });
+      setCart({ items: [], totalItems: 0, merchantCarts: [] });
     } catch (error) {
       console.error('Clear cart failed:', error);
       await fetchCart();
     }
-  };
+  }, [fetchCart]);
 
-  const moveToCourier = async (params: { merchantId?: string; itemId?: string }) => {
+  const moveToCourier = useCallback(async (params: { merchantId?: string; itemId?: string }) => {
     try {
       setLoading(true);
       await moveToCourierApi(params);
       await fetchCart();
-      // Note: courier cart refresh will be handled by its own provider/context
-      // but usually fetching the main cart is enough to trigger UI updates 
-      // if they share common state or are refreshed separately.
     } catch (error) {
       console.error('Move to courier failed:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchCart]);
 
   return (
     <CartContext.Provider value={{ 

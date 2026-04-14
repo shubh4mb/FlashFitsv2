@@ -17,7 +17,7 @@ export const addToCourierCart = async (params: AddToCourierCartParams) => {
     const res = await api.post('user/courier-cart/add', params);
     return res.data;
   } catch (error) {
-    console.error('Axios error in addToCourierCart:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -30,7 +30,7 @@ export const getCourierCart = async () => {
     const res = await api.get('user/courier-cart');
     return res.data;
   } catch (error) {
-    console.error('Axios error in getCourierCart:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -43,7 +43,7 @@ export const getCourierCartCount = async () => {
     const res = await api.get('user/courier-cart/count');
     return res.data;
   } catch (error) {
-    console.error('Axios error in getCourierCartCount:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -56,7 +56,7 @@ export const updateCourierCartQuantity = async (cartId: string, quantity: number
     const res = await api.put('user/courier-cart/updatequantity', { cartId, quantity });
     return res.data;
   } catch (error) {
-    console.error('Axios error in updateCourierCartQuantity:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -69,7 +69,7 @@ export const deleteCourierCartItem = async (itemId: string) => {
     const res = await api.delete(`user/courier-cart/delete/${itemId}`);
     return res.data;
   } catch (error) {
-    console.error('Axios error in deleteCourierCartItem:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -82,7 +82,7 @@ export const clearCourierCart = async () => {
     const res = await api.delete('user/courier-cart/clear');
     return res.data;
   } catch (error) {
-    console.error('Axios error in clearCourierCart:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -113,7 +113,7 @@ export const createCourierOrder = async (merchantId: string, address: CourierOrd
     const res = await api.post('courier/orders', { merchantId, address });
     return res.data;
   } catch (error) {
-    console.error('Axios error in createCourierOrder:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -126,7 +126,7 @@ export const getCourierOrders = async () => {
     const res = await api.get('courier/orders');
     return res.data;
   } catch (error) {
-    console.error('Axios error in getCourierOrders:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -139,7 +139,7 @@ export const getCourierOrderById = async (orderId: string) => {
     const res = await api.get(`courier/orders/${orderId}`);
     return res.data;
   } catch (error) {
-    console.error('Axios error in getCourierOrderById:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -152,7 +152,7 @@ export const cancelCourierOrder = async (orderId: string) => {
     const res = await api.post(`courier/orders/cancel/${orderId}`);
     return res.data;
   } catch (error) {
-    console.error('Axios error in cancelCourierOrder:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };

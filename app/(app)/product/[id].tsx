@@ -45,14 +45,14 @@ const ProductDetailPage = () => {
   const { userLocation, selectedAddress } = useAddress();
 
   const { toggleWishlist, isInWishlist } = useWishlist();
-  const { cart, addToCart: addItemToCart, clearCart } = useCart();
-  const { courierCart, addToCourierCart: addItemToCourierCart, clearCart: clearCourierCart } = useCourierCart();
+  const { cart, addToCart: addItemToCart } = useCart();
+  const { courierCart, addToCourierCart: addItemToCourierCart } = useCourierCart();
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
-  const [showOnlyNearby, setShowOnlyNearby] = useState(false);
+  const [showOnlyNearby, setShowOnlyNearby] = useState(!isExplore);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -184,72 +184,29 @@ const ProductDetailPage = () => {
       const selectedStock = activeVariant?.sizes?.find((s: any) => s.size === selectedSize)?.stock || 0;
       const targetMerchantId = product.merchantId?._id || product.merchantId;
 
-      const performAdd = async () => {
-        if (isExplore) {
-          await addItemToCourierCart({
-            productId: product._id,
-            variantId: activeVariant._id,
-            size: selectedSize,
-            quantity: 1,
-            merchantId: targetMerchantId,
-            image: { url: activeVariant.images?.[0]?.url || '' },
-          });
-          router.push({ pathname: '/cart', params: { tab: 'courier' } } as any);
-        } else {
-          await addItemToCart({
-            productId: product._id,
-            variantId: activeVariant._id,
-            size: selectedSize,
-            quantity: 1,
-            merchantId: targetMerchantId,
-            image: { url: activeVariant.images?.[0]?.url || '' },
-          });
-          router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
-        }
-      };
-
-      // Single-Merchant Validation
-      let currentCartItems = [];
+      // Multi-cart: no single-merchant restriction. Items from different merchants
+      // coexist in separate merchant sub-carts.
       if (isExplore) {
-        currentCartItems = courierCart?.items || [];
+        await addItemToCourierCart({
+          productId: product._id,
+          variantId: activeVariant._id,
+          size: selectedSize,
+          quantity: 1,
+          merchantId: targetMerchantId,
+          image: { url: activeVariant.images?.[0]?.url || '' },
+        });
+        router.push({ pathname: '/cart', params: { tab: 'courier' } } as any);
       } else {
-        currentCartItems = cart?.items || [];
+        await addItemToCart({
+          productId: product._id,
+          variantId: activeVariant._id,
+          size: selectedSize,
+          quantity: 1,
+          merchantId: targetMerchantId,
+          image: { url: activeVariant.images?.[0]?.url || '' },
+        });
+        router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
       }
-
-      if (currentCartItems.length > 0) {
-        // Find existing merchant ID from the cart items
-        const existingMerchantId = currentCartItems[0].merchantId?._id || currentCartItems[0].merchantId;
-
-        if (existingMerchantId && existingMerchantId !== targetMerchantId) {
-          Alert.alert(
-            'Clear Cart?',
-            'Your cart contains items from another shop. Clear the cart and add this new item?',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Clear Cart',
-                style: 'destructive',
-                onPress: async () => {
-                  try {
-                    if (isExplore) {
-                      await clearCourierCart();
-                    } else {
-                      await clearCart();
-                    }
-                    await performAdd();
-                  } catch (error) {
-                    console.error('Error clearing cart:', error);
-                  }
-                },
-              },
-            ]
-          );
-          return; // Stop execution, await user action on the alert
-        }
-      }
-
-      // If merchant matches or cart is empty, proceed to add
-      await performAdd();
 
     } catch (error) {
       console.error('Failed to add to cart:', error);
@@ -520,6 +477,7 @@ const ProductDetailPage = () => {
                     product={item} 
                     width={160}
                     containerStyle={styles.relatedCard}
+                    fromExplore={isExplore}
                   />
                 )}
               />

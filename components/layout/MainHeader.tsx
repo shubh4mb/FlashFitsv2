@@ -41,7 +41,7 @@ const capitalize = (str?: string) => {
 export default function MainHeader({ hideCategories = false, scrollY, onHeaderLayout, refreshKey }: MainHeaderProps) {
     const { cart } = useCart();
 
-    const cartCount = cart?.totalItems || 0;
+    const cartCount = cart?.totalItems || cart?.items?.length || 0;
     const router = useRouter();
     const { 
         locationAddress, 

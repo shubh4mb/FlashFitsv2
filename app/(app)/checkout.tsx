@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,15 +19,17 @@ import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { getAddresses, Address } from '@/api/address';
-import { testPlaceOrder, createCourierOrder } from '@/api/orders';
+import { createRazorpayOrder, verifyPayment, initiateCourierOrder, verifyCourierOrderPayment } from '@/api/orders';
 import AddressSelectorModal from '@/components/common/AddressSelectorModal';
 import CouponInput from '@/components/common/CouponInput';
 import { useOffers } from '@/context/OffersContext';
+import RazorpayWebView from '@/components/common/RazorpayWebView';
 
 export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ type?: string }>();
+  const params = useLocalSearchParams<{ type?: string; merchantId?: string }>();
   const checkoutType = params.type || 'trybuy'; // 'trybuy' or 'courier'
+  const checkoutMerchantId = params.merchantId;
 
   const { cart, refreshCart } = useCart();
   const { courierCart, refreshCart: refreshCourierCart, clearCart: clearCourierCart } = useCourierCart();
@@ -42,25 +45,74 @@ export default function CheckoutScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const { appliedOffers, computeBestOffers, couponCode, clearAppliedOffers } = useOffers();
 
+  // Razorpay WebView State
+  const [razorpayOptions, setRazorpayOptions] = useState<any>(null);
+  const [showRazorpay, setShowRazorpay] = useState(false);
+  const checkoutPromiseRef = useRef<{ resolve: (value: any) => void; reject: (reason?: any) => void } | null>(null);
+
+  const openRazorpayCheckout = (options: any): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      setRazorpayOptions(options);
+      checkoutPromiseRef.current = { resolve, reject };
+      setShowRazorpay(true);
+    });
+  };
+
+  const handleRazorpaySuccess = (data: any) => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.resolve(data);
+      checkoutPromiseRef.current = null;
+    }
+  };
+
+  const handleRazorpayError = (error: any) => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.reject(error);
+      checkoutPromiseRef.current = null;
+    }
+  };
+
+  const handleRazorpayClose = () => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.reject({ code: 'PAYMENT_CANCELLED' });
+      checkoutPromiseRef.current = null;
+    }
+  };
+
   const offerDiscount = appliedOffers?.totalDiscount || 0;
 
   const tipOptions = [0, 10, 20, 30, 50];
 
   // Calculate totals
   const isTB = checkoutType === 'trybuy';
-  const items = isTB ? (cart?.items || []) : (courierCart?.items || []);
+  
+  // For T&B, get data from the specific merchant's cart
+  const merchantCart = isTB && checkoutMerchantId 
+    ? cart?.merchantCarts?.find(mc => mc.merchantId === checkoutMerchantId)
+    : null;
+  
+  const items = isTB 
+    ? (merchantCart?.items || []) 
+    : (courierCart?.items || []);
   const subtotal = items.reduce((a, i) => a + i.price * i.quantity, 0);
   const mrpTotal = items.reduce((a, i) => a + i.mrp * i.quantity, 0);
   const discount = mrpTotal - subtotal;
+  
+  const merchantTotals = merchantCart?.totals;
   const deliveryCharge = isTB
-    ? (cart?.totals?.totalDeliveryCharge || 0)
+    ? (merchantTotals?.totalDeliveryCharge || 0)
     : (items.length > 0 ? 40 : 0);
   
-  const returnCharge = isTB ? (cart?.totals?.totalReturnCharge || 0) : 0;
-  const serviceGST = isTB ? (cart?.totals?.serviceGST || 0) : 0;
-  const upfrontPayable = isTB ? (cart?.totals?.totalUpfrontPayable || 0) : deliveryCharge;
+  const returnCharge = isTB ? (merchantTotals?.totalReturnCharge || 0) : 0;
+  const serviceGST = isTB ? (merchantTotals?.serviceGST || 0) : 0;
+  const upfrontPayable = isTB ? (merchantTotals?.totalUpfrontPayable || 0) : deliveryCharge;
   const totalPayableNow = isTB ? upfrontPayable : (subtotal + deliveryCharge);
   const payLaterAmount = isTB ? subtotal : 0;
+  const merchantOffers = merchantCart?.appliedOffers;
+  const tbOfferDiscount = merchantOffers?.totalDiscount || 0;
 
   // Sync local chosenAddress with global selectedAddress if it changes
   useEffect(() => {
@@ -101,9 +153,18 @@ export default function CheckoutScreen() {
     setPlacing(true);
     try {
       if (isTB) {
-        // 🧪 TEST MODE: Place order directly (no Razorpay)
-        const result = await testPlaceOrder(chosenAddress._id, deliveryTip);
-        if (result.success) {
+        // === VALIDATE MERCHANT STATUS ===
+        if (merchantCart?.merchantDetails?.isOnline === false) {
+          Alert.alert('Store Offline', 'This merchant just switched offline. Please remove items or try again later.');
+          setPlacing(false);
+          return;
+        }
+
+        // === REAL RAZORPAY FLOW: Try & Buy ===
+        const result = await createRazorpayOrder(chosenAddress._id, deliveryTip, couponCode || undefined, checkoutMerchantId);
+
+        if (result.isFreeOrder) {
+          // Free order — already placed, no payment needed
           await refreshCart();
           Alert.alert(
             '✅ Order Placed!',
@@ -113,9 +174,64 @@ export default function CheckoutScreen() {
               onPress: () => router.replace({ pathname: '/order-tracking' as any, params: { orderId: result.orderId } }),
             }]
           );
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Order Placed Successfully! 🛍️",
+              body: `Your order #${result.orderId?.slice(-6).toUpperCase()} has been confirmed.`,
+              data: { orderId: result.orderId },
+            },
+            trigger: null,
+          });
+          return;
+        }
+
+        // Open Razorpay Checkout WebView
+        const options = {
+          description: 'Try & Buy Delivery Fee',
+          currency: 'INR',
+          key: result.key_id,
+          amount: result.amount,
+          name: 'FlashFits',
+          order_id: result.razorpayOrderId,
+          prefill: {
+            contact: result.contact,
+            name: result.name,
+            email: result.email,
+          },
+          theme: { color: '#0F172A' },
+        };
+
+        const paymentData = await openRazorpayCheckout(options);
+
+        // Verify payment with backend
+        const verifyResult = await verifyPayment({
+          razorpay_order_id: paymentData.razorpay_order_id,
+          razorpay_payment_id: paymentData.razorpay_payment_id,
+          razorpay_signature: paymentData.razorpay_signature,
+          orderId: result.orderId,
+        });
+
+        if (verifyResult.success) {
+          await refreshCart();
+          Alert.alert(
+            '✅ Order Placed!',
+            `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
+            [{
+              text: 'Track Order',
+              onPress: () => router.replace({ pathname: '/order-tracking' as any, params: { orderId: result.orderId } }),
+            }]
+          );
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Order Placed Successfully! 🛍️",
+              body: `Your order #${result.orderId?.slice(-6).toUpperCase()} has been confirmed.`,
+              data: { orderId: result.orderId },
+            },
+            trigger: null,
+          });
         }
       } else {
-        // Courier flow: Group items by merchant, create one order per merchant
+        // === REAL RAZORPAY FLOW: Courier ===
         const itemsByMerchant = items.reduce((acc: Record<string, any[]>, item) => {
           const mid = item.merchantId?._id || item.merchantId || 'unknown';
           if (!acc[mid]) acc[mid] = [];
@@ -124,15 +240,59 @@ export default function CheckoutScreen() {
         }, {});
 
         const merchantIds = Object.keys(itemsByMerchant);
+
+        // === VALIDATE ALL MERCHANTS STATUS (Courier) ===
+        for (const mid of merchantIds) {
+          const item = itemsByMerchant[mid][0];
+          if (item?.merchantId?.isOnline === false) {
+            Alert.alert('Store Offline', `One or more stores (including ${item.merchantId?.shopName || 'a merchant'}) are currently offline. Please remove their products from cart to continue.`);
+            setPlacing(false);
+            return;
+          }
+        }
+
         let successCount = 0;
         let lastOrderId: string | null = null;
 
         for (const merchantId of merchantIds) {
           try {
-            const result = await createCourierOrder(merchantId, chosenAddress._id);
-            if (result.success) {
+            const initRes = await initiateCourierOrder(merchantId, chosenAddress._id, deliveryTip, couponCode || undefined);
+            
+            if (initRes.isFreeOrder) {
+              // Free order — already confirmed
               successCount++;
-              lastOrderId = result.orderId;
+              lastOrderId = initRes.orderId;
+              continue;
+            }
+
+            // Open Razorpay Checkout WebView
+            const options = {
+              description: 'Courier Order Payment',
+              currency: 'INR',
+              key: initRes.key_id,
+              amount: initRes.amount,
+              name: 'FlashFits',
+              order_id: initRes.razorpayOrderId,
+              prefill: {
+                contact: initRes.contact,
+                name: initRes.name,
+                email: initRes.email,
+              },
+              theme: { color: '#0F172A' },
+            };
+
+            const paymentData = await openRazorpayCheckout(options);
+
+            const verifyResult = await verifyCourierOrderPayment({
+              razorpay_order_id: paymentData.razorpay_order_id,
+              razorpay_payment_id: paymentData.razorpay_payment_id,
+              razorpay_signature: paymentData.razorpay_signature,
+              orderId: initRes.orderId,
+            });
+
+            if (verifyResult.success) {
+              successCount++;
+              lastOrderId = initRes.orderId;
             }
           } catch (err) {
             console.error(`Failed to place courier order for merchant ${merchantId}:`, err);
@@ -143,23 +303,26 @@ export default function CheckoutScreen() {
           await clearCourierCart();
           Alert.alert(
             'Orders Placed!',
-            `${successCount} courier order${successCount > 1 ? 's' : ''} placed successfully.\nFlat ₹40 delivery per order.`,
-            [
-              { text: 'View All', onPress: () => router.replace('/orders' as any) },
-              { 
-                text: 'Track Order', 
-                onPress: () => router.replace({ 
-                  pathname: '/courier-tracking' as any, 
-                  params: { orderId: lastOrderId } 
-                }) 
-              }
-            ]
+            `${successCount} courier order${successCount > 1 ? 's' : ''} placed successfully.\nFlat ₹40 delivery per order.`
           );
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Orders Placed Successfully! 🛍️",
+              body: `${successCount} courier order${successCount > 1 ? 's' : ''} placed successfully.`,
+              data: { orderId: lastOrderId },
+            },
+            trigger: null,
+          });
         } else {
           Alert.alert('Error', 'Failed to place courier orders. Please try again.');
         }
       }
     } catch (error: any) {
+      // Razorpay dismissal (user cancelled) has code PAYMENT_CANCELLED
+      if (error?.code === 'PAYMENT_CANCELLED') {
+        // User cancelled — do nothing
+        return;
+      }
       const msg = error.response?.data?.message || error.message || 'Something went wrong';
       Alert.alert('Order Failed', msg);
     } finally {
@@ -327,23 +490,23 @@ export default function CheckoutScreen() {
                   <Text style={styles.billValue}>₹{subtotal}</Text>
                 </View>
 
-                {offerDiscount > 0 && (
+                {isTB && tbOfferDiscount > 0 && (
                   <View style={styles.billRow}>
                     <Text style={[styles.billLabel, { color: '#16A34A' }]}>Offer Savings (Applied on Purchase)</Text>
-                    <Text style={[styles.billValue, { color: '#16A34A', fontWeight: '800' }]}>- ₹{offerDiscount}</Text>
+                    <Text style={[styles.billValue, { color: '#16A34A', fontWeight: '800' }]}>- ₹{tbOfferDiscount}</Text>
                   </View>
                 )}
                 
                 <View style={styles.divider} />
                 <View style={[styles.billRow, { marginBottom: 16 }]}>
                   <Text style={[styles.billLabel, { fontSize: 13, color: '#64748B' }]}>Pay Later (For items you decide to keep)</Text>
-                  <Text style={[styles.billValue, { fontSize: 13, color: '#64748B' }]}>₹{payLaterAmount - offerDiscount}</Text>
+                  <Text style={[styles.billValue, { fontSize: 13, color: '#64748B' }]}>₹{payLaterAmount - tbOfferDiscount}</Text>
                 </View>
 
                 {/* --- DELIVERY TOTAL (PAY NOW) --- */}
                 <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 8, marginTop: 8 }}>Pay Upfront Now</Text>
 
-                {!appliedOffers?.freeDelivery && (
+                {!merchantOffers?.freeDelivery && (
                   <>
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Delivery Fee</Text>
@@ -434,6 +597,14 @@ export default function CheckoutScreen() {
       <AddressSelectorModal 
         visible={modalVisible} 
         onClose={() => setModalVisible(false)} 
+      />
+
+      <RazorpayWebView
+        visible={showRazorpay}
+        options={razorpayOptions}
+        onSuccess={handleRazorpaySuccess}
+        onError={handleRazorpayError}
+        onClose={handleRazorpayClose}
       />
     </View>
   );

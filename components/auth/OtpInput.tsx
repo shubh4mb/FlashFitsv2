@@ -189,7 +189,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
       await SecureStore.setItemAsync('phoneNumber', phone);
 
       // Sign in with the real token from the server
-      await signIn(response.token, response.userId, response.isNewUser);
+      await signIn(response.token, response.userId, response.refreshToken, response.isNewUser);
 
     } catch (err: any) {
       console.error("OTP verification failed:", err);

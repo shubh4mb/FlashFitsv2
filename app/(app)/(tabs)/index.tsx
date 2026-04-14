@@ -7,10 +7,12 @@ import ProductHorizontalSection from '@/components/sections/ProductHorizontalSec
 import TryComingSoonSection from '@/components/sections/TryComingSoonSection';
 import TryOfflineSection from '@/components/sections/TryOfflineSection';
 import OfferBanner from '@/components/sections/OfferBanner';
+import PromotionalCarousel from '@/components/sections/PromotionalCarousel';
 import { fetchMerchants } from '@/api/merchants';
 import { useAuth } from '@/context/AuthContext';
 import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
+import { fetchCollectionsHome } from '@/api/collections';
 import { fetchBanners, fetchRecommendedProductsData, fetchTrendingProductsData, fetchnewArrivalsProductsData } from '@/api/products';
 import { Product } from '@/utils/recentlyViewed';
 import { Typography } from '@/constants/theme';
@@ -42,6 +44,7 @@ export default function HomeScreen() {
   const [trendingProducts, setTrendingProducts] = useState<Product[]>([]);
   const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
   const [newArrivalsProducts, setNewArrivalsProducts] = useState<Product[]>([]);
+  const [collections, setCollections] = useState<any[]>([]);
   const [banners, setBanners] = useState<any>({});
   const [merchants, setMerchants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,21 +58,27 @@ export default function HomeScreen() {
       const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
 
-      const [trending, recommended, newArrivals, bannerData, merchantsResponse] = await Promise.all([
+      const [trending, recommended, newArrivals, bannerData, merchantsResponse, collectionData] = await Promise.all([
         fetchTrendingProductsData(apiGender, lat, lng),
         fetchRecommendedProductsData(apiGender, lat, lng),
         fetchnewArrivalsProductsData(apiGender, lat, lng),
         fetchBanners(),
-        fetchMerchants(lat, lng, selectedGender, true)
+        fetchMerchants(lat, lng, selectedGender, true),
+        fetchCollectionsHome(apiGender, lat, lng)
       ]);
+
+      
 
       setTrendingProducts(trending || []);
       setRecommendedProducts(recommended || []);
       setNewArrivalsProducts(newArrivals || []);
+      setCollections(collectionData || []);
       setMerchants(merchantsResponse?.merchants || merchantsResponse?.data?.merchants || []);
       setBanners(bannerData?.banners || bannerData || {});
-    } catch (error) {
-      console.error('Error loading home data:', error);
+    } catch (error: any) {
+      if (!error?.isAuthError) {
+        console.error('Error loading home data:', error);
+      }
     } finally {
       setLoading(false);
     }
@@ -133,8 +142,23 @@ export default function HomeScreen() {
         ) : (
           // ── Service Available ──
           <>
+            <PromotionalCarousel />
             <MerchantLogosSection refreshKey={refreshKey} initialMerchants={merchants} />
             <OfferBanner />
+            
+            {/* Render Remote Collections */}
+            {collections.map((coll, idx) => (
+              <ProductHorizontalSection
+                key={coll._id || idx}
+                title={coll.name}
+                subtitle={coll.description || 'Special curated list'}
+                products={coll.products}
+                isLoading={loading}
+                banner={coll.banner}
+                collectionId={coll._id}
+              />
+            ))}
+
             <RecentlyViewedSection refreshKey={refreshKey} />
 
             <ProductHorizontalSection

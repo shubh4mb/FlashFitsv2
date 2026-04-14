@@ -12,7 +12,7 @@ export const fetchMerchants = async (lat?: number, lng?: number, gender?: string
         // return res.status(200).json(new ApiResponse(200, { merchants }, "Merchants retrieved successfully"));
         return res.data;
     } catch (error) {
-        console.error('Axios error in fetchMerchants:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };

@@ -9,58 +9,98 @@ import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
 import { useGender } from '@/context/GenderContext';
 import { useOffers } from '@/context/OffersContext';
-import CouponInput from '@/components/common/CouponInput';
-import { Feather, Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   Animated,
-  Easing,
+  Dimensions,
+  FlatList,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
+  RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
-type CartTab = 'trybuy' | 'courier';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+type CartTab = 'instant' | 'standard';
 
 export default function CartScreen() {
-  const { cart, loading, clearCart, updateQuantity, removeItem, deliveryTip, setDeliveryTip, moveToCourier } = useCart();
-  const { courierCart, loading: courierLoading, clearCart: clearCourierCart, removeItem: removeCourierItem, refreshCart: refreshCourierCart } = useCourierCart();
+  const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart } = useCart();
+  const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart } = useCourierCart();
   const { selectedGender } = useGender();
   const { selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { tab } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
-  const [activeTab, setActiveTab] = useState<CartTab>((tab as CartTab) || 'trybuy');
+  const [activeTab, setActiveTab] = useState<CartTab>((tab === 'courier' ? 'standard' : 'instant'));
   const [modalVisible, setModalVisible] = useState(false);
-  const [isBreakdownExpanded, setIsBreakdownExpanded] = useState(false);
-  const feeBreakdownAnim = useRef(new Animated.Value(0)).current;
-  const { appliedOffers, computeBestOffers, couponCode } = useOffers();
+  const { computeBestOffers, couponCode } = useOffers();
 
-  const toggleBreakdown = () => {
-    const toValue = isBreakdownExpanded ? 0 : 1;
-    setIsBreakdownExpanded(!isBreakdownExpanded);
-    Animated.timing(feeBreakdownAnim, {
-      toValue,
-      duration: 350,
-      easing: Easing.bezier(0.4, 0, 0.2, 1),
-      useNativeDriver: false,
-    }).start();
+  // Carousel state
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const flatListRef = useRef<FlatList>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const merchantCarts = cart?.merchantCarts || [];
+  const tbItems = cart?.items || [];
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Refresh cart on focus
+  useFocusEffect(
+    useCallback(() => {
+      refreshCart();
+      refreshCourierCart();
+    }, [refreshCart, refreshCourierCart])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refreshCart(), refreshCourierCart()]);
+    setRefreshing(false);
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = (merchantId: string) => {
+    const merchantCart = cart?.merchantCarts?.find(mc => mc.merchantId === merchantId);
+    if (!merchantCart) return;
+
     if (!selectedAddress) {
       setModalVisible(true);
-    } else if (hasIneligibleItems) {
-      alert("Some items in your cart are not eligible for Try & Buy. Please move them to courier or remove them to proceed.");
-    } else {
-      router.push({ pathname: '/checkout', params: { type: activeTab } } as any);
+      return;
     }
+
+    if (merchantCart.merchantDetails?.isOnline === false) {
+      alert("This merchant is currently offline");
+      return;
+    }
+
+    if (merchantCart.deliveryDetails?.isEligibleForTryBuy === false) {
+      alert("This store is too far for Try & Buy. Move items to courier or remove them.");
+      return;
+    }
+
+    router.push({ pathname: '/checkout', params: { type: 'trybuy', merchantId } } as any);
+  };
+
+  const handleStandardCheckout = () => {
+    if (!selectedAddress) {
+      setModalVisible(true);
+      return;
+    }
+    const hasOffline = courierItems.some((item: any) => item.merchantId?.isOnline === false);
+    if (hasOffline) {
+      alert("Some merchants are offline");
+      return;
+    }
+    router.push({ pathname: '/checkout', params: { type: 'courier' } } as any);
   };
 
   const handleMoveToCourier = async (merchantId: string) => {
@@ -72,61 +112,31 @@ export default function CartScreen() {
     }
   };
 
-  // === T&B Cart (Try & Buy) ===
-  const tbItems = cart?.items || [];
-  const tbTotals = cart?.totals;
-  const tbSubtotal = tbTotals?.subtotal || tbItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const tbMrpTotal = tbTotals?.mrpTotal || tbItems.reduce((acc, item) => acc + (item.mrp * item.quantity), 0);
-  const tbDiscount = tbTotals?.discount || (tbMrpTotal - tbSubtotal);
-  const tbDeliveryFees = tbTotals?.totalDeliveryCharge || cart?.deliveryDetails?.reduce((acc: number, d: any) => acc + (d.deliveryCharge || 0), 0) || 0;
-  const tbTotal = tbTotals?.finalTotal || (tbSubtotal + tbDeliveryFees);
-
-  const tbByMerchant = tbItems.reduce((acc: Record<string, any[]>, item) => {
-    const merchantId = item.merchantId?._id || item.merchantId || 'unknown';
-    if (!acc[merchantId]) acc[merchantId] = [];
-    acc[merchantId].push(item);
-    return acc;
-  }, {});
-  const merchantGroups = Object.entries(tbByMerchant);
-
-  const hasIneligibleItems = cart?.deliveryDetails?.some((d: any) => d.isEligibleForTryBuy === false);
-
-  // === Courier Cart ===
-  const courierItems = courierCart?.items || [];
-  const courierTotals = courierCart?.totals;
-  const courierSubtotal = courierTotals?.subtotal || courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-  const courierMrpTotal = courierTotals?.mrpTotal || courierItems.reduce((acc, item) => acc + (item.mrp * item.quantity), 0);
-  const courierDiscount = courierTotals?.discount || (courierMrpTotal - courierSubtotal);
-  const courierDelivery = courierTotals?.courierDeliveryCharge || (courierItems.length > 0 ? 40 : 0);
-  const courierTotal = courierTotals?.totalPayable || (courierSubtotal + courierDelivery);
-
-  // Auto-compute best offers when cart changes
-  const cartContext = {
-    items: activeTab === 'trybuy' ? tbItems : courierItems,
-    subtotal: activeTab === 'trybuy' ? tbSubtotal : courierSubtotal,
-    merchantTotals: {},
+  const scrollToMerchant = (index: number) => {
+    flatListRef.current?.scrollToIndex({ index, animated: true });
   };
 
+  // Standard (Courier) Cart Data
+  const courierItems = courierCart?.items || [];
+  const courierTotals = courierCart?.totals;
+  const courierTotal = courierTotals?.totalPayable || courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) + (courierItems.length > 0 ? 40 : 0);
+
+  // Auto-compute offers for standard cart
   useEffect(() => {
-    const items = activeTab === 'trybuy' ? (cart?.items || []) : (courierCart?.items || []);
-    const sub = items.reduce((a: number, i: any) => a + ((i.price || 0) * (i.quantity || 1)), 0);
-    const merchantTotals: Record<string, number> = {};
-    items.forEach((item: any) => {
-      const mid = item.merchantId?._id || item.merchantId || 'unknown';
-      merchantTotals[mid] = (merchantTotals[mid] || 0) + ((item.price || 0) * (item.quantity || 1));
-    });
-    if (items.length > 0 && sub > 0) {
-      computeBestOffers({ items, subtotal: sub, merchantTotals }, couponCode || undefined);
+    if (activeTab === 'standard' && courierItems.length > 0) {
+      const sub = courierItems.reduce((a, i: any) => a + ((i.price || 0) * (i.quantity || 1)), 0);
+      const merchantTotals: Record<string, number> = {};
+      courierItems.forEach((item: any) => {
+        const mid = item.merchantId?._id || item.merchantId || 'unknown';
+        merchantTotals[mid] = (merchantTotals[mid] || 0) + ((item.price || 0) * (item.quantity || 1));
+      });
+      computeBestOffers({ items: courierItems, subtotal: sub, merchantTotals }, couponCode || undefined);
     }
-  }, [cart?.items?.length, courierCart?.items?.length, activeTab]);
+  }, [courierItems.length, activeTab]);
 
-  const tbCount = tbItems.length;
-  const courierCount = courierItems.length;
+  const currentMerchantCart = merchantCarts[activeIndex];
 
-  const isLoading = activeTab === 'trybuy' ? loading : courierLoading;
-  const currentItems = activeTab === 'trybuy' ? tbItems : courierItems;
-
-  if (isLoading && currentItems.length === 0) {
+  if ((loading || courierLoading) && tbItems.length === 0 && courierItems.length === 0) {
     return (
       <View style={styles.centered}>
         <Loader size={60} />
@@ -138,823 +148,377 @@ export default function CartScreen() {
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/* Header */}
       <View style={{ backgroundColor: '#fff', paddingTop: insets.top }}>
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={22} color="#0F172A" />
-            </TouchableOpacity>
-            <ThemedText type="subtitle" style={styles.headerTitle}>My Cart</ThemedText>
-          </View>
-
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={22} color="#0F172A" />
+          </TouchableOpacity>
+          <ThemedText type="subtitle" style={styles.headerTitle}>Shopping Cart</ThemedText>
           <TouchableOpacity
-            onPress={activeTab === 'trybuy' ? clearCart : clearCourierCart}
-            disabled={currentItems.length === 0}
-            style={styles.clearButton}
+            onPress={activeTab === 'instant' ? clearCart : clearCourierCart}
+            disabled={(activeTab === 'instant' ? merchantCarts : courierItems).length === 0}
           >
-            <Text style={[styles.clearText, { color: currentItems.length > 0 ? '#EF4444' : '#CBD5E1' }]}>Clear</Text>
+            <Text style={[styles.clearText, { color: (activeTab === 'instant' ? merchantCarts : courierItems).length > 0 ? '#EF4444' : '#CBD5E1' }]}>Clear</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Tab Switcher */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'trybuy' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
-            onPress={() => setActiveTab('trybuy')}
+            style={[styles.tab, activeTab === 'instant' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
+            onPress={() => setActiveTab('instant')}
           >
-            <Ionicons name={activeTab === 'trybuy' ? 'home' : 'home-outline'} size={16} color={activeTab === 'trybuy' ? theme.primary : '#94A3B8'} />
-            <Text style={[styles.tabText, activeTab === 'trybuy' && { color: theme.primary, fontWeight: '800' }]}>Try & Buy</Text>
-            {tbCount > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'trybuy' ? theme.primary : '#CBD5E1' }]}><Text style={styles.badgeText}>{tbCount}</Text></View>}
+            <Ionicons name="flash" size={16} color={activeTab === 'instant' ? theme.primary : '#94A3B8'} />
+            <Text style={[styles.tabText, activeTab === 'instant' && { color: theme.primary, fontWeight: '800' }]}>Instant Cart</Text>
+            {merchantCarts.length > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'instant' ? theme.primary : '#CBD5E1' }]}><Text style={styles.badgeText}>{merchantCarts.length}</Text></View>}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'courier' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
-            onPress={() => setActiveTab('courier')}
+            style={[styles.tab, activeTab === 'standard' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
+            onPress={() => setActiveTab('standard')}
           >
-            <Ionicons name={activeTab === 'courier' ? 'cube' : 'cube-outline'} size={16} color={activeTab === 'courier' ? theme.primary : '#94A3B8'} />
-            <Text style={[styles.tabText, activeTab === 'courier' && { color: theme.primary, fontWeight: '800' }]}>Explore</Text>
-            {courierCount > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'courier' ? theme.primary : '#CBD5E1' }]}><Text style={styles.badgeText}>{courierCount}</Text></View>}
+            <Ionicons name="cart" size={18} color={activeTab === 'standard' ? theme.primary : '#94A3B8'} />
+            <Text style={[styles.tabText, activeTab === 'standard' && { color: theme.primary, fontWeight: '800' }]}>Cart</Text>
+            {courierItems.length > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'standard' ? theme.primary : '#CBD5E1' }]}><Text style={styles.badgeText}>{courierItems.length}</Text></View>}
           </TouchableOpacity>
         </View>
+
+        {/* Merchant Hub (Logo Navigation) - Only for Instant Cart */}
+        {activeTab === 'instant' && merchantCarts.length > 1 && (
+          <View style={styles.merchantHub}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              contentContainerStyle={[
+                styles.merchantHubContent,
+                merchantCarts.length <= 4 && { justifyContent: 'center', flex: 1 }
+              ]}
+            >
+              {merchantCarts.map((mc, index) => (
+                <TouchableOpacity
+                  key={mc.merchantId}
+                  onPress={() => scrollToMerchant(index)}
+                  style={styles.hubWrapper}
+                >
+                  <View style={[
+                    styles.hubLogoContainer,
+                    activeIndex !== index && { opacity: 0.4, backgroundColor: 'transparent' }
+                  ]}>
+                    <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.hubLogo} contentFit="contain" />
+                  </View>
+                  {activeIndex === index && <View style={styles.hubActiveLine} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {activeTab === 'trybuy' ? (
-          tbItems.length === 0 ? (
+      {/* Main Content */}
+      <View style={{ flex: 1 }}>
+        {activeTab === 'instant' ? (
+          merchantCarts.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
+                <Ionicons name="flash-outline" size={60} color={theme.primary} />
+              </View>
+              <ThemedText style={styles.emptyTitle}>Your Instant Cart is empty</ThemedText>
+              <Text style={styles.emptyDesc}>Try & Buy isn't just fast, it's instant. Add items to try them at home now!</Text>
+              <TouchableOpacity style={[styles.exploreButton, { backgroundColor: theme.primary }]} onPress={() => router.push('/(tabs)' as any)}>
+                <Text style={styles.exploreText}>Browse Shops</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={merchantCarts}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.merchantId}
+              scrollEventThrottle={16}
+              onScroll={(e) => {
+                const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+                if (index !== activeIndex) {
+                  setActiveIndex(index);
+                }
+              }}
+              renderItem={({ item: mc }) => {
+                const mTotals = mc.totals;
+                const mOffers = mc.appliedOffers;
+                const isOffline = mc.merchantDetails?.isOnline === false;
+                const isEligible = mc.deliveryDetails?.isEligibleForTryBuy !== false;
+
+                return (
+                  <View style={{ width: SCREEN_WIDTH }}>
+                    <ScrollView 
+                      showsVerticalScrollIndicator={false} 
+                      contentContainerStyle={styles.slideContent}
+                      refreshControl={
+                        <RefreshControl 
+                          refreshing={refreshing} 
+                          onRefresh={onRefresh} 
+                          colors={[theme.primary]} 
+                          tintColor={theme.primary} 
+                        />
+                      }
+                    >
+                      {/* Merchant Header Branding */}
+                      <View style={styles.brandingHeader}>
+                        <View style={styles.brandingInfo}>
+                          <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName}</Text>
+                          <View style={styles.brandingStatusRow}>
+                            {isOffline ? (
+                              <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#FEE2E2' }]}>Offline</Text>
+                            ) : !isEligible ? (
+                              <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
+                            ) : (
+                              <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>In Range</Text>
+                            )}
+                            <Text style={styles.brandingMins}>Delivery in {mc.deliveryDetails?.estimatedTime || '25-30'} mins</Text>
+                          </View>
+                        </View>
+                        <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.brandingLogo} contentFit="contain" />
+                      </View>
+
+                      {!isEligible && !isOffline && (
+                        <View style={styles.warningBanner}>
+                          <Ionicons name="warning" size={20} color="#B45309" />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.warningText}>This store is too far for Try & Buy. Move items to standard cart to continue.</Text>
+                            <TouchableOpacity style={styles.warningAction} onPress={() => handleMoveToCourier(mc.merchantId)}>
+                              <Text style={styles.warningActionText}>Move to Standard Cart</Text>
+                              <Feather name="arrow-right" size={14} color="#0F172A" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Items */}
+                      <View style={styles.itemsContainer}>
+                        {mc.items.map((item) => (
+                          <CartItem key={item._id} item={item} />
+                        ))}
+                      </View>
+
+                      {/* Bill Summary */}
+                      <View style={styles.premiumBill}>
+                        <Text style={styles.billTitle}>Bill Summary</Text>
+                        <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.mrpTotal}</Text></View>
+                        {mTotals?.discount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Shop Discount</Text><Text style={[styles.billValue, { color: '#10B981' }]}>- ₹{mTotals?.discount}</Text></View>}
+                        {mOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: theme.primary, fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{mOffers.totalDiscount}</Text></View>}
+                        
+                        <View style={styles.billDivider} />
+                        
+                        <View style={styles.payLaterSection}>
+                          <Ionicons name="time-outline" size={14} color="#64748B" />
+                          <Text style={styles.payLaterText}>Pay ₹{(mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)} after you try the items</Text>
+                        </View>
+
+                        <Text style={styles.upfrontTitle}>Payable Now (Upfront)</Text>
+                        <View style={styles.billRow}><Text style={styles.billLabel}>Delivery & Return Charge</Text><Text style={styles.billValue}>₹{mOffers?.freeDelivery ? 0 : (mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge)}</Text></View>
+                        <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{mTotals?.serviceGST}</Text></View>
+                        {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
+                        
+                        <View style={[styles.billRow, { marginTop: 12 }]}>
+                          <Text style={styles.grandTotalLabel}>Upfront Total</Text>
+                          <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Number(mTotals?.totalUpfrontPayable + deliveryTip).toFixed(2)}</Text>
+                        </View>
+                      </View>
+
+                      {/* Tip Section */}
+                      <View style={styles.slideTipSection}>
+                        <Text style={styles.tipSectionTitle}>Tip your Delivery Partner</Text>
+                        <View style={styles.tipRow}>
+                          {[10, 20, 50].map((amount) => (
+                            <TouchableOpacity
+                              key={amount}
+                              style={[styles.tipPill, deliveryTip === amount && { borderColor: theme.primary, backgroundColor: theme.primary + '10' }]}
+                              onPress={() => setDeliveryTip(deliveryTip === amount ? 0 : amount)}
+                            >
+                              <Text style={[styles.tipPillText, deliveryTip === amount && { color: theme.primary }]}>₹{amount}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={{ height: 120 }} />
+                    </ScrollView>
+                  </View>
+                );
+              }}
+            />
+          )
+        ) : (
+          /* Standard Cart Section */
+          courierItems.length === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
                 <Ionicons name="cart-outline" size={60} color={theme.primary} />
               </View>
-              <ThemedText type="subtitle" style={styles.emptyTitle}>Your Try & Buy cart is empty</ThemedText>
-              <TouchableOpacity style={[styles.exploreButton, { backgroundColor: theme.primary }]} onPress={() => router.push('/(tabs)' as any)}>
+              <ThemedText style={styles.emptyTitle}>Your Cart is empty</ThemedText>
+              <TouchableOpacity style={[styles.exploreButton, { backgroundColor: theme.primary }]} onPress={() => router.push('/(tabs)/explore' as any)}>
                 <Text style={styles.exploreText}>Explore Products</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <>
-              <View style={styles.deliveryInfoWrapper}>
-                <LinearGradient colors={['#FFFFFF', '#F8F9FA']} style={styles.deliveryInfo} start={{ x: 0, y: 1 }} end={{ x: 0, y: 0 }}>
-                  <View style={styles.deliveryHeader}>
-                    <View style={styles.deliveryLeftSection}>
-                      <View style={styles.deliveryTimeContainer}>
-                        <Text style={styles.deliveryMainText}>Delivery in</Text>
-                        <Text style={styles.deliveryTimeText}>2 hours</Text>
-                      </View>
-                      <View style={styles.superFastBadge}>
-                        <MaterialIcons name="bolt" size={12} color="#00B386" />
-                        <Text style={styles.badgeText}>Superfast</Text>
-                      </View>
-                    </View>
-                    <View style={styles.deliveryRightSection}>
-                      <Text style={styles.itemSummaryText}>{tbCount} items</Text>
-                      <Text style={styles.totalAmountText}>₹{tbSubtotal}</Text>
-                    </View>
-                  </View>
-                </LinearGradient>
+            <ScrollView 
+              showsVerticalScrollIndicator={false} 
+              contentContainerStyle={styles.standardContent}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} tintColor={theme.primary} />
+              }
+            >
+              <View style={styles.standardBanner}>
+                <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
+                <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
               </View>
-
-              {merchantGroups.map(([merchantId, items]) => {
-                const deliveryInfo = cart?.deliveryDetails?.find((d: any) => d.merchantId === merchantId);
-                const isEligible = deliveryInfo?.isEligibleForTryBuy !== false;
-
-                return (
-                  <View key={merchantId} style={styles.merchantGroup}>
-                    <View style={styles.merchantHeader}>
-                      <MaterialCommunityIcons name="storefront-outline" size={20} color="#64748B" />
-                      <Text style={styles.merchantName}>{items[0]?.merchantId?.shopName || 'Store'}</Text>
-                      {!isEligible && (
-                        <View style={styles.ineligibleBadge}>
-                          <Text style={styles.ineligibleBadgeText}>Too Far</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {!isEligible && (
-                      <View style={styles.ineligibleWarning}>
-                        <Ionicons name="warning" size={18} color="#B45309" />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.ineligibleText}>
-                            This store is beyond 7km. Try & Buy is not available for this location.
-                          </Text>
-                          <View style={styles.ineligibleActions}>
-                            <TouchableOpacity
-                              style={styles.moveBtn}
-                              onPress={() => handleMoveToCourier(merchantId)}
-                            >
-                              <Text style={styles.moveBtnText}>Move to Courier</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.discardBtn}
-                              onPress={() => clearCart()} // Or implement removeAllForMerchant
-                            >
-                              <Text style={styles.discardBtnText}>Remove</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </View>
-                    )}
-
-                    {items.map((item) => (
-                      <CartItem key={item._id} item={item} />
-                    ))}
-                  </View>
-                );
-              })}
-
-              <View style={styles.summaryCard}>
-                <ThemedText style={styles.summaryTitle}>Try & Buy Summary</ThemedText>
-
-                {/* --- PRODUCTS TOTAL (PAY LATER) --- */}
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Items Total (MRP)</Text>
-                  <Text style={styles.summaryValue}>₹{tbMrpTotal}</Text>
-                </View>
-                {tbDiscount > 0 && (
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Item Discount</Text>
-                    <Text style={[styles.summaryValue, { color: '#10B981' }]}>- ₹{tbDiscount}</Text>
-                  </View>
-                )}
-                {appliedOffers && (appliedOffers.totalDiscount > 0 || appliedOffers.freeDelivery) && (
-                  <View style={styles.summaryRow}>
-                    <Text style={[styles.summaryLabel, { color: '#16A34A' }]}>Offer Savings</Text>
-                    <Text style={[styles.summaryValue, { color: '#16A34A', fontWeight: '800' }]}>
-                      {appliedOffers.totalDiscount > 0 ? `- ₹${appliedOffers.totalDiscount}` : ''}
-                      {appliedOffers.freeDelivery ? ' (Free Delivery)' : ''}
-                    </Text>
-                  </View>
-                )}
-                <View style={[styles.divider, { marginVertical: 8 }]} />
-                <View style={[styles.summaryRow, { marginBottom: 16 }]}>
-                  <Text style={[styles.totalLabel, { fontSize: 13, color: '#64748B' }]}>Pay Later (For items you decide to keep)</Text>
-                  <Text style={[styles.totalValue, { fontSize: 13, color: '#64748B' }]}>₹{tbSubtotal - (appliedOffers?.totalDiscount || 0)}</Text>
-                </View>
-
-                {/* --- DELIVERY TOTAL (PAY NOW) --- */}
-                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 8 }}>Pay Upfront Now</Text>
-                {!appliedOffers?.freeDelivery && (
-                  <>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Delivery Fee</Text>
-                      <Text style={styles.summaryValue}>₹{tbDeliveryFees}</Text>
-                    </View>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Return Handling (Refundable)</Text>
-                      <Text style={styles.summaryValue}>₹{tbTotals?.totalReturnCharge || 0}</Text>
-                    </View>
-                  </>
-                )}
-                {deliveryTip > 0 && (
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Delivery Tip</Text>
-                    <Text style={styles.summaryValue}>₹{deliveryTip}</Text>
-                  </View>
-                )}
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Service GST (18%)</Text>
-                  <Text style={styles.summaryValue}>₹{tbTotals?.serviceGST || 0}</Text>
-                </View>
-                <View style={[styles.divider, { marginVertical: 12 }]} />
-                <View style={styles.summaryRow}>
-                  <Text style={styles.totalLabel}>Total Upfront Payable</Text>
-                  <Text style={styles.totalValue}>₹{Number((tbTotals?.totalUpfrontPayable || 0) + deliveryTip).toFixed(2)}</Text>
-                </View>
-              </View>
-
-              <View style={styles.tipSection}>
-                <Text style={styles.tipTitle}>Add a Tip for Rider</Text>
-                <View style={styles.tipContainer}>
-                  {[10, 20, 50].map((amount) => (
-                    <TouchableOpacity key={amount} style={[styles.tipButton, deliveryTip === amount && styles.activeTipButton]} onPress={() => setDeliveryTip(deliveryTip === amount ? 0 : amount)}>
-                      <Text style={[styles.tipButtonText, deliveryTip === amount && styles.activeTipButtonText]}>₹{amount}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={styles.upfrontNotice}>* Only Upfront Cart Fee (Delivery, Return & Tip) will be charged now.</Text>
-              </View>
-
-              <CouponInput cartContext={cartContext} themeColor={theme.primary} />
-
-              <View style={{ height: 200 }} />
-            </>
-          )
-        ) : (
-          courierItems.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
-                <Ionicons name="cube-outline" size={60} color={theme.primary} />
-              </View>
-              <ThemedText type="subtitle" style={styles.emptyTitle}>Your Explore cart is empty</ThemedText>
-              <TouchableOpacity style={[styles.exploreButton, { backgroundColor: theme.primary }]} onPress={() => router.push('/(tabs)/explore' as any)}>
-                <Text style={styles.exploreText}>Browse Explore Collection</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <View style={styles.courierInfoBanner}>
-                <Ionicons name="cube" size={16} color="#7C3AED" />
-                <Text style={styles.courierInfoText}>Flat ₹40 delivery • Shipped by merchant</Text>
-              </View>
-              <View style={styles.section}>
+              
+              <View style={styles.itemsContainer}>
                 {courierItems.map((item) => (
                   <CartItem key={item._id} item={item} isCourier={true} />
                 ))}
               </View>
+
               <View style={styles.summaryCard}>
-                <ThemedText style={styles.summaryTitle}>Bill Details</ThemedText>
-                <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Item Total (MRP)</Text><Text style={styles.summaryValue}>₹{courierMrpTotal}</Text></View>
-                {courierDiscount > 0 && <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Discount</Text><Text style={[styles.summaryValue, { color: '#10B981' }]}>- ₹{courierDiscount}</Text></View>}
-                {appliedOffers && (appliedOffers.totalDiscount > 0 || appliedOffers.freeDelivery) && (
-                  <View style={styles.summaryRow}>
-                    <Text style={[styles.summaryLabel, { color: '#16A34A' }]}>Offer Savings</Text>
-                    <Text style={[styles.summaryValue, { color: '#16A34A', fontWeight: '800' }]}>
-                      {appliedOffers.totalDiscount > 0 ? `- ₹${appliedOffers.totalDiscount}` : ''}
-                      {appliedOffers.freeDelivery ? ' (Free Delivery)' : ''}
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Delivery Fee</Text><Text style={styles.summaryValue}>₹{courierDelivery}</Text></View>
-                <View style={[styles.divider, { marginVertical: 12 }]} />
-                <View style={styles.summaryRow}><Text style={styles.totalLabel}>Total Payable</Text><Text style={styles.totalValue}>₹{courierTotal - (appliedOffers?.totalDiscount || 0)}</Text></View>
+                <Text style={styles.billTitle}>Order Summary</Text>
+                <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.mrpTotal || 0}</Text></View>
+                <View style={styles.billRow}><Text style={styles.billLabel}>Delivery Fee</Text><Text style={styles.billValue}>₹{courierTotals?.courierDeliveryCharge || 40}</Text></View>
+                <View style={styles.billDivider} />
+                <View style={styles.billRow}>
+                  <Text style={styles.grandTotalLabel}>Total Amount</Text>
+                  <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{courierTotal}</Text>
+                </View>
               </View>
-
-              <CouponInput cartContext={cartContext} themeColor={theme.primary} />
-
-              <View style={{ height: 140 }} />
-            </>
+              <View style={{ height: 120 }} />
+            </ScrollView>
           )
         )}
-      </ScrollView>
+      </View>
 
-      {(activeTab === 'trybuy' ? tbItems.length > 0 : courierItems.length > 0) && (
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-          <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} style={styles.gradient} />
-          {activeTab === 'trybuy' && (
-            <View style={styles.breakdownContainer}>
-              <TouchableOpacity onPress={toggleBreakdown} style={styles.breakdownHeader} activeOpacity={0.7}>
-                <View style={styles.breakdownHeaderLeft}>
-                  <View style={styles.upfrontIconContainer}><MaterialIcons name="local-shipping" size={14} color={theme.primary} /></View>
-                  <Text style={styles.upfrontHeaderText}>Upfront Cart Fee | ₹{Number(tbTotals?.totalUpfrontPayable || 0).toFixed(2)}</Text>
-                </View>
-                <MaterialIcons name={isBreakdownExpanded ? "keyboard-arrow-down" : "keyboard-arrow-up"} size={20} color="#64748B" />
-              </TouchableOpacity>
-              <Animated.View style={{ height: feeBreakdownAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 300] }), overflow: 'hidden' }}>
-                <View style={styles.breakdownContent}>
-                  <View style={styles.breakdownRow}><Text style={[styles.breakdownLabel, { fontWeight: '700', color: '#0F172A' }]}>Items Total</Text><Text style={[styles.breakdownValue, { fontWeight: '700' }]}>₹{Number(tbSubtotal).toFixed(2)}</Text></View>
-                  {!appliedOffers?.freeDelivery && (
-                    <>
-                      <View style={[styles.breakdownRow, { marginTop: 8, borderTopWidth: 0.5, borderTopColor: '#E2E8F0', paddingTop: 8 }]}><Text style={styles.breakdownLabel}>Delivery Charge</Text><Text style={styles.breakdownValue}>₹{Number(tbDeliveryFees).toFixed(2)}</Text></View>
-                      <View style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Return Charge (Refundable)</Text><Text style={styles.breakdownValue}>₹{Number(tbTotals?.totalReturnCharge || 0).toFixed(2)}</Text></View>
-                    </>
-                  )}
-                  <View style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Delivery Tip</Text><Text style={styles.breakdownValue}>₹{Number(deliveryTip).toFixed(2)}</Text></View>
-                  <View style={styles.breakdownRow}><Text style={styles.breakdownLabel}>Service GST (18%)</Text><Text style={styles.breakdownValue}>₹{Number(tbTotals?.serviceGST || 0).toFixed(2)}</Text></View>
-                  <View style={[styles.breakdownRow, { marginTop: 4 }]}><Text style={[styles.breakdownLabel, { color: '#10B981', fontWeight: '600' }]}>Total Upfront Payable</Text><Text style={[styles.breakdownValue, { color: '#10B981' }]}>₹{Number(tbTotals?.totalUpfrontPayable || 0).toFixed(2)}</Text></View>
-                </View>
-              </Animated.View>
-            </View>
-          )}
-          <View style={styles.bottomContent}>
+      {/* Pinned Checkout Button */}
+      {(activeTab === 'instant' ? merchantCarts.length > 0 : courierItems.length > 0) && (
+        <View style={[styles.pinnedContainer, { paddingBottom: insets.bottom + 16 }]}>
+          <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} style={styles.pinnedGradient} />
+          
+          <View style={styles.pinnedInner}>
             <View>
-              <Text style={styles.bottomTotal}>
-                ₹{activeTab === 'trybuy' ? Number((tbTotals?.totalUpfrontPayable || 0) + deliveryTip).toFixed(2) : courierTotal - (appliedOffers?.totalDiscount || 0)}
+              <Text style={styles.pinnedPrice}>
+                ₹{activeTab === 'instant' 
+                  ? Number((currentMerchantCart?.totals?.totalUpfrontPayable || 0) + deliveryTip).toFixed(0) 
+                  : courierTotal}
               </Text>
-              <Text style={styles.totalItemsText}>
-                {currentItems.length} {currentItems.length === 1 ? 'Item' : 'Items'}
-              </Text>
+              <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Pay Upfront' : 'Total Payable'}</Text>
             </View>
 
             <TouchableOpacity
               style={[
-                styles.checkoutButton,
-                { backgroundColor: (selectedAddress && !hasIneligibleItems) ? theme.primary : (hasIneligibleItems ? '#CBD5E1' : '#F59E0B') }
+                styles.checkoutBtn,
+                { backgroundColor: theme.primary },
+                activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false) && { backgroundColor: '#CBD5E1' }
               ]}
-              onPress={handleCheckout}
-              disabled={activeTab === 'trybuy' && hasIneligibleItems}
+              disabled={activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false)}
+              onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
             >
-              {selectedAddress ? (
-                <>
-                  <Text style={styles.checkoutText}>
-                    {activeTab === 'trybuy' ? 'Proceed to Try' : 'Checkout'}
-                  </Text>
-                  <Feather name="arrow-right" size={18} color="#fff" />
-                </>
-              ) : (
-                <>
-                  <Ionicons name="location-outline" size={18} color="#FFF" />
-                  <Text style={styles.checkoutText}>Confirm Address</Text>
-                </>
-              )}
+              <Text style={styles.checkoutBtnText}>
+                {activeTab === 'instant' ? 'Proceed to Try' : 'Checkout Now'}
+              </Text>
+              <Feather name="arrow-right" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      <AddressSelectorModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-      />
+      <AddressSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} />
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  backButton: {
-    width: 36, // Slighly smaller
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F1F5F9',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  clearButton: {
-    paddingHorizontal: 8,
-  },
-  clearText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Tab Switcher
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    gap: 6,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomWidth: 3,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  badge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  scrollContent: {
-    padding: 16,
-  },
-  section: {
-    marginBottom: 24,
-  },
-
-  // Merchant grouping for T&B
-  merchantGroup: {
-    marginBottom: 20,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  merchantHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  merchantName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-    flex: 1,
-  },
-  tbBadge: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  tbBadgeText: {
-    color: '#166534',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-
-  // Replicated layout styles
-  deliveryInfoWrapper: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginVertical: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  deliveryInfo: {
-    borderRadius: 16,
-    padding: 20,
-    overflow: 'hidden'
-  },
-  deliveryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start'
-  },
-  deliveryLeftSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1
-  },
-  deliveryTimeContainer: {
-    marginRight: 12
-  },
-  deliveryMainText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '500'
-  },
-  deliveryTimeText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A'
-  },
-  superFastBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E7F8F2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12
-  },
-  deliveryRightSection: {
-    alignItems: 'flex-end'
-  },
-  itemSummaryText: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '500'
-  },
-  totalAmountText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A'
-  },
-
-  tipSection: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  tipTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 12,
-  },
-  tipContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  tipButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-  },
-  activeTipButton: {
-    borderColor: '#10B981',
-    backgroundColor: '#ECFDF5',
-  },
-  tipButtonText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  activeTipButtonText: {
-    color: '#10B981',
-    fontWeight: '700',
-  },
-  upfrontNotice: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-
-  breakdownContainer: {
-    paddingBottom: 12,
-  },
-  breakdownHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    marginBottom: 8,
-  },
-  breakdownHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  upfrontIconContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  upfrontHeaderText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  breakdownContent: {
-    paddingBottom: 12,
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  breakdownLabel: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-  breakdownValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-
-  // Courier Info
-  courierInfoBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3E8FF',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginBottom: 16,
-    gap: 8,
-  },
-  courierInfoText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#7C3AED',
-  },
-
-  // Bill
-  summaryCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 16,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#64748B',
-  },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0F172A',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  totalValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  savingsBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 8,
-  },
-  savingsText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-
-  // Bottom
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    paddingTop: 16,
     paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    paddingVertical: 12,
   },
-  gradient: {
-    position: 'absolute',
-    top: -40,
-    left: 0,
-    right: 0,
-    height: 40,
-  },
-  bottomContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bottomTotal: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#0F172A',
-  },
-  totalItemsText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  checkoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    gap: 8,
-  },
-  checkoutText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A' },
+  clearText: { fontSize: 14, fontWeight: '700' },
 
-  // Empty
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 80,
-    paddingHorizontal: 40,
-  },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 30,
-  },
-  exploreButton: {
-    paddingHorizontal: 30,
-    paddingVertical: 14,
-    borderRadius: 16,
-  },
-  exploreText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  ineligibleBadge: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  ineligibleBadgeText: {
-    color: '#EF4444',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  ineligibleWarning: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FEF3C7',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    gap: 10,
-  },
-  ineligibleText: {
-    fontSize: 13,
-    color: '#92400E',
-    fontWeight: '500',
-    lineHeight: 18,
-  },
-  ineligibleActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-  },
-  moveBtn: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  moveBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  discardBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  discardBtnText: {
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8, borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  activeTab: { borderBottomWidth: 3 },
+  tabText: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
+  badge: { minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+
+  // Merchant Hub
+  merchantHub: { backgroundColor: '#fff', paddingBottom: 12 },
+  merchantHubContent: { paddingHorizontal: 20, gap: 16 },
+  hubWrapper: { alignItems: 'center', justifyContent: 'center', height: 60 },
+  hubLogoContainer: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
+  hubLogo: { width: '80%', height: '80%' },
+  hubActiveLine: { position: 'absolute', bottom: 0, width: 28, height: 3, borderRadius: 2, backgroundColor: '#000' },
+
+  slideContent: { padding: 20, paddingBottom: 100 },
+  brandingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  brandingInfo: { flex: 1 },
+  brandingShopName: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
+  brandingStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  statusTag: { fontSize: 10, fontWeight: '800', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, textTransform: 'uppercase' },
+  brandingMins: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  brandingLogo: { width: 60, height: 60, borderRadius: 12 },
+
+  warningBanner: { flexDirection: 'row', backgroundColor: '#FFFBEB', padding: 14, borderRadius: 16, gap: 12, marginBottom: 20, borderWidth: 1, borderColor: '#FEF3C7' },
+  warningText: { fontSize: 13, color: '#92400E', fontWeight: '500', lineHeight: 18 },
+  warningAction: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  warningActionText: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+
+  itemsContainer: { gap: 12, marginBottom: 24 },
+  
+  premiumBill: { backgroundColor: '#fff', borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
+  billTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+  billRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  billLabel: { fontSize: 14, color: '#64748B' },
+  billValue: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  billDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
+  
+  payLaterSection: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 12, marginBottom: 20 },
+  payLaterText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  
+  upfrontTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 12 },
+  grandTotalLabel: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
+  grandTotalValue: { fontSize: 20, fontWeight: '900' },
+
+  slideTipSection: { marginTop: 20, padding: 20, backgroundColor: '#fff', borderRadius: 24 },
+  tipSectionTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+  tipRow: { flexDirection: 'row', gap: 12 },
+  tipPill: { flex: 1, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  tipPillText: { fontSize: 14, fontWeight: '700', color: '#64748B' },
+
+  // Standard Cart
+  standardContent: { padding: 20 },
+  standardBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F3E8FF', padding: 14, borderRadius: 16, marginBottom: 20 },
+  standardBannerText: { fontSize: 13, fontWeight: '700', color: '#7C3AED' },
+  summaryCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },
+
+  // Pinned Bottom
+  pinnedContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', paddingHorizontal: 20, paddingTop: 10 },
+  pinnedGradient: { position: 'absolute', top: -30, left: 0, right: 0, height: 30 },
+  pinnedInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pinnedPrice: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
+  pinnedSub: { fontSize: 12, color: '#64748B', fontWeight: '700' },
+  checkoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 20 },
+  checkoutBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  emptyIconContainer: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginBottom: 8 },
+  emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  exploreButton: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16 },
+  exploreText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });

@@ -12,7 +12,7 @@ export const fetchCategories = async () => {
         // return res.status(200).json(new ApiResponse(200, { categories }, "Categories retrieved"));
         return res.data;
     } catch (error) {
-        console.error('Axios error in fetchCategories:', error);
+    // Auth errors are ignored gracefully
         throw error;
     }
 };

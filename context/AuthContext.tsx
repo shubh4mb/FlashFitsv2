@@ -2,12 +2,13 @@ import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { updateAuthToken } from '../api/axiosConfig';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 interface AuthContextType {
     isAuthenticated: boolean;
     isLoading: boolean;
     hasSeenOnboarding: boolean;
-    signIn: (token: string, userId: string, isNewUser?: boolean) => Promise<void>;
+    signIn: (token: string, userId: string, refreshToken?: string, isNewUser?: boolean) => Promise<void>;
     signOut: () => Promise<void>;
     completeOnboarding: () => void;
 }
@@ -18,6 +19,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean>(false);
+
+    // Setup Push Notifications
+    const { expoPushToken, sendPushTokenToBackend } = usePushNotifications();
+
+    // Auto-send token if user is already authenticated on boot and token is ready
+    useEffect(() => {
+        if (isAuthenticated && expoPushToken) {
+            sendPushTokenToBackend(expoPushToken);
+        }
+    }, [isAuthenticated, expoPushToken]);
 
     useEffect(() => {
         const loadToken = async () => {
@@ -44,16 +55,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
 
         loadToken();
-      
-        // Optional: Listen for unauthorized events to trigger logout
-        // DeviceEventEmitter.addListener('auth_unauthorized', signOut);
-        // return () => { DeviceEventEmitter.removeAllListeners('auth_unauthorized') };
     }, []);
 
-    const signIn = async (token: string, userId: string, isNewUser?: boolean) => {
+    const signIn = async (token: string, userId: string, refreshToken?: string, isNewUser?: boolean) => {
         try {
             await SecureStore.setItemAsync('token', token);
             await SecureStore.setItemAsync('userId', userId);
+            
+            if (refreshToken) {
+                await SecureStore.setItemAsync('refreshToken', refreshToken);
+            }
 
             if (isNewUser) {
                 setHasSeenOnboarding(false);
@@ -62,6 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             updateAuthToken(token);
             setIsAuthenticated(true);
+
+            if (expoPushToken) {
+                sendPushTokenToBackend(expoPushToken);
+            }
 
             setTimeout(() => {
                 if (isNewUser || !hasSeenOnboarding) {
@@ -90,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
             await SecureStore.deleteItemAsync('token');
             await SecureStore.deleteItemAsync('userId');
+            await SecureStore.deleteItemAsync('refreshToken');
             
             updateAuthToken(null);
             setIsAuthenticated(false);

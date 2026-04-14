@@ -90,9 +90,16 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             setUserLocation({ latitude: lat, longitude: lng });
 
             // 3. Fetch Saved Addresses
-            const addressesRes = await getAddresses();
-            const userAddresses = addressesRes?.addresses || (Array.isArray(addressesRes) ? addressesRes : []);
-            setAddresses(userAddresses);
+            let userAddresses: Address[] = [];
+            if (isAuthenticated) {
+                try {
+                    const addressesRes = await getAddresses();
+                    userAddresses = addressesRes?.addresses || (Array.isArray(addressesRes) ? addressesRes : []);
+                    setAddresses(userAddresses);
+                } catch (e) {
+                    console.log('Skipping saved addresses fetch (not authenticated or error)');
+                }
+            }
 
             // 4. Proximity Match
             let bestMatch: Address | null = null;

@@ -171,7 +171,7 @@ export default function ExploreScreen() {
                     <TouchableOpacity 
                       style={styles.merchantItem}
                       activeOpacity={0.7}
-                      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id } } as any)}
+                      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true' } } as any)}
                     >
                       <View style={styles.merchantLogoContainer}>
                         <Image 

@@ -8,7 +8,7 @@ export const addToRecentlyViewedApi = async (productId: string, variantId: strin
     const res = await api.post('user/recently-viewed/add', { productId, variantId });
     return res.data;
   } catch (error) {
-    console.error('Axios error in addToRecentlyViewedApi:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -21,7 +21,7 @@ export const getRecentlyViewedApi = async () => {
     const res = await api.get('user/recently-viewed/my');
     return res.data;
   } catch (error) {
-    console.error('Axios error in getRecentlyViewedApi:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };

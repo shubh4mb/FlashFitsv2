@@ -13,15 +13,17 @@ import {
   Linking,
   FlatList,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
-import { getOrderById, finalpaymentInitiate, finalPaymentVerify, testVerifyFinalPayment } from '@/api/orders';
+import { getOrderById, finalpaymentInitiate, finalPaymentVerify } from '@/api/orders';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners } from '@/sockets/order.socket';
 import { getSocket } from '@/config/socket';
 import { calculateFinalBilling } from '@/utils/ItemSelectionCalculation';
+import RazorpayWebView from '@/components/common/RazorpayWebView';
 
 // ── Types ──
 type OrderStep = { id: string; label: string; completed: boolean };
@@ -160,6 +162,43 @@ export default function OrderTrackingScreen() {
     allItemsKept: true,
   });
 
+  // Razorpay WebView State
+  const [razorpayOptions, setRazorpayOptions] = useState<any>(null);
+  const [showRazorpay, setShowRazorpay] = useState(false);
+  const checkoutPromiseRef = useRef<{ resolve: (value: any) => void; reject: (reason?: any) => void } | null>(null);
+
+  const openRazorpayCheckout = (options: any): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      setRazorpayOptions(options);
+      checkoutPromiseRef.current = { resolve, reject };
+      setShowRazorpay(true);
+    });
+  };
+
+  const handleRazorpaySuccess = (data: any) => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.resolve(data);
+      checkoutPromiseRef.current = null;
+    }
+  };
+
+  const handleRazorpayError = (error: any) => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.reject(error);
+      checkoutPromiseRef.current = null;
+    }
+  };
+
+  const handleRazorpayClose = () => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.reject({ code: 'PAYMENT_CANCELLED' });
+      checkoutPromiseRef.current = null;
+    }
+  };
+
   // ── Fetch order ──
   const fetchOrder = useCallback(async () => {
     if (!orderId) return;
@@ -231,6 +270,14 @@ export default function OrderTrackingScreen() {
         }
 
         if (update.orderStatus === 'arrived at delivery') {
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Rider Arrived! 🏠',
+              body: 'Your rider has reached your location. Please meet them to receive your order.',
+              data: { orderId: orderId },
+            },
+            trigger: null,
+          });
           Alert.alert('Rider Arrived 🏠', 'Your rider has reached your location!');
         }
 
@@ -349,55 +396,70 @@ export default function OrderTrackingScreen() {
         return;
       }
 
-      // 🧪 MOCK RAZORPAY FLOW (since RazorpayCheckout is not available in Expo Go)
-      // In production, you'd use RazorpayCheckout.open() here
+      // === REAL RAZORPAY PAYMENT FLOW ===
       const {
         amount,
         key_id,
         razorpayOrder,
         orderId: internalOrderId,
+        contact,
+        name: customerName,
+        email,
       } = res;
 
-      Alert.alert(
-        '💳 Mock Payment',
-        `Amount: ₹${(amount / 100).toFixed(2)}\n\nItems Kept: ${billingSummary.itemsAccepted}\n${hasReturns ? `Items Returned: ${billingSummary.itemsReturned}\n` : ''}Total: ₹${billingSummary.totalPayable}\n\n(Test mode — auto-verifying)`,
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => setSubmitting(false) },
-          {
-            text: 'Confirm Payment',
-            onPress: async () => {
-              try {
-                // 🧪 Use test endpoint that skips Razorpay signature verification
-                await testVerifyFinalPayment(internalOrderId);
+      // Open Razorpay Checkout WebView
+      const options = {
+        description: 'FlashFits - Final Payment',
+        currency: 'INR',
+        key: key_id,
+        amount: amount,
+        name: 'FlashFits',
+        order_id: razorpayOrder?.id || razorpayOrder,
+        prefill: {
+          contact: contact,
+          name: customerName,
+          email: email,
+        },
+        theme: { color: '#0F172A' },
+      };
 
-                if (hasReturns) {
-                  // Has return items - go to return handover page
-                  router.replace({
-                    pathname: '/return-items' as any,
-                    params: {
-                      orderId: internalOrderId,
-                      otp,
-                      items: JSON.stringify(items.filter(i => i.tryStatus === 'returned')),
-                      orderData: JSON.stringify(order),
-                    },
-                  });
-                } else {
-                  // All items kept - show success
-                  Alert.alert(
-                    '✅ Payment Successful!',
-                    `All ${billingSummary.itemsAccepted} items kept.\nTotal: ₹${billingSummary.totalPayable}`,
-                    [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
-                  );
-                }
-              } catch (err: any) {
-                Alert.alert('Payment Failed', err.response?.data?.message || 'Verification failed. Please try again.');
-              } finally {
-                setSubmitting(false);
-              }
-            },
-          },
-        ]
-      );
+      try {
+        const paymentData = await openRazorpayCheckout(options);
+
+        // Verify with backend
+        const verifyResult = await finalPaymentVerify(paymentData, internalOrderId);
+
+        if (verifyResult.success) {
+          if (hasReturns) {
+            // Has return items - go to return handover page
+            router.replace({
+              pathname: '/return-items' as any,
+              params: {
+                orderId: internalOrderId,
+                otp,
+                items: JSON.stringify(items.filter(i => i.tryStatus === 'returned')),
+                orderData: JSON.stringify(order),
+              },
+            });
+          } else {
+            // All items kept - show success
+            Alert.alert(
+              '✅ Payment Successful!',
+              `All ${billingSummary.itemsAccepted} items kept.\nTotal: ₹${billingSummary.totalPayable}`,
+              [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
+            );
+          }
+        }
+      } catch (paymentErr: any) {
+        // Razorpay dismissal (user cancelled)
+        if (paymentErr?.code === 'PAYMENT_CANCELLED') {
+          // User cancelled — do nothing
+        } else {
+          Alert.alert('Payment Failed', paymentErr?.description || paymentErr?.message || 'Payment could not be completed. Please try again.');
+        }
+      } finally {
+        setSubmitting(false);
+      }
     } catch (err: any) {
       console.error('Submit selection error:', err);
       Alert.alert('Error', err.response?.data?.message || 'Failed to process. Please try again.');
@@ -809,6 +871,14 @@ export default function OrderTrackingScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <RazorpayWebView
+        visible={showRazorpay}
+        options={razorpayOptions}
+        onSuccess={handleRazorpaySuccess}
+        onError={handleRazorpayError}
+        onClose={handleRazorpayClose}
+      />
     </View>
   );
 }

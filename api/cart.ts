@@ -17,7 +17,7 @@ export const addToCart = async (params: AddToCartParams) => {
     const res = await api.post('user/cart/add', params);
     return res.data;
   } catch (error) {
-    console.error('Axios error in addToCart:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -31,7 +31,7 @@ export const getCart = async (addressId?: string, serviceable?: boolean, deliver
     const res = await api.post('user/cart', { addressId, serviceable, deliveryTip, latitude, longitude });
     return res.data;
   } catch (error) {
-    console.error('Axios error in getCart:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -44,7 +44,7 @@ export const getCartCount = async () => {
     const res = await api.get('user/cartCount');
     return res.data;
   } catch (error) {
-    console.error('Axios error in getCartCount:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -58,7 +58,7 @@ export const updateCartQuantity = async (cartId: string, quantity: number) => {
     const res = await api.put('user/cart/updatequantity', { cartId, quantity });
     return res.data;
   } catch (error) {
-    console.error('Axios error in updateCartQuantity:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -71,7 +71,7 @@ export const deleteCartItem = async (itemId: string) => {
     const res = await api.delete(`user/cart/delete/${itemId}`);
     return res.data;
   } catch (error) {
-    console.error('Axios error in deleteCartItem:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -84,7 +84,7 @@ export const clearCart = async () => {
     const res = await api.delete('user/cart/clear');
     return res.data;
   } catch (error) {
-    console.error('Axios error in clearCart:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };
@@ -97,7 +97,7 @@ export const moveToCourier = async (params: { merchantId?: string; itemId?: stri
     const res = await api.post('user/cart/move-to-courier', params);
     return res.data;
   } catch (error) {
-    console.error('Axios error in moveToCourier:', error);
+    // Auth errors are ignored gracefully
     throw error;
   }
 };

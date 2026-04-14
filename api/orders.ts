@@ -19,10 +19,11 @@ export const getOrderById = async (orderId: string) => {
 
 /**
  * Create Razorpay order for T&B checkout
+ * Returns razorpayOrderId, key_id, amount, orderId etc.
  */
-export const createRazorpayOrder = async (addressId: string, deliveryTip: number = 0) => {
+export const createRazorpayOrder = async (addressId: string, deliveryTip: number = 0, couponCode?: string, merchantId?: string) => {
     try {
-        const res = await api.post('/user/order/create', { addressId, deliveryTip });
+        const res = await api.post('/user/order/create', { addressId, deliveryTip, couponCode, merchantId });
         return res.data;
     } catch (error: any) {
         console.error('Create Razorpay order error:', error.response?.data || error.message);
@@ -40,23 +41,10 @@ export const verifyPayment = async (params: {
     orderId: string;
 }) => {
     try {
-        const res = await api.post('/user/order/verify', params);
+        const res = await api.post('/user/order/verifyPayment', params);
         return res.data;
     } catch (error: any) {
         console.error('Verify payment error:', error.response?.data || error.message);
-        throw error;
-    }
-};
-
-/**
- * 🧪 TEST MODE: Place T&B order without Razorpay (for Expo Go testing)
- */
-export const testPlaceOrder = async (addressId: string, deliveryTip: number = 0) => {
-    try {
-        const res = await api.post('/user/order/test-place', { addressId, deliveryTip });
-        return res.data;
-    } catch (error: any) {
-        console.error('Test place order error:', error.response?.data || error.message);
         throw error;
     }
 };
@@ -123,29 +111,15 @@ export const finalPaymentVerify = async (paymentData: any, internalOrderId: stri
     }
 };
 
-/**
- * 🧪 TEST MODE: Verify final payment without Razorpay signature (for Expo Go)
- */
-export const testVerifyFinalPayment = async (internalOrderId: string) => {
-    try {
-        const response = await api.post('user/order/test-verifyFinalPayment', {
-            orderId: internalOrderId,
-        });
-        return response.data;
-    } catch (error: any) {
-        console.error('Test final payment verify error:', error.response?.data || error.message);
-        throw error;
-    }
-};
-
 // ── Courier Orders ──
 
 /**
- * Initiate a courier order (Get mock Razorpay ID)
+ * Initiate a courier order (creates real Razorpay order)
+ * Returns razorpayOrderId, key_id, amount, orderId, isFreeOrder etc.
  */
-export const initiateCourierOrder = async (merchantId: string, addressId: string, deliveryTip: number = 0) => {
+export const initiateCourierOrder = async (merchantId: string, addressId: string, deliveryTip: number = 0, couponCode?: string) => {
     try {
-        const res = await api.post('/courier/orders/initiate', { merchantId, addressId, deliveryTip });
+        const res = await api.post('/courier/orders/initiate', { merchantId, addressId, deliveryTip, couponCode });
         return res.data;
     } catch (error: any) {
         console.error('Initiate courier order error:', error.response?.data || error.message);
@@ -154,34 +128,19 @@ export const initiateCourierOrder = async (merchantId: string, addressId: string
 };
 
 /**
- * Verify courier order payment (Mock)
+ * Verify courier order payment — requires Razorpay signature
  */
-export const verifyCourierOrderPayment = async (razorpayOrderId: string, razorpayPaymentId?: string) => {
+export const verifyCourierOrderPayment = async (params: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    orderId: string;
+}) => {
     try {
-        const res = await api.post('/courier/orders/verify', { razorpayOrderId, razorpayPaymentId });
+        const res = await api.post('/courier/orders/verify', params);
         return res.data;
     } catch (error: any) {
         console.error('Verify courier payment error:', error.response?.data || error.message);
-        throw error;
-    }
-};
-
-/**
- * Place a courier order (wrapper for new 2-step flow)
- */
-export const createCourierOrder = async (merchantId: string, addressId: string) => {
-    try {
-        // 1. Initiate
-        const initRes = await initiateCourierOrder(merchantId, addressId);
-        
-        // 2. Verify immediately (Mock flow)
-        if (initRes.success && initRes.razorpayOrderId) {
-            return await verifyCourierOrderPayment(initRes.razorpayOrderId);
-        }
-        
-        return initRes;
-    } catch (error: any) {
-        console.error('Create courier order error:', error.response?.data || error.message);
         throw error;
     }
 };
