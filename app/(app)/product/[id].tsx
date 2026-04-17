@@ -60,6 +60,8 @@ const ProductDetailPage = () => {
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const wishlistScale = useRef(new Animated.Value(1)).current;
+  const [showAddedFeedback, setShowAddedFeedback] = useState(false);
+  const feedbackOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -160,6 +162,44 @@ const ProductDetailPage = () => {
     }
   };
 
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+  };
+
+  const deg2rad = (deg: number) => deg * (Math.PI / 180);
+
+  const productIsNearby = useMemo(() => {
+    if (!product?.merchantId?.address?.location?.coordinates) return false;
+    
+    // Use selected address or user current location
+    const userLat = selectedAddress?.location?.coordinates?.[1] || userLocation?.latitude;
+    const userLng = selectedAddress?.location?.coordinates?.[0] || userLocation?.longitude;
+    
+    if (!userLat || !userLng) return false;
+
+    const [merchLng, merchLat] = product.merchantId.address.location.coordinates;
+    const dist = calculateDistance(userLat as number, userLng as number, merchLat, merchLng);
+    
+    return dist <= 7; // 7km threshold for Try & Buy
+  }, [product, selectedAddress, userLocation]);
+
+  const showFeedback = () => {
+    setShowAddedFeedback(true);
+    Animated.sequence([
+      Animated.timing(feedbackOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.delay(2000),
+      Animated.timing(feedbackOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+    ]).start(() => setShowAddedFeedback(false));
+  };
+
   const handleWishlistToggle = () => {
     if (product) {
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
@@ -181,22 +221,12 @@ const ProductDetailPage = () => {
 
     try {
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
-      const selectedStock = activeVariant?.sizes?.find((s: any) => s.size === selectedSize)?.stock || 0;
       const targetMerchantId = product.merchantId?._id || product.merchantId;
 
-      // Multi-cart: no single-merchant restriction. Items from different merchants
-      // coexist in separate merchant sub-carts.
-      if (isExplore) {
-        await addItemToCourierCart({
-          productId: product._id,
-          variantId: activeVariant._id,
-          size: selectedSize,
-          quantity: 1,
-          merchantId: targetMerchantId,
-          image: { url: activeVariant.images?.[0]?.url || '' },
-        });
-        router.push({ pathname: '/cart', params: { tab: 'courier' } } as any);
-      } else {
+      // Determine cart based on actual proximity
+      // productIsNearby is calculated from coordinates
+      if (productIsNearby) {
+        // In range -> Instant Cart (Try & Buy)
         await addItemToCart({
           productId: product._id,
           variantId: activeVariant._id,
@@ -205,11 +235,28 @@ const ProductDetailPage = () => {
           merchantId: targetMerchantId,
           image: { url: activeVariant.images?.[0]?.url || '' },
         });
+        
+        // Redirection remains for Try & Buy to confirm trial
         router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
+      } else {
+        // Out of range -> Standard Cart (Courier)
+        await addItemToCourierCart({
+          productId: product._id,
+          variantId: activeVariant._id,
+          size: selectedSize,
+          quantity: 1,
+          merchantId: targetMerchantId,
+          image: { url: activeVariant.images?.[0]?.url || '' },
+        });
+        
+        // Show non-interruptive feedback instead of redirection
+        showFeedback();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
     } catch (error) {
       console.error('Failed to add to cart:', error);
+      Alert.alert('Error', 'Failed to add item to bag. Please try again.');
     }
   };
 
@@ -555,6 +602,19 @@ const ProductDetailPage = () => {
           <Text style={styles.cartBtnText}>ADD TO BAG</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Product Added Feedback Indicator */}
+      {showAddedFeedback && (
+        <Animated.View style={[styles.feedbackIndicator, { opacity: feedbackOpacity, bottom: insets.bottom + 100 }]}>
+           <BlurView intensity={90} tint="dark" style={styles.feedbackBlur}>
+              <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              <Text style={styles.feedbackText}>Added to Bag</Text>
+              <TouchableOpacity onPress={() => router.push('/cart')}>
+                <Text style={[styles.viewCartText, { color: theme.primary }]}>VIEW CART</Text>
+              </TouchableOpacity>
+           </BlurView>
+        </Animated.View>
+      )}
     </View>
   );
 };
@@ -598,6 +658,41 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
+  },
+  cartBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  feedbackIndicator: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    zIndex: 1000,
+    alignItems: 'center',
+  },
+  feedbackBlur: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  feedbackText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  viewCartText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   header: {
     position: 'absolute',

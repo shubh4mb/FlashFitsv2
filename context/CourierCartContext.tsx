@@ -6,6 +6,8 @@ import {
   updateCourierCartQuantity as updateQtyApi,
   deleteCourierCartItem as removeItemApi,
   clearCourierCart as clearCourierCartApi,
+  selectOfferCourier as selectOfferApi,
+  deselectOfferCourier as deselectOfferApi,
   AddToCourierCartParams,
 } from '../api/courier';
 
@@ -34,6 +36,7 @@ interface CourierCartData {
     courierDeliveryCharge: number;
     totalPayable: number;
   };
+  appliedOffers?: any; // New field from backend
 }
 
 interface CourierCartContextType {
@@ -44,6 +47,8 @@ interface CourierCartContextType {
   removeItem: (itemId: string) => Promise<void>;
   clearCart: () => Promise<void>;
   refreshCart: () => Promise<void>;
+  applyOfferCourier: (offerId: string, targetItemIds?: string[]) => Promise<void>;
+  removeOfferCourier: (offerId: string) => Promise<void>;
 }
 
 const CourierCartContext = createContext<CourierCartContextType | undefined>(undefined);
@@ -136,6 +141,30 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const applyOfferCourier = async (offerId: string, targetItemIds?: string[]) => {
+    try {
+      setLoading(true);
+      await selectOfferApi(offerId, targetItemIds);
+      await fetchCart();
+    } catch (error) {
+      console.error('Apply offer to courier cart failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeOfferCourier = async (offerId: string) => {
+    try {
+      setLoading(true);
+      await deselectOfferApi(offerId);
+      await fetchCart();
+    } catch (error) {
+      console.error('Remove offer from courier cart failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <CourierCartContext.Provider
       value={{
@@ -146,6 +175,8 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
         removeItem,
         clearCart,
         refreshCart: fetchCart,
+        applyOfferCourier,
+        removeOfferCourier,
       }}
     >
       {children}

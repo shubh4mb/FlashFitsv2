@@ -10,12 +10,14 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchFilteredProducts } from '@/api/products';
 import { fetchCategories } from '@/api/categories';
+import { fetchMerchants } from '@/api/merchants';
 import ProductCard from '@/components/common/ProductCard';
 import { useGender } from '@/context/GenderContext';
 import { useAddress } from '@/context/AddressContext';
@@ -25,17 +27,19 @@ import Loader from '@/components/common/Loader';
 const { width } = Dimensions.get('window');
 const PAGE_SIZE = 20;
 
-type SortOption = 'relevance' | 'price_low' | 'price_high' | 'newest';
+type SortOption = 'relevance' | 'price_low' | 'price_high' | 'newest' | 'trending';
 type DeliveryMode = 'tryAndBuy' | 'courier' | null;
 
 export default function SearchResultsScreen() {
-  const { query, categoryId, subCategoryId, gender, collectionId, title } = useLocalSearchParams<{ 
+  const { query, categoryId, subCategoryId, gender, collectionId, title, merchantId, sortBy: initialSortBy } = useLocalSearchParams<{ 
     query?: string; 
     categoryId?: string; 
     subCategoryId?: string; 
     gender?: string;
     collectionId?: string;
     title?: string;
+    merchantId?: string;
+    sortBy?: SortOption;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -54,17 +58,27 @@ export default function SearchResultsScreen() {
   const [totalCount, setTotalCount] = useState(0);
 
   // Sort & Filter States
-  const [sortBy, setSortBy] = useState<SortOption>('relevance');
+  const [sortBy, setSortBy] = useState<SortOption>(initialSortBy || 'relevance');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(categoryId ? [categoryId] : []);
   const [selectedSubCategoryIds, setSelectedSubCategoryIds] = useState<string[]>(subCategoryId ? [subCategoryId] : []);
   const [priceRange, setPriceRange] = useState<number[]>([0, 10000]);
   const [genderFilter, setGenderFilter] = useState<string>(gender || '');
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(null);
   const [collectionFilter, setCollectionFilter] = useState<string | undefined>(collectionId);
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(merchantId ? [merchantId] : []);
   
   const [isSortModalVisible, setIsSortModalVisible] = useState(false);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
+  const [availableMerchants, setAvailableMerchants] = useState<any[]>([]);
+  const [merchantSearchQuery, setMerchantSearchQuery] = useState('');
+
+  // Clear merchant search when modal is closed
+  useEffect(() => {
+    if (!isFilterModalVisible) {
+      setMerchantSearchQuery('');
+    }
+  }, [isFilterModalVisible]);
 
   // Track if filters changed to reset pagination
   const isFirstLoad = useRef(true);
@@ -93,6 +107,7 @@ export default function SearchResultsScreen() {
         gender: genderFilter || undefined,
         deliveryMode: deliveryMode,
         collectionId: collectionFilter,
+        selectedStores: selectedStoreIds.length > 0 ? selectedStoreIds : undefined,
         lat,
         lng,
       });
@@ -109,7 +124,7 @@ export default function SearchResultsScreen() {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [query, sortBy, selectedCategoryIds, selectedSubCategoryIds, priceRange, genderFilter, deliveryMode, collectionFilter, getCoords]);
+  }, [query, sortBy, selectedCategoryIds, selectedSubCategoryIds, priceRange, genderFilter, deliveryMode, collectionFilter, selectedStoreIds, getCoords]);
 
   // Reload from page 1 when filters change
   useEffect(() => {
@@ -128,8 +143,36 @@ export default function SearchResultsScreen() {
         console.error('Failed to load categories:', error);
       }
     };
+    const loadMerchants = async () => {
+      try {
+        const { lat, lng } = getCoords();
+        const res = await fetchMerchants(lat, lng);
+        setAvailableMerchants(res.merchants || res.data?.merchants || []);
+      } catch (error) {
+        console.error('Failed to load merchants:', error);
+      }
+    };
     loadCategories();
-  }, []);
+    loadMerchants();
+  }, [getCoords]);
+
+  // Auto-select parent category if subCategoryId is passed but categoryId is not
+  useEffect(() => {
+    if (categories.length > 0 && selectedSubCategoryIds.length > 0 && selectedCategoryIds.length === 0) {
+      const parentIds = new Set<string>();
+      selectedSubCategoryIds.forEach(subId => {
+        const subCat = categories.find(c => c._id === subId);
+        if (subCat) {
+          const pId = subCat.parentCategory || subCat.parent || subCat.category || subCat.parentId;
+          const resolvedPId = typeof pId === 'object' ? pId?._id : pId;
+          if (resolvedPId) parentIds.add(resolvedPId.toString());
+        }
+      });
+      if (parentIds.size > 0) {
+        setSelectedCategoryIds(Array.from(parentIds));
+      }
+    }
+  }, [categories, selectedSubCategoryIds, selectedCategoryIds.length]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -156,7 +199,8 @@ export default function SearchResultsScreen() {
   const activeFilterCount = selectedCategoryIds.length + selectedSubCategoryIds.length 
     + (genderFilter ? 1 : 0) + (deliveryMode ? 1 : 0) 
     + ((priceRange[0] !== 0 || priceRange[1] !== 10000) ? 1 : 0)
-    + (collectionFilter ? 1 : 0);
+    + (collectionFilter ? 1 : 0)
+    + selectedStoreIds.length;
 
   const availableSubCategories = useMemo(() => {
     if (selectedCategoryIds.length === 0) return [];
@@ -205,9 +249,10 @@ export default function SearchResultsScreen() {
           
           {([
             { key: 'relevance', label: 'Relevance' },
+            { key: 'trending', label: 'Popularity' },
+            { key: 'newest', label: 'New Arrivals' },
             { key: 'price_low', label: 'Price: Low to High' },
             { key: 'price_high', label: 'Price: High to Low' },
-            { key: 'newest', label: 'New Arrivals' },
           ] as { key: SortOption; label: string }[]).map(({ key, label }) => (
             <TouchableOpacity 
               key={key}
@@ -264,6 +309,67 @@ export default function SearchResultsScreen() {
                   >
                     <Text style={[styles.filterTagText, { color: '#FFFFFF' }]}>{title || 'Collection'}  ✕</Text>
                   </TouchableOpacity>
+                </View>
+                <View style={{ height: 24 }} />
+              </>
+            )}
+
+            {/* Shops Filter */}
+            {availableMerchants.length > 0 && (
+              <>
+                <View style={styles.shopFilterHeader}>
+                  <Text style={styles.filterSectionTitle}>Shops</Text>
+                  <View style={styles.merchantSearchContainer}>
+                    <Ionicons name="search" size={16} color="#94A3B8" style={{ marginRight: 8 }} />
+                    <TextInput
+                      style={styles.merchantSearchInput}
+                      placeholder="Search shops..."
+                      value={merchantSearchQuery}
+                      onChangeText={setMerchantSearchQuery}
+                      placeholderTextColor="#94A3B8"
+                    />
+                    {merchantSearchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setMerchantSearchQuery('')}>
+                        <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.categoryFilterContainer}>
+                  {availableMerchants
+                    .filter(m => {
+                      const s = merchantSearchQuery.toLowerCase();
+                      const city = m.address?.city || m.city || (typeof m.address === 'string' ? m.address : '');
+                      const area = m.address?.area || '';
+                      return m.shopName.toLowerCase().includes(s) || 
+                             city.toLowerCase().includes(s) || 
+                             area.toLowerCase().includes(s);
+                    })
+                    .map((merchant) => {
+                      const isSelected = selectedStoreIds.includes(merchant._id);
+                      const location = merchant.address?.city || merchant.address?.area || '';
+                      return (
+                        <TouchableOpacity
+                          key={merchant._id}
+                          style={[styles.filterTag, isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }]}
+                          onPress={() => {
+                            setSelectedStoreIds(prev => 
+                              prev.includes(merchant._id) ? prev.filter(id => id !== merchant._id) : [...prev, merchant._id]
+                            );
+                          }}
+                        >
+                          <Text style={[styles.filterTagText, isSelected && { color: '#FFFFFF', fontFamily: Typography.fontFamily.bold }]}>
+                            {merchant.shopName}
+                            {(merchant.address?.city || merchant.city || (typeof merchant.address === 'string' && merchant.address)) && (
+                              <Text style={[styles.shopLocationText, isSelected && { color: 'rgba(255,255,255,0.8)' }]}>
+                                {` (${merchant.address?.city || merchant.city || merchant.address})`}
+                              </Text>
+                            )}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                 </View>
                 <View style={{ height: 24 }} />
               </>
@@ -363,6 +469,7 @@ export default function SearchResultsScreen() {
                 setPriceRange([0, 10000]);
                 setGenderFilter('');
                 setDeliveryMode(null);
+                setSelectedStoreIds([]);
               }}
             >
               <Text style={styles.resetButtonText}>Reset</Text>
@@ -501,6 +608,7 @@ export default function SearchResultsScreen() {
               setDeliveryMode(null);
               setCollectionFilter(undefined);
               setSortBy('relevance');
+              setSelectedStoreIds([]);
             }}
           >
             <Text style={styles.clearFiltersButtonText}>Clear Filters</Text>
@@ -807,5 +915,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
     fontFamily: Typography.fontFamily.medium,
+  },
+  shopFilterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  merchantSearchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginLeft: 16,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  merchantSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    fontFamily: Typography.fontFamily.medium,
+    paddingVertical: 8,
+  },
+  shopTagContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shopLocationText: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontFamily: Typography.fontFamily.medium,
+    marginTop: 1,
   },
 });

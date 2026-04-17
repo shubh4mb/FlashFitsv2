@@ -31,7 +31,7 @@ export default function CheckoutScreen() {
   const checkoutType = params.type || 'trybuy'; // 'trybuy' or 'courier'
   const checkoutMerchantId = params.merchantId;
 
-  const { cart, refreshCart } = useCart();
+  const { cart, refreshCart, deliveryTip, setDeliveryTip } = useCart();
   const { courierCart, refreshCart: refreshCourierCart, clearCart: clearCourierCart } = useCourierCart();
   const { selectedAddress, setSelectedAddress, locationAddress, locationLoading } = useAddress();
   const { selectedGender } = useGender();
@@ -41,7 +41,7 @@ export default function CheckoutScreen() {
   const [chosenAddress, setChosenAddress] = useState<Address | null>(selectedAddress);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
-  const [deliveryTip, setDeliveryTip] = useState(0);
+
   const [modalVisible, setModalVisible] = useState(false);
   const { appliedOffers, computeBestOffers, couponCode, clearAppliedOffers } = useOffers();
 
@@ -107,9 +107,11 @@ export default function CheckoutScreen() {
     : (items.length > 0 ? 40 : 0);
   
   const returnCharge = isTB ? (merchantTotals?.totalReturnCharge || 0) : 0;
-  const serviceGST = isTB ? (merchantTotals?.serviceGST || 0) : 0;
-  const upfrontPayable = isTB ? (merchantTotals?.totalUpfrontPayable || 0) : deliveryCharge;
-  const totalPayableNow = isTB ? upfrontPayable : (subtotal + deliveryCharge);
+  const baseServiceGST = isTB ? (merchantTotals?.serviceGST || 0) : 0;
+  const serviceGST = Number((baseServiceGST + (deliveryTip * 0.18)).toFixed(2));
+  const baseUpfrontPayable = isTB ? (merchantTotals?.totalUpfrontPayable || 0) : deliveryCharge;
+  const upfrontPayable = Number((baseUpfrontPayable + deliveryTip + (deliveryTip * 0.18)).toFixed(2));
+  const totalPayableNow = Number((isTB ? upfrontPayable : (subtotal + deliveryCharge + deliveryTip + (deliveryTip * 0.18))).toFixed(2));
   const payLaterAmount = isTB ? subtotal : 0;
   const merchantOffers = merchantCart?.appliedOffers;
   const tbOfferDiscount = merchantOffers?.totalDiscount || 0;

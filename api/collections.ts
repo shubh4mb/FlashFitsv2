@@ -8,7 +8,7 @@ export const fetchCollectionsHome = async (gender: string, lat?: number, lng?: n
     const response = await axiosInstance.get('user/collections/home', {
       params: { gender, lat, lng }
     });
-    console.log(response.data,"jhjhjhjhjh");
+
     
     return response.data;
   } catch (error) {

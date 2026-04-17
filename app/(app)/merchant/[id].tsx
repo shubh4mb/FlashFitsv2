@@ -124,9 +124,11 @@ export default function MerchantDetailScreen() {
 
   const groupedProducts = useMemo(() => {
     return filteredProducts.reduce((acc: any, p: any) => {
-      const subCatName = p.subCategory || p.subCategoryId?.name || 'Others';
-      if (!acc[subCatName]) acc[subCatName] = [];
-      acc[subCatName].push(p);
+      const subCatId = p.subCategoryId?._id || 'others';
+      const subCatName = p.subCategoryId?.name || p.subCategory || 'Others';
+      const catId = p.categoryId?._id || p.categoryId;
+      if (!acc[subCatId]) acc[subCatId] = { name: subCatName, products: [], categoryId: catId };
+      acc[subCatId].products.push(p);
       return acc;
     }, {});
   }, [filteredProducts]);
@@ -135,6 +137,20 @@ export default function MerchantDetailScreen() {
   const handleBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
+  };
+
+  const handleViewAll = (subCatId: string, subCatName: string, catId?: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: '/search-results',
+      params: {
+        categoryId: catId,
+        subCategoryId: subCatId !== 'others' ? subCatId : undefined,
+        merchantId: id,
+        gender: localSelectedGender || undefined,
+        title: `${subCatName} in ${merchant.shopName}`
+      }
+    });
   };
 
   if (loading) {
@@ -320,13 +336,14 @@ export default function MerchantDetailScreen() {
         </View>
 
         {/* Display Grouped Products */}
-        {Object.entries(groupedProducts).map(([subCatName, subProducts]: [string, any]) => (
-          <View key={subCatName} style={styles.categoryCard}>
+        {Object.entries(groupedProducts).map(([subCatId, data]: [string, any]) => (
+          <View key={subCatId} style={styles.categoryCard}>
             <View style={styles.categoryHeader}>
-              <Text style={styles.categoryName}>{subCatName}</Text>
+              <Text style={styles.categoryName}>{data.name}</Text>
               <TouchableOpacity
                 style={[styles.viewAllBtn, { backgroundColor: theme.primary + '15' }]}
                 activeOpacity={0.7}
+                onPress={() => handleViewAll(subCatId, data.name, data.categoryId)}
               >
                 <Text style={[styles.viewAllBtnText, { color: theme.primary }]}>See all</Text>
                 <Ionicons name="arrow-forward" size={14} color={theme.primary} />
@@ -337,7 +354,7 @@ export default function MerchantDetailScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.productListContent}
             >
-              {subProducts.map((p: any) => (
+              {data.products.map((p: any) => (
                 <ProductCard
                   key={p._id || p.id}
                   product={p}

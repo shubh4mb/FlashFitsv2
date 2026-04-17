@@ -8,6 +8,8 @@ import {
   deleteCartItem as removeItemApi,
   clearCart as clearCartApi,
   moveToCourier as moveToCourierApi,
+  selectOffer as selectOfferApi,
+  deselectOffer as deselectOfferApi,
   AddToCartParams
 } from '../api/cart';
 import { useAddress } from './AddressContext';
@@ -71,6 +73,8 @@ interface CartContextType {
   moveToCourier: (params: { merchantId?: string; itemId?: string }) => Promise<void>;
   deliveryTip: number;
   setDeliveryTip: (tip: number) => void;
+  applyOffer: (offerId: string, targetItemIds?: string[]) => Promise<void>;
+  removeOffer: (offerId: string) => Promise<void>;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -103,18 +107,18 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
                          (selectedAddress?.addressType !== 'Non-serviceable' && (selectedAddress as any)?.isServiceable !== false) : 
                          !!userLocation;
       
-      const response = await getCartApi(addressId, serviceable, deliveryTip, latitude, longitude);
+      const response = await getCartApi(addressId, serviceable, 0, latitude, longitude);
       setCart(response);
     } catch (error) {
       console.error('Failed to fetch cart:', error);
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, selectedAddress, userLocation, deliveryTip]);
+  }, [isAuthenticated, selectedAddress, userLocation]);
 
   useEffect(() => {
     fetchCart();
-  }, [selectedAddress, userLocation, deliveryTip]);
+  }, [selectedAddress, userLocation]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -210,6 +214,30 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [fetchCart]);
 
+  const applyOffer = useCallback(async (offerId: string, targetItemIds?: string[]) => {
+    try {
+      setLoading(true);
+      await selectOfferApi(offerId, targetItemIds);
+      await fetchCart();
+    } catch (error) {
+      console.error('Apply offer failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchCart]);
+
+  const removeOffer = useCallback(async (offerId: string) => {
+    try {
+      setLoading(true);
+      await deselectOfferApi(offerId);
+      await fetchCart();
+    } catch (error) {
+      console.error('Remove offer failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchCart]);
+
   return (
     <CartContext.Provider value={{ 
       cart, 
@@ -221,7 +249,9 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       refreshCart: fetchCart,
       moveToCourier,
       deliveryTip,
-      setDeliveryTip 
+      setDeliveryTip,
+      applyOffer,
+      removeOffer
     }}>
       {children}
     </CartContext.Provider>

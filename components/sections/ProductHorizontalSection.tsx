@@ -30,6 +30,7 @@ interface ProductHorizontalSectionProps {
     actionUrl?: string;
   };
   collectionId?: string;
+  sortBy?: 'relevance' | 'price_low' | 'price_high' | 'newest' | 'trending';
   refreshKey?: number;
 }
 
@@ -61,6 +62,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
   isLoading = false,
   banner,
   collectionId,
+  sortBy,
 }) => {
   const router = useRouter();
   const { selectedGender } = useGender();
@@ -74,13 +76,27 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
     return null;
   }
 
+  const handleNavigation = () => {
+    if (collectionId) {
+      router.push({
+        pathname: '/(app)/search-results',
+        params: { collectionId, title }
+      } as any);
+    } else if (sortBy) {
+      router.push({
+        pathname: '/(app)/search-results',
+        params: { sortBy, title }
+      } as any);
+    }
+  };
+
   const renderItem = ({ item }: { item: Product }) => (
     <ProductCard
       product={item}
       width={155}
       onPress={() => {
         router.push({
-          pathname: '/(app)/product/[id]' as any,
+          pathname: `/(app)/product/${item._id || item.id}` as any,
           params: { id: item._id || item.id, fromExplore: 'false' },
         });
       }}
@@ -94,7 +110,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
           <Text style={styles.title}>{title}</Text>
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </View>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={handleNavigation}>
           <Text style={[styles.seeAll, { color: theme.primary }]}>See All</Text>
         </TouchableOpacity>
       </View>
@@ -106,11 +122,8 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
           onPress={() => {
             if (banner.actionUrl) {
               router.push(banner.actionUrl as any);
-            } else if (collectionId) {
-              router.push({
-                pathname: '/(app)/search-results' as any,
-                params: { collectionId, title }
-              });
+            } else {
+              handleNavigation();
             }
           }}
         >

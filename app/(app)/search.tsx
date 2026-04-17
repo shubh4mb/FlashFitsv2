@@ -28,7 +28,7 @@ const DEBOUNCE_MS = 300;
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<{ text: string; type: string }[]>([]);
+  const [suggestions, setSuggestions] = useState<{ text: string; type: string; id?: string; city?: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
@@ -58,14 +58,23 @@ export default function SearchScreen() {
     await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(newSearches));
   };
 
-  const handleSearchNavigation = (term: string) => {
+  const handleSearchNavigation = (term: string, merchantId?: string) => {
     if (!term.trim()) return;
     saveSearch(term.trim());
     setShowSuggestions(false);
     setSuggestions([]);
+    
+    // If it's a merchant suggestion, clear the query so we show all their products
+    // and don't conflict with the merchant filter logic.
+    const params: any = { 
+        query: merchantId ? '' : term.trim(),
+        title: merchantId ? term.trim() : undefined,
+        merchantId: merchantId || undefined
+    };
+
     router.push({
       pathname: '/(app)/search-results',
-      params: { query: term.trim() }
+      params
     } as any);
   };
 
@@ -110,6 +119,7 @@ export default function SearchScreen() {
       case 'product': return 'pricetag-outline';
       case 'brand': return 'diamond-outline';
       case 'category': return 'grid-outline';
+      case 'merchant': return 'storefront-outline';
       default: return 'search-outline';
     }
   };
@@ -155,7 +165,7 @@ export default function SearchScreen() {
             <TouchableOpacity
               key={`${item.text}-${index}`}
               style={styles.suggestionItem}
-              onPress={() => handleSearchNavigation(item.text)}
+              onPress={() => handleSearchNavigation(item.text, item.id)}
             >
               <Ionicons 
                 name={getTypeIcon(item.type) as any} 
@@ -163,9 +173,18 @@ export default function SearchScreen() {
                 color="#94A3B8" 
                 style={{ marginRight: 12 }} 
               />
-              <Text style={styles.suggestionText} numberOfLines={1}>{item.text}</Text>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.suggestionText} numberOfLines={1}>{item.text}</Text>
+                {item.city && (
+                  <Text style={[styles.suggestionCity, { color: '#94A3B8' }]}>
+                    {` (${item.city})`}
+                  </Text>
+                )}
+              </View>
               <View style={[styles.suggestionBadge, { backgroundColor: theme.primary + '15' }]}>
-                <Text style={[styles.suggestionBadgeText, { color: theme.primary }]}>{item.type}</Text>
+                <Text style={[styles.suggestionBadgeText, { color: theme.primary }]}>
+                  {item.type === 'merchant' ? 'shop' : item.type}
+                </Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -307,10 +326,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F8FAFC',
   },
   suggestionText: {
-    flex: 1,
     fontSize: 15,
     color: '#0F172A',
     fontFamily: Typography.fontFamily.medium,
+  },
+  suggestionCity: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
+    marginLeft: 2,
   },
   suggestionBadge: {
     paddingHorizontal: 8,

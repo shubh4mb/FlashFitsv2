@@ -133,11 +133,13 @@ const ProductCard = ({
           <View style={styles.onlineDot} />
         )}
 
-        {/* Try & Buy Badge (Nearby Status) */}
-        {isNearby && (
-          <View style={[styles.tryBadge, { backgroundColor: theme.primary }]}>
+        {/* Try & Buy / Speed Badge (Nearby Status) */}
+        {(isNearby || product.isNearby) && (
+          <View style={[styles.tryBadge, { backgroundColor: isTriable ? theme.primary : "#22C55E" }]}>
             <Ionicons name="flash" size={8} color="#FFFFFF" />
-            <Text style={styles.tryBadgeText}>TRY & BUY</Text>
+            <Text style={styles.tryBadgeText}>
+              {isTriable ? "TRY AND BUY" : "DELIVER IN 30 MINUTES"}
+            </Text>
           </View>
         )}
       </View>
@@ -165,7 +167,7 @@ const ProductCard = ({
 
           {isTriable && (
             <View style={styles.tryContainer}>
-              <Text style={styles.tryText}>Try & Buy</Text>
+              <Text style={styles.tryText}>Try and Buy</Text>
             </View>
           )}
         </View>
@@ -211,21 +213,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tryBadge: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    backgroundColor: '#10B981',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  tryBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontFamily: Typography.fontFamily.bold,
-    textTransform: 'uppercase',
-  },
+
   discountBadge: {
     position: 'absolute',
     top: 10,
@@ -292,17 +280,20 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.medium,
   },
   tryContainer: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 6,
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 4,
+    borderRadius: 100,
+    marginLeft: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tryText: {
-    color: '#166534',
+    color: '#15803d',
     fontSize: 9,
     fontFamily: Typography.fontFamily.bold,
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   onlineDot: {
     position: 'absolute',
@@ -322,23 +313,23 @@ const styles = StyleSheet.create({
     left: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 8,
-    gap: 3,
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 100, // Minimal pill shape
+    gap: 4,
+    // Refined professional shadow
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   tryBadgeText: {
-    fontSize: 7,
+    fontSize: 8, // Slightly larger for readability
     fontFamily: Typography.fontFamily.bold,
     color: '#FFF',
-    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
 });
 

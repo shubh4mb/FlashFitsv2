@@ -167,6 +167,7 @@ export default function HomeScreen() {
               products={newArrivalsProducts}
               isLoading={loading}
               banner={banners['new_arrivals_banner']?.[0]}
+              sortBy="newest"
             />
 
             <ProductHorizontalSection
@@ -175,6 +176,7 @@ export default function HomeScreen() {
               products={trendingProducts}
               isLoading={loading}
               banner={banners['trending_banner']?.[0]}
+              sortBy="trending"
             />
 
             <ProductHorizontalSection
@@ -183,6 +185,7 @@ export default function HomeScreen() {
               products={recommendedProducts}
               isLoading={loading}
               banner={banners['recommended_banner']?.[0]}
+              sortBy="trending"
             />
 
             <View style={{ padding: 20 }}>

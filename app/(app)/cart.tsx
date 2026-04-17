@@ -33,8 +33,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 type CartTab = 'instant' | 'standard';
 
 export default function CartScreen() {
-  const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart } = useCart();
-  const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart } = useCourierCart();
+  const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart, applyOffer, removeOffer } = useCart();
+  const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart, applyOfferCourier, removeOfferCourier } = useCourierCart();
   const { selectedGender } = useGender();
   const { selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
@@ -119,22 +119,11 @@ export default function CartScreen() {
   // Standard (Courier) Cart Data
   const courierItems = courierCart?.items || [];
   const courierTotals = courierCart?.totals;
+  const courierAppliedOffers = courierCart?.appliedOffers;
   const courierTotal = courierTotals?.totalPayable || courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) + (courierItems.length > 0 ? 40 : 0);
 
-  // Auto-compute offers for standard cart
-  useEffect(() => {
-    if (activeTab === 'standard' && courierItems.length > 0) {
-      const sub = courierItems.reduce((a, i: any) => a + ((i.price || 0) * (i.quantity || 1)), 0);
-      const merchantTotals: Record<string, number> = {};
-      courierItems.forEach((item: any) => {
-        const mid = item.merchantId?._id || item.merchantId || 'unknown';
-        merchantTotals[mid] = (merchantTotals[mid] || 0) + ((item.price || 0) * (item.quantity || 1));
-      });
-      computeBestOffers({ items: courierItems, subtotal: sub, merchantTotals }, couponCode || undefined);
-    }
-  }, [courierItems.length, activeTab]);
-
   const currentMerchantCart = merchantCarts[activeIndex];
+
 
   if ((loading || courierLoading) && tbItems.length === 0 && courierItems.length === 0) {
     return (
@@ -302,6 +291,33 @@ export default function CartScreen() {
                         ))}
                       </View>
 
+                      {/* Offers Section */}
+                      {mOffers?.availableOffers?.length > 0 && (
+                        <View style={{ backgroundColor: '#fff', padding: 16, marginBottom: 12, borderRadius: 12 }}>
+                          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: '#0F172A' }}>Offers & Benefits</Text>
+                          {mOffers.availableOffers.map((offer: any) => {
+                            const isApplied = mOffers.appliedOffers?.some((o: any) => o._id === offer._id || o.offerId === offer._id);
+                            return (
+                              <View key={offer._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
+                                <View style={{ flex: 1, paddingRight: 16 }}>
+                                  <Text style={{ fontSize: 14, fontWeight: '600', color: theme.primary }}>{offer.couponCode || offer.title}</Text>
+                                  <Text style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>{offer.description || `Get ₹${offer.discountAmount} off`}</Text>
+                                </View>
+                                {isApplied ? (
+                                  <TouchableOpacity onPress={() => removeOffer(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#EF4444' }}>Remove</Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <TouchableOpacity onPress={() => applyOffer(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: theme.primary + '10', borderWidth: 1, borderColor: theme.primary }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: theme.primary }}>Apply</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
                       {/* Bill Summary */}
                       <View style={styles.premiumBill}>
                         <Text style={styles.billTitle}>Bill Summary</Text>
@@ -318,12 +334,12 @@ export default function CartScreen() {
 
                         <Text style={styles.upfrontTitle}>Payable Now (Upfront)</Text>
                         <View style={styles.billRow}><Text style={styles.billLabel}>Delivery & Return Charge</Text><Text style={styles.billValue}>₹{mOffers?.freeDelivery ? 0 : (mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge)}</Text></View>
-                        <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{mTotals?.serviceGST}</Text></View>
+                        <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{((mTotals?.serviceGST || 0) + deliveryTip * 0.18).toFixed(2)}</Text></View>
                         {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
                         
                         <View style={[styles.billRow, { marginTop: 12 }]}>
                           <Text style={styles.grandTotalLabel}>Upfront Total</Text>
-                          <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Number(mTotals?.totalUpfrontPayable + deliveryTip).toFixed(2)}</Text>
+                          <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{((mTotals?.totalUpfrontPayable || 0) + deliveryTip + deliveryTip * 0.18).toFixed(2)}</Text>
                         </View>
                       </View>
 
@@ -381,9 +397,38 @@ export default function CartScreen() {
                 ))}
               </View>
 
+              {/* Courier Offers Section */}
+              {courierAppliedOffers?.availableOffers?.length > 0 && (
+                <View style={{ backgroundColor: '#fff', padding: 16, marginBottom: 12, borderRadius: 12, marginHorizontal: 16 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: '#0F172A' }}>Offers & Benefits</Text>
+                  {courierAppliedOffers.availableOffers.map((offer: any) => {
+                    const isApplied = courierAppliedOffers.appliedOffers?.some((o: any) => o._id === offer._id || o.offerId === offer._id);
+                    return (
+                      <View key={offer._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
+                        <View style={{ flex: 1, paddingRight: 16 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: theme.primary }}>{offer.couponCode || offer.title}</Text>
+                          <Text style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>{offer.description || `Get ₹${offer.discountAmount} off`}</Text>
+                        </View>
+                        {isApplied ? (
+                          <TouchableOpacity onPress={() => removeOfferCourier(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: '#EF4444' }}>Remove</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity onPress={() => applyOfferCourier(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: theme.primary + '10', borderWidth: 1, borderColor: theme.primary }}>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: theme.primary }}>Apply</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
               <View style={styles.summaryCard}>
                 <Text style={styles.billTitle}>Order Summary</Text>
                 <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.mrpTotal || 0}</Text></View>
+                {((courierTotals?.discount || 0) - (courierAppliedOffers?.totalDiscount || 0)) > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Shop Discount</Text><Text style={[styles.billValue, { color: '#10B981' }]}>- ₹{(courierTotals?.discount || 0) - (courierAppliedOffers?.totalDiscount || 0)}</Text></View>}
+                {courierAppliedOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: theme.primary, fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{courierAppliedOffers.totalDiscount}</Text></View>}
                 <View style={styles.billRow}><Text style={styles.billLabel}>Delivery Fee</Text><Text style={styles.billValue}>₹{courierTotals?.courierDeliveryCharge || 40}</Text></View>
                 <View style={styles.billDivider} />
                 <View style={styles.billRow}>
@@ -406,7 +451,7 @@ export default function CartScreen() {
             <View>
               <Text style={styles.pinnedPrice}>
                 ₹{activeTab === 'instant' 
-                  ? Number((currentMerchantCart?.totals?.totalUpfrontPayable || 0) + deliveryTip).toFixed(0) 
+                  ? ((currentMerchantCart?.totals?.totalUpfrontPayable || 0) + deliveryTip + deliveryTip * 0.18).toFixed(0) 
                   : courierTotal}
               </Text>
               <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Pay Upfront' : 'Total Payable'}</Text>

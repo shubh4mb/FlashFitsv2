@@ -82,7 +82,30 @@ export const clearCourierCart = async () => {
     const res = await api.delete('user/courier-cart/clear');
     return res.data;
   } catch (error) {
-    // Auth errors are ignored gracefully
+    throw error;
+  }
+};
+
+/**
+ * Select an offer to apply to the courier cart
+ */
+export const selectOfferCourier = async (offerId: string, targetItemIds?: string[]) => {
+  try {
+    const res = await api.post('user/courier-cart/offers/select', { offerId, targetItemIds });
+    return res.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Deselect an offer from the courier cart
+ */
+export const deselectOfferCourier = async (offerId: string) => {
+  try {
+    const res = await api.post('user/courier-cart/offers/deselect', { offerId });
+    return res.data;
+  } catch (error) {
     throw error;
   }
 };

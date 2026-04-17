@@ -75,7 +75,7 @@ export function usePushNotifications() {
 
   const sendPushTokenToBackend = async (token: string) => {
     try {
-      await api.put('/users/push-token', { token });
+      await api.put('/user/push-token', { token });
       console.log("Push token sent to backend successfully.");
     } catch (error) {
       console.error("Failed to send push token to backend:", error);
