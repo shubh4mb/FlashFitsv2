@@ -1,22 +1,23 @@
 {
   "expo": {
-    "name": "flashfits-refactor",
-    "slug": "flashfits-refactor",
-    "version": "1.0.0",
+    "name": "FlashFits",
+    "slug": "FlashFits",
+    "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "flashfitsrefactor",
+    "icon": "./assets/images/favicon.png",
+    "scheme": "flashfits",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "bundleIdentifier": "com.flashfits.app",
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/favicon.png",
+        "backgroundImage": "./assets/images/favicon.png",
+        "monochromeImage": "./assets/images/favicon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -24,7 +25,7 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "package": "com.efron.flashfitsrefactor"
+      "package": "com.flashfits.app"
     },
     "web": {
       "bundler": "metro",
@@ -44,7 +45,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/favicon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -59,11 +60,12 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "https://a250-2405-201-f005-801c-44e8-b9f2-babc-1369.ngrok-free.app",
+      "BACKEND_URL": "https://ff-api-web-2.onrender.com",
       "router": {},
       "eas": {
-        "projectId": "dfa49865-a825-4feb-8a4c-a3e63421c995"
+        "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"
       }
-    }
+    },
+    "owner": "efron"
   }
 }

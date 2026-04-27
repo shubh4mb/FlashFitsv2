@@ -3,30 +3,31 @@ import CartItem from '@/components/common/CartItem';
 import Loader from '@/components/common/Loader';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
-import { GenderThemes } from '@/constants/theme';
+import { GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
 import { useGender } from '@/context/GenderContext';
 import { useOffers } from '@/context/OffersContext';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import logo from '@/assets/images/logo/logo.png';
 import {
   Animated,
   Dimensions,
   FlatList,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
-  RefreshControl
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -70,6 +71,8 @@ export default function CartScreen() {
 
   const handleCheckout = (merchantId: string) => {
     const merchantCart = cart?.merchantCarts?.find(mc => mc.merchantId === merchantId);
+    console.log(merchantCart, 'merchantCart');
+
     if (!merchantCart) return;
 
     if (!selectedAddress) {
@@ -159,7 +162,7 @@ export default function CartScreen() {
             onPress={() => setActiveTab('instant')}
           >
             <Ionicons name="flash" size={16} color={activeTab === 'instant' ? theme.primary : '#94A3B8'} />
-            <Text style={[styles.tabText, activeTab === 'instant' && { color: theme.primary, fontWeight: '800' }]}>Instant Cart</Text>
+            <Text style={[styles.tabText, activeTab === 'instant' && { color: theme.primary, fontWeight: '800' }]}>Try & Buy</Text>
             {merchantCarts.length > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'instant' ? theme.primary : '#CBD5E1' }]}><Text style={styles.badgeText}>{merchantCarts.length}</Text></View>}
           </TouchableOpacity>
 
@@ -176,9 +179,9 @@ export default function CartScreen() {
         {/* Merchant Hub (Logo Navigation) - Only for Instant Cart */}
         {activeTab === 'instant' && merchantCarts.length > 1 && (
           <View style={styles.merchantHub}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
               contentContainerStyle={[
                 styles.merchantHubContent,
                 merchantCarts.length <= 4 && { justifyContent: 'center', flex: 1 }
@@ -241,35 +244,44 @@ export default function CartScreen() {
 
                 return (
                   <View style={{ width: SCREEN_WIDTH }}>
-                    <ScrollView 
-                      showsVerticalScrollIndicator={false} 
+                    <ScrollView
+                      showsVerticalScrollIndicator={false}
                       contentContainerStyle={styles.slideContent}
                       refreshControl={
-                        <RefreshControl 
-                          refreshing={refreshing} 
-                          onRefresh={onRefresh} 
-                          colors={[theme.primary]} 
-                          tintColor={theme.primary} 
+                        <RefreshControl
+                          refreshing={refreshing}
+                          onRefresh={onRefresh}
+                          colors={[theme.primary]}
+                          tintColor={theme.primary}
                         />
                       }
                     >
                       {/* Merchant Header Branding */}
-                      <View style={styles.brandingHeader}>
+                      <TouchableOpacity 
+                        style={styles.brandingHeader}
+                        activeOpacity={0.7}
+                        onPress={() => router.push(`/merchant/${mc.merchantId}` as any)}
+                      >
                         <View style={styles.brandingInfo}>
                           <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName}</Text>
                           <View style={styles.brandingStatusRow}>
                             {isOffline ? (
-                              <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#FEE2E2' }]}>Offline</Text>
+                              <View style={{ gap: 4, alignItems: 'flex-start' }}>
+                                <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#FEE2E2' }]}>Shop Closed</Text>
+                                <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#ffffffff', fontSize: 8 }]}>Reopens tomorrow at 9 AM</Text>
+                              </View>
                             ) : !isEligible ? (
                               <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
                             ) : (
-                              <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>In Range</Text>
+                              <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>Try & Buy</Text>
                             )}
-                            <Text style={styles.brandingMins}>Delivery in {mc.deliveryDetails?.estimatedTime || '25-30'} mins</Text>
+                            {!isOffline && (
+                              <Text style={styles.brandingMins}>Delivery in {mc.deliveryDetails?.estimatedTime || '25-30'} mins</Text>
+                            )}
                           </View>
                         </View>
                         <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.brandingLogo} contentFit="contain" />
-                      </View>
+                      </TouchableOpacity>
 
                       {!isEligible && !isOffline && (
                         <View style={styles.warningBanner}>
@@ -321,25 +333,35 @@ export default function CartScreen() {
                       {/* Bill Summary */}
                       <View style={styles.premiumBill}>
                         <Text style={styles.billTitle}>Bill Summary</Text>
-                        <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.mrpTotal}</Text></View>
-                        {mTotals?.discount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Shop Discount</Text><Text style={[styles.billValue, { color: '#10B981' }]}>- ₹{mTotals?.discount}</Text></View>}
-                        {mOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: theme.primary, fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{mOffers.totalDiscount}</Text></View>}
-                        
+                         <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.mrpTotal}</Text></View>
+                         {mTotals?.discount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Shop Discount</Text><Text style={[styles.billValue, { color: '#10B981' }]}>- ₹{mTotals?.discount}</Text></View>}
+                         {mOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{mOffers.totalDiscount}</Text></View>}
+                         
+                         {(mTotals?.discount > 0 || mOffers?.totalDiscount > 0) && (
+                           <View style={[styles.billRow, { marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: '#F1F5F9' }]}>
+                             <Text style={[styles.billLabel, { fontWeight: '700', color: '#0F172A' }]}>Total after discounts</Text>
+                             <Text style={[styles.billValue, { fontWeight: '800' }]}>₹{((mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)}</Text>
+                           </View>
+                         )}
+
                         <View style={styles.billDivider} />
-                        
+
                         <View style={styles.payLaterSection}>
                           <Ionicons name="time-outline" size={14} color="#64748B" />
-                          <Text style={styles.payLaterText}>Pay ₹{(mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)} after you try the items</Text>
+                          <Text style={styles.payLaterText}>Keep what you love, pay only for those after trying, return the rest (Max: ₹{((mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)})</Text>
                         </View>
 
-                        <Text style={styles.upfrontTitle}>Payable Now (Upfront)</Text>
-                        <View style={styles.billRow}><Text style={styles.billLabel}>Delivery & Return Charge</Text><Text style={styles.billValue}>₹{mOffers?.freeDelivery ? 0 : (mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge)}</Text></View>
+                        <Text style={styles.upfrontTitle}>Payable Now</Text>
+                        <View style={styles.billRow}><Text style={styles.billLabel}>Delivery Charge (Partial refundable)</Text><Text style={styles.billValue}>₹{mOffers?.freeDelivery ? 0 : (mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge)}</Text></View>
+                        {mTotals?.totalReturnCharge > 0 && !mOffers?.freeDelivery && (
+                          <Text style={styles.billSubText}>₹{mTotals.totalReturnCharge} will be refunded if nothing is returned</Text>
+                        )}
                         <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{((mTotals?.serviceGST || 0) + deliveryTip * 0.18).toFixed(2)}</Text></View>
                         {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
-                        
+
                         <View style={[styles.billRow, { marginTop: 12 }]}>
-                          <Text style={styles.grandTotalLabel}>Upfront Total</Text>
-                          <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{((mTotals?.totalUpfrontPayable || 0) + deliveryTip + deliveryTip * 0.18).toFixed(2)}</Text>
+                          <Text style={styles.grandTotalLabel}>Total Payable Now</Text>
+                          <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Number(mTotals?.totalUpfrontPayable + deliveryTip).toFixed(2)}</Text>
                         </View>
                       </View>
 
@@ -358,8 +380,12 @@ export default function CartScreen() {
                           ))}
                         </View>
                       </View>
-
-                      <View style={{ height: 120 }} />
+                      
+                      <View style={styles.footer}>
+                        <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
+                        <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                        <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                      </View>
                     </ScrollView>
                   </View>
                 );
@@ -379,8 +405,8 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <ScrollView 
-              showsVerticalScrollIndicator={false} 
+            <ScrollView
+              showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.standardContent}
               refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} tintColor={theme.primary} />
@@ -390,7 +416,7 @@ export default function CartScreen() {
                 <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
                 <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
               </View>
-              
+
               <View style={styles.itemsContainer}>
                 {courierItems.map((item) => (
                   <CartItem key={item._id} item={item} isCourier={true} />
@@ -436,7 +462,12 @@ export default function CartScreen() {
                   <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{courierTotal}</Text>
                 </View>
               </View>
-              <View style={{ height: 120 }} />
+
+              <View style={styles.footer}>
+                <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
+                <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+              </View>
             </ScrollView>
           )
         )}
@@ -446,15 +477,15 @@ export default function CartScreen() {
       {(activeTab === 'instant' ? merchantCarts.length > 0 : courierItems.length > 0) && (
         <View style={[styles.pinnedContainer, { paddingBottom: insets.bottom + 16 }]}>
           <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} style={styles.pinnedGradient} />
-          
+
           <View style={styles.pinnedInner}>
             <View>
               <Text style={styles.pinnedPrice}>
-                ₹{activeTab === 'instant' 
-                  ? ((currentMerchantCart?.totals?.totalUpfrontPayable || 0) + deliveryTip + deliveryTip * 0.18).toFixed(0) 
+                ₹{activeTab === 'instant'
+                  ? Number((currentMerchantCart?.totals?.totalUpfrontPayable || 0) + deliveryTip).toFixed(0)
                   : courierTotal}
               </Text>
-              <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Pay Upfront' : 'Total Payable'}</Text>
+              <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
             </View>
 
             <TouchableOpacity
@@ -467,7 +498,7 @@ export default function CartScreen() {
               onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
             >
               <Text style={styles.checkoutBtnText}>
-                {activeTab === 'instant' ? 'Proceed to Try' : 'Checkout Now'}
+                {activeTab === 'instant' ? 'Proceed to Try & Buy' : 'Checkout Now'}
               </Text>
               <Feather name="arrow-right" size={20} color="#fff" />
             </TouchableOpacity>
@@ -509,7 +540,7 @@ const styles = StyleSheet.create({
   hubLogo: { width: '80%', height: '80%' },
   hubActiveLine: { position: 'absolute', bottom: 0, width: 28, height: 3, borderRadius: 2, backgroundColor: '#000' },
 
-  slideContent: { padding: 20, paddingBottom: 100 },
+  slideContent: { padding: 20, paddingBottom: 140 },
   brandingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   brandingInfo: { flex: 1 },
   brandingShopName: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
@@ -524,17 +555,18 @@ const styles = StyleSheet.create({
   warningActionText: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
 
   itemsContainer: { gap: 12, marginBottom: 24 },
-  
+
   premiumBill: { backgroundColor: '#fff', borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
   billTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
   billRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   billLabel: { fontSize: 14, color: '#64748B' },
   billValue: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  billSubText: { fontSize: 11, color: '#64748B', marginTop: -6, marginBottom: 10, fontWeight: '500', marginLeft: 0 },
   billDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
-  
+
   payLaterSection: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 12, marginBottom: 20 },
   payLaterText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
-  
+
   upfrontTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 12 },
   grandTotalLabel: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
   grandTotalValue: { fontSize: 20, fontWeight: '900' },
@@ -546,7 +578,7 @@ const styles = StyleSheet.create({
   tipPillText: { fontSize: 14, fontWeight: '700', color: '#64748B' },
 
   // Standard Cart
-  standardContent: { padding: 20 },
+  standardContent: { padding: 20, paddingBottom: 140 },
   standardBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F3E8FF', padding: 14, borderRadius: 16, marginBottom: 20 },
   standardBannerText: { fontSize: 13, fontWeight: '700', color: '#7C3AED' },
   summaryCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },
@@ -566,4 +598,31 @@ const styles = StyleSheet.create({
   emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   exploreButton: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16 },
   exploreText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  footer: {
+    alignItems: 'center',
+    marginTop: 28,
+  },
+  versionText: {
+    fontSize: 8,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#d1d5db',
+    letterSpacing: 2.5,
+    marginTop: 4,
+  },
+  taglineText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#d1d5db',
+    letterSpacing: 2.5,
+    marginTop: 4,
+    opacity: 0.6,
+    textShadowColor: 'rgba(209, 213, 219, 0.4)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  },
+  footerLogo: {
+    width: 140,
+    height: 60,
+    opacity: 0.25,
+  },
 });

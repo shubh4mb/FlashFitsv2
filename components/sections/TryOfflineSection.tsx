@@ -4,10 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography, GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import AvailableBrandsSection from './AvailableBrandsSection';
 
 const { width } = Dimensions.get('window');
 
-const TryOfflineSection = () => {
+const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     const { selectedGender } = useGender();
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
@@ -39,6 +40,10 @@ const TryOfflineSection = () => {
                     <Ionicons name="flash" size={14} color={theme.primary} />
                     <Text style={[styles.badgeText, { color: theme.primary }]}>FASHION IN A FLASH</Text>
                 </View>
+
+                <View style={styles.brandsWrapper}>
+                    <AvailableBrandsSection refreshKey={refreshKey} />
+                </View>
             </View>
         </View>
     );
@@ -49,10 +54,9 @@ export default TryOfflineSection;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        paddingHorizontal: 30,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingVertical: 100,
+        paddingVertical: 60,
     },
     content: {
         alignItems: 'center',
@@ -121,5 +125,9 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontFamily: Typography.fontFamily.bold,
         letterSpacing: 1.5,
+    },
+    brandsWrapper: {
+        width: width,
+        marginTop: 40,
     },
 });

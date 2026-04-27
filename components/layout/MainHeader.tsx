@@ -231,7 +231,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     <>
                                         <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} />
                                         <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
-                                            {tbAvailable ? 'Try in 60 mins' : (deliveryAvailable === false ? 'Delivery Unavailable' : 'FlashFits Delivery')}
+                                            {tbAvailable ? 'Try in 60 mins' : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery')}
                                         </Text>
                                     </>
                                 ) : (

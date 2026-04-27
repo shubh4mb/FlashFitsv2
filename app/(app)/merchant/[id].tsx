@@ -266,16 +266,20 @@ export default function MerchantDetailScreen() {
           </View>
 
           {merchantOffers.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 20, marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 14 }}>
+            <View style={{ marginTop: 20, gap: 12 }}>
               {merchantOffers.map((offer, idx) => (
                 <View key={offer._id || idx} style={[styles.couponTicket, { backgroundColor: theme.primary + '0A', borderColor: theme.primary + '20' }]}>
+                  {/* Semicircle Punches for Ticket Effect */}
+                  <View style={[styles.ticketPunchLeft, { backgroundColor: '#fff', borderColor: theme.primary + '20' }]} />
+                  <View style={[styles.ticketPunchRight, { backgroundColor: '#fff', borderColor: theme.primary + '20' }]} />
+                  
                   <View style={styles.couponLeft}>
                     <View style={[styles.couponDot, { backgroundColor: theme.primary }]} />
                     <View style={styles.couponMain}>
-                      <Text style={[styles.couponTitle, { color: theme.primary }]} numberOfLines={1}>
+                      <Text style={[styles.couponTitle, { color: theme.primary }]}>
                         {offer.title}
                       </Text>
-                      <Text style={styles.couponDesc} numberOfLines={1}>
+                      <Text style={styles.couponDesc}>
                         {offer.description || (offer.conditions?.minCartValue ? `Min. ₹${offer.conditions.minCartValue}` : 'Store Offer')}
                       </Text>
                     </View>
@@ -291,7 +295,7 @@ export default function MerchantDetailScreen() {
                   )}
                 </View>
               ))}
-            </ScrollView>
+            </View>
           )}
 
           <MerchantCollectionBanners merchantId={id as string} theme={theme} />
@@ -529,14 +533,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
   },
   couponTicket: {
-    height: 64,
-    minWidth: 180,
+    minHeight: 64,
+    width: '100%',
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
     paddingRight: 4,
+    paddingVertical: 10, // Added vertical padding for wrapped text
   },
   couponLeft: {
     flex: 1,
@@ -588,6 +593,28 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontFamily: Typography.fontFamily.bold,
     letterSpacing: 0.5,
+  },
+  ticketPunchLeft: {
+    position: 'absolute',
+    left: -8,
+    top: '50%',
+    marginTop: -8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    zIndex: 1,
+  },
+  ticketPunchRight: {
+    position: 'absolute',
+    right: -8,
+    top: '50%',
+    marginTop: -8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    zIndex: 1,
   },
   genderSwitcherContainer: {
     paddingHorizontal: 16,

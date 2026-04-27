@@ -13,6 +13,6 @@ export const fetchCollectionsHome = async (gender: string, lat?: number, lng?: n
     return response.data;
   } catch (error) {
     console.error('Error fetching home collections:', error);
-    return { data: [] };
+    return [];
   }
 };

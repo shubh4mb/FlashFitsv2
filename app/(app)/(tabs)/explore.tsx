@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import logo from '@/assets/images/logo/logo.png';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import { useAddress } from '@/context/AddressContext';
+import AvailableBrandsSection from '@/components/sections/AvailableBrandsSection';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = (SCREEN_WIDTH - 48) / 2; // 2-column grid with padding
@@ -144,49 +145,19 @@ export default function ExploreScreen() {
                 <Ionicons name="compass-outline" size={28} color={theme.primary} />
               </View>
               <View style={styles.infoBannerText}>
-                <Text style={styles.infoBannerTitle}>Explore Collection</Text>
+                <Text style={styles.infoBannerTitle}>Explore All Shops Collections</Text>
                 <Text style={styles.infoBannerSubtitle}>
-                  Shop from anywhere • Flat ₹40 delivery • No distance limit
+                  Shop Now • Flat ₹40 delivery 
                 </Text>
               </View>
             </View>
 
             {/* Available Brands Section */}
-            {merchants.length > 0 && (
-              <View style={styles.merchantsSection}>
-                <View style={styles.sectionHeader}>
-                  <View>
-                    <Text style={styles.sectionTitle}>Available Brands</Text>
-                    <Text style={styles.sectionSubtitle}>Ships nationwide via courier</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                </View>
-                <FlatList
-                  data={merchants}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  keyExtractor={(item) => item._id}
-                  contentContainerStyle={styles.merchantsList}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity 
-                      style={styles.merchantItem}
-                      activeOpacity={0.7}
-                      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true' } } as any)}
-                    >
-                      <View style={styles.merchantLogoContainer}>
-                        <Image 
-                          source={{ uri: item.logo?.url }} 
-                          style={styles.merchantLogo} 
-                          contentFit="contain"
-                          transition={200}
-                        />
-                      </View>
-                      <Text style={styles.merchantName} numberOfLines={1}>{item.shopName}</Text>
-                    </TouchableOpacity>
-                  )}
-                />
-              </View>
-            )}
+            <AvailableBrandsSection 
+              initialMerchants={merchants} 
+              refreshKey={refreshKey} 
+              hideExploreLink={true} 
+            />
           </>
         }
         ListEmptyComponent={
@@ -340,64 +311,5 @@ const styles = StyleSheet.create({
     color: '#d1d5db',
     letterSpacing: 2.5,
     marginTop: 4,
-  },
-  merchantsSection: {
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontFamily: Typography.fontFamily.bold,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 2,
-  },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: '#94A3B8',
-    fontFamily: Typography.fontFamily.medium,
-  },
-  merchantsList: {
-    paddingRight: 16,
-  },
-  merchantItem: {
-    alignItems: 'center',
-    marginRight: 20,
-    width: 72,
-  },
-  merchantLogoContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  merchantLogo: {
-    width: '60%',
-    height: '60%',
-  },
-  merchantName: {
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.medium,
-    color: '#475569',
-    textAlign: 'center',
-    width: '100%',
   },
 });

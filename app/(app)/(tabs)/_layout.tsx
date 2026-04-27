@@ -127,7 +127,7 @@ function TabsContainer() {
 
             if (route.name === 'index') {
               iconName = focused ? 'flash' : 'flash-outline';
-              label = '⚡ Try';
+              label = 'Try & Buy';
             } else if (route.name === 'explore') {
               iconName = focused ? 'compass' : 'compass-outline';
               label = 'Explore';

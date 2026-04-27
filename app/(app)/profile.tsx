@@ -81,7 +81,7 @@ export default function ProfileScreen() {
             title: 'About Us',
             subtitle: 'Our story and vision',
             icon: 'leaf-outline' as const,
-            onPress: () => {},
+            onPress: () => router.push('/(app)/about' as any),
         },
     ];
 

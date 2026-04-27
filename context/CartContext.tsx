@@ -47,6 +47,7 @@ interface MerchantCart {
     _id: string;
     shopName: string;
     isOnline: boolean;
+    reopenTime?: string;
   };
   items: CartItem[];
   deliveryDetails: any;

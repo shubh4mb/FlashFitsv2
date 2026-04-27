@@ -69,10 +69,10 @@ export default function HomeScreen() {
 
       
 
-      setTrendingProducts(trending || []);
-      setRecommendedProducts(recommended || []);
-      setNewArrivalsProducts(newArrivals || []);
-      setCollections(collectionData || []);
+      setTrendingProducts(Array.isArray(trending) ? trending : (trending?.products || trending?.data || []));
+      setRecommendedProducts(Array.isArray(recommended) ? recommended : (recommended?.products || recommended?.data || []));
+      setNewArrivalsProducts(Array.isArray(newArrivals) ? newArrivals : (newArrivals?.products || newArrivals?.data || []));
+      setCollections(Array.isArray(collectionData) ? collectionData : (collectionData?.collections || collectionData?.data || []));
       setMerchants(merchantsResponse?.merchants || merchantsResponse?.data?.merchants || []);
       setBanners(bannerData?.banners || bannerData || {});
     } catch (error: any) {
@@ -138,7 +138,13 @@ export default function HomeScreen() {
           </View>
         ) : tbAvailable === false ? (
           // ── Service Not Available or Offline ──
-          tbOffline ? <TryOfflineSection /> : <TryComingSoonSection />
+          <View>
+            {tbOffline ? (
+              <TryOfflineSection refreshKey={refreshKey} />
+            ) : (
+              <TryComingSoonSection refreshKey={refreshKey} />
+            )}
+          </View>
         ) : (
           // ── Service Available ──
           <>
@@ -147,12 +153,12 @@ export default function HomeScreen() {
             <OfferBanner />
             
             {/* Render Remote Collections */}
-            {collections.map((coll, idx) => (
+            {Array.isArray(collections) && collections.map((coll, idx) => (
               <ProductHorizontalSection
                 key={coll._id || idx}
                 title={coll.name}
                 subtitle={coll.description || 'Special curated list'}
-                products={coll.products}
+                products={coll.products || []}
                 isLoading={loading}
                 banner={coll.banner}
                 collectionId={coll._id}

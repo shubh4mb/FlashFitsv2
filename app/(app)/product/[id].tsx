@@ -56,6 +56,7 @@ const ProductDetailPage = () => {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isAdding, setIsAdding] = useState(false);
   const isWishlisted = product ? isInWishlist(product._id) : false;
 
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -220,6 +221,7 @@ const ProductDetailPage = () => {
     }
 
     try {
+      setIsAdding(true);
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
       const targetMerchantId = product.merchantId?._id || product.merchantId;
 
@@ -256,7 +258,8 @@ const ProductDetailPage = () => {
 
     } catch (error) {
       console.error('Failed to add to cart:', error);
-      Alert.alert('Error', 'Failed to add item to bag. Please try again.');
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -507,9 +510,28 @@ const ProductDetailPage = () => {
 
           {/* Related Products Section */}
           <View style={styles.relatedSection}>
-            <View style={styles.relatedHeader}>
-              <Text style={styles.sectionTitle}>You May Also Like</Text>
-              {loadingRelated && <ActivityIndicator size="small" color={theme.primary} />}
+            <View style={[styles.relatedHeader, { justifyContent: 'space-between', marginBottom: 16 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={[styles.sectionTitle, { marginBottom: 0, marginTop: 0 }]}>You May Also Like</Text>
+                {loadingRelated && <ActivityIndicator size="small" color={theme.primary} />}
+              </View>
+              
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
+                  <Text style={styles.toggleLabel}>Instant Try & Buy</Text>
+                  <Text style={styles.toggleSublabel}>Nearby stores only</Text>
+                </View>
+                <Switch
+                  value={showOnlyNearby}
+                  onValueChange={(val) => {
+                    setShowOnlyNearby(val);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  trackColor={{ false: '#CBD5E1', true: theme.primary }}
+                  thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showOnlyNearby ? theme.secondary : '#F8FAFC'}
+                  style={{ transform: [{ scale: 0.8 }] }}
+                />
+              </View>
             </View>
             
             {filteredRelated.length > 0 ? (
@@ -543,34 +565,6 @@ const ProductDetailPage = () => {
         </View>
       </Animated.ScrollView>
 
-      {/* Floating Toggle */}
-      {!loading && (
-        <Animated.View 
-          style={[
-            styles.floatingToggleContainer, 
-            { bottom: insets.bottom + 85 }
-          ]}
-        >
-          <BlurView intensity={80} tint="light" style={styles.floatingToggleBlur}>
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleTextCol}>
-                <Text style={styles.toggleLabel}>Instant Try & Buy</Text>
-                <Text style={styles.toggleSublabel}>Nearby stores only</Text>
-              </View>
-              <Switch
-                value={showOnlyNearby}
-                onValueChange={(val) => {
-                  setShowOnlyNearby(val);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }}
-                trackColor={{ false: '#CBD5E1', true: theme.primary }}
-                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showOnlyNearby ? theme.secondary : '#F8FAFC'}
-              />
-            </View>
-          </BlurView>
-        </Animated.View>
-      )}
-
       {/* Bottom Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
 
@@ -588,9 +582,10 @@ const ProductDetailPage = () => {
           </TouchableOpacity>
         </Animated.View>
         <TouchableOpacity
-          style={[styles.cartBtn, { backgroundColor: theme.primary }]}
+          style={[styles.cartBtn, { backgroundColor: theme.primary }, isAdding && { opacity: 0.8 }]}
           onPress={handleAddToCart}
           activeOpacity={0.85}
+          disabled={isAdding}
         >
           <LinearGradient
             colors={[theme.primary, theme.secondary]}
@@ -598,8 +593,14 @@ const ProductDetailPage = () => {
             end={{ x: 1, y: 0 }}
             style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
           />
-          <Ionicons name="bag-add-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-          <Text style={styles.cartBtnText}>ADD TO BAG</Text>
+          {isAdding ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Ionicons name="bag-add-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.cartBtnText}>ADD TO BAG</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
