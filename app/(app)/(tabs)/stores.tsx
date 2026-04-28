@@ -7,8 +7,12 @@ import {
   TouchableOpacity, 
   Dimensions,
   RefreshControl,
-  Switch
+  Switch,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import Loader from '@/components/common/Loader';
 import { Image } from 'expo-image';
@@ -21,6 +25,7 @@ import { GenderThemes, Typography } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
 import { ThemedView } from '@/components/common/themed-view';
 import Skeleton from '@/components/common/Skeleton';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 100) / 4; // 4 columns with 20px horizontal padding and 20px gap
@@ -55,6 +60,13 @@ export default function StoresScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [instantTry, setInstantTry] = useState(false);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
 
   useEffect(() => {
     loadMerchants();
@@ -112,12 +124,15 @@ export default function StoresScreen() {
     <ThemedView style={styles.container}>
       <MainHeader onHeaderLayout={setHeaderHeight} hideCategories={true} />
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} />
-        }
+      <PremiumRefreshWrapper
+        scrollY={scrollY}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      >
+        <Animated.ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          scrollEventThrottle={16}
       >
         {headerHeight > 0 && <View style={{ height: headerHeight }} />}
         
@@ -147,7 +162,7 @@ export default function StoresScreen() {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.title}>{instantTry ? 'Premium Fast Brands' : 'All Brands'}</Text>
+          <Text style={styles.title}>{instantTry ? 'Premium Fast Stores' : 'All Stores'}</Text>
           
           <View style={styles.grid}>
             {loading && !refreshing ? (
@@ -185,19 +200,15 @@ export default function StoresScreen() {
                     <Text style={styles.shopName} numberOfLines={1}>
                       {merchant.shopName}
                     </Text>
-                    {merchant.isOnline && (
-                      <View style={styles.statusBadge}>
-                        <View style={[styles.statusDotSmall, { backgroundColor: '#22C55E' }]} />
-                        <Text style={[styles.statusTextSmall, { color: '#22C55E' }]}>Online</Text>
-                      </View>
-                    )}
+
                   </View>
                 </TouchableOpacity>
               ))
             )}
           </View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+    </PremiumRefreshWrapper>
     </ThemedView>
   );
 }
@@ -333,23 +344,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    gap: 4,
-  },
-  statusDotSmall: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
-  statusTextSmall: {
-    fontSize: 8,
-    fontFamily: Typography.fontFamily.bold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-  },
+
 });

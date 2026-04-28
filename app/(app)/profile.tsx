@@ -16,12 +16,14 @@ import { useAuth } from '@/context/AuthContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import Loader from '@/components/common/Loader';
+import { useAlert } from '@/context/AlertContext';
 
 export default function ProfileScreen() {
     const router = useRouter();
     const { signOut } = useAuth();
     const { selectedGender } = useGender();
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+    const showAlert = useAlert();
 
     const [loading, setLoading] = useState(true);
     const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
@@ -42,10 +44,11 @@ export default function ProfileScreen() {
     };
 
     const handleLogout = () => {
-        Alert.alert(
-            'Confirm Logout',
-            'Are you sure you want to logout?',
-            [
+        showAlert({
+            title: 'Confirm Logout',
+            message: 'Are you sure you want to logout?',
+            type: 'warning',
+            buttons: [
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Logout',
@@ -55,7 +58,7 @@ export default function ProfileScreen() {
                     },
                 },
             ]
-        );
+        });
     };
 
     const menuItems = [

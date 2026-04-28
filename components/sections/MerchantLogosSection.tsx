@@ -99,7 +99,7 @@ export default function MerchantLogosSection({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <ThemedText type="subtitle" style={styles.title}>Brands</ThemedText>
+        <ThemedText type="subtitle" style={styles.title}>Stores</ThemedText>
         <TouchableOpacity onPress={() => router.push('/stores')}>
           <Text style={[styles.viewAll, { color: theme.primary }]}>View All</Text>
         </TouchableOpacity>

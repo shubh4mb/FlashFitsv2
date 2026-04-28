@@ -1,30 +1,31 @@
-import MainHeader from '@/components/layout/MainHeader';
-import ProductCard from '@/components/common/ProductCard';
-import { useGender } from '@/context/GenderContext';
 import { fetchCourierProducts } from '@/api/products';
-import { Typography, GenderThemes } from '@/constants/theme';
-import { Product } from '@/utils/recentlyViewed';
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Animated,
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import logo from '@/assets/images/logo/logo.png';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import ProductCard from '@/components/common/ProductCard';
+import MainHeader from '@/components/layout/MainHeader';
+import { GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
-import AvailableBrandsSection from '@/components/sections/AvailableBrandsSection';
+import { useGender } from '@/context/GenderContext';
+import { Product } from '@/utils/recentlyViewed';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  RefreshControl,
+} from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = (SCREEN_WIDTH - 48) / 2; // 2-column grid with padding
+const CARD_WIDTH = (SCREEN_WIDTH - 34) / 2; // 2-column grid with reduced padding (12 left + 12 right + 10 gap)
 
 interface Merchant {
   _id: string;
@@ -64,7 +65,7 @@ export default function ExploreScreen() {
 
       const data = await fetchCourierProducts(apiGender, pageNum, lat, lng);
       const fetched = data?.products || [];
-      
+
       if (append) {
         setProducts(prev => [...prev, ...fetched]);
       } else {
@@ -93,6 +94,12 @@ export default function ExploreScreen() {
     setRefreshing(false);
   };
 
+  const handleScrollEndDrag = (event: any) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
+
   const loadMore = () => {
     if (!loadingMore && hasMore) {
       loadProducts(page + 1, true);
@@ -101,10 +108,10 @@ export default function ExploreScreen() {
 
   const renderProduct = ({ item }: { item: Product }) => (
     <View style={styles.cardWrapper}>
-      <ProductCard 
-        product={item} 
-        width={CARD_WIDTH} 
-        containerStyle={{ marginRight: 0 }} 
+      <ProductCard
+        product={item}
+        width={CARD_WIDTH}
+        containerStyle={{ marginRight: 0 }}
         fromExplore={true}
         isNearby={item.isNearby}
         isOnline={item.isOnline}
@@ -116,28 +123,23 @@ export default function ExploreScreen() {
     <View style={styles.container}>
       <MainHeader scrollY={scrollY} onHeaderLayout={setHeaderHeight} refreshKey={refreshKey} />
 
-      <CustomRefreshControl
+      <PremiumRefreshWrapper
         scrollY={scrollY}
         refreshing={refreshing}
         onRefresh={onRefresh}
-      />
-
-      <Animated.FlatList
-        data={products}
-        renderItem={renderProduct}
-        keyExtractor={(item) => item._id || String(Math.random())}
-        numColumns={2}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.listContent, { paddingTop: headerHeight || 0 }]}
-        columnWrapperStyle={styles.columnWrapper}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        scrollEventThrottle={16}
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.5}
-        ListHeaderComponent={
+      >
+        <Animated.FlatList
+          data={products}
+          renderItem={renderProduct}
+          keyExtractor={(item) => item._id || String(Math.random())}
+          numColumns={2}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.listContent, { paddingTop: headerHeight || 0 }]}
+          columnWrapperStyle={styles.columnWrapper}
+          scrollEventThrottle={16}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListHeaderComponent={
           <>
             {/* Courier Info Banner */}
             <View style={styles.infoBanner}>
@@ -145,19 +147,48 @@ export default function ExploreScreen() {
                 <Ionicons name="compass-outline" size={28} color={theme.primary} />
               </View>
               <View style={styles.infoBannerText}>
-                <Text style={styles.infoBannerTitle}>Explore All Shops Collections</Text>
+                <Text style={styles.infoBannerTitle}>Explore Collection</Text>
                 <Text style={styles.infoBannerSubtitle}>
-                  Shop Now • Flat ₹40 delivery 
+                  Shop from anywhere • Flat ₹40 delivery • No distance limit
                 </Text>
               </View>
             </View>
 
             {/* Available Brands Section */}
-            <AvailableBrandsSection 
-              initialMerchants={merchants} 
-              refreshKey={refreshKey} 
-              hideExploreLink={true} 
-            />
+            {merchants.length > 0 && (
+              <View style={styles.merchantsSection}>
+                <View style={styles.sectionHeader}>
+                  <View>
+                    <Text style={styles.sectionTitle}>Available Stores</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </View>
+                <FlatList
+                  data={merchants}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyExtractor={(item) => item._id}
+                  contentContainerStyle={styles.merchantsList}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.merchantItem}
+                      activeOpacity={0.7}
+                      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true' } } as any)}
+                    >
+                      <View style={styles.merchantLogoContainer}>
+                        <Image
+                          source={{ uri: item.logo?.url }}
+                          style={styles.merchantLogo}
+                          contentFit="contain"
+                          transition={200}
+                        />
+                      </View>
+                      <Text style={styles.merchantName} numberOfLines={1}>{item.shopName}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            )}
           </>
         }
         ListEmptyComponent={
@@ -196,6 +227,7 @@ export default function ExploreScreen() {
           </>
         }
       />
+    </PremiumRefreshWrapper>
     </View>
   );
 }
@@ -206,7 +238,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   listContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingBottom: 20,
   },
   columnWrapper: {
@@ -311,5 +343,64 @@ const styles = StyleSheet.create({
     color: '#d1d5db',
     letterSpacing: 2.5,
     marginTop: 4,
+  },
+  merchantsSection: {
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontFamily: Typography.fontFamily.medium,
+  },
+  merchantsList: {
+    paddingRight: 16,
+  },
+  merchantItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    width: 72,
+  },
+  merchantLogoContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  merchantLogo: {
+    width: '60%',
+    height: '60%',
+  },
+  merchantName: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#475569',
+    textAlign: 'center',
+    width: '100%',
   },
 });

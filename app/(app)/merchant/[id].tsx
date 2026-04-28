@@ -21,8 +21,14 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Animated,
+  RefreshControl,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import Loader from '@/components/common/Loader';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
@@ -48,6 +54,42 @@ export default function MerchantDetailScreen() {
   const [products, setProducts] = useState<any[]>([]);
   const [merchantOffers, setMerchantOffers] = useState<any[]>([]);
   const [localSelectedGender, setLocalSelectedGender] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const lat = selectedAddress?.location?.coordinates?.[1] || userLocation?.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] || userLocation?.longitude;
+      const [mRes, pRes, oRes] = await Promise.all([
+        fetchMerchantById(id as string),
+        fetchProductsByMerchant(id as string, lat, lng),
+        getMerchantOffers(id as string)
+      ]);
+      
+      const merchantData = mRes?.merchant || mRes?.data?.merchant;
+      setMerchant(merchantData);
+      setProducts(pRes?.products || pRes?.data || []);
+      setMerchantOffers(oRes || []);
+    } catch (error) {
+      console.error('Error fetching merchant details or products:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+  };
+
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
 
   const distanceInfo = useMemo(() => {
     if (!merchant || !selectedAddress?.location?.coordinates) {
@@ -71,25 +113,6 @@ export default function MerchantDetailScreen() {
 
   useEffect(() => {
     if (!id) return;
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [mRes, pRes, oRes] = await Promise.all([
-          fetchMerchantById(id),
-          fetchProductsByMerchant(id),
-          getMerchantOffers(id as string)
-        ]);
-        
-        const merchantData = mRes?.merchant || mRes?.data?.merchant;
-        setMerchant(merchantData);
-        setProducts(pRes?.products || pRes?.data || []);
-        setMerchantOffers(oRes || []);
-      } catch (error) {
-        console.error('Error fetching merchant details or products:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, [id]);
 
@@ -179,6 +202,13 @@ export default function MerchantDetailScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
 
+
+      <PremiumRefreshWrapper
+        scrollY={scrollY}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      >
+
       {/* Top Action Bar */}
       <View style={[styles.topActionBar, { paddingTop: insets.top + 4 }]}>
         <TouchableOpacity onPress={handleBack} style={styles.iconCircle}>
@@ -199,10 +229,11 @@ export default function MerchantDetailScreen() {
         </View>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          scrollEventThrottle={16}
+        >
         {/* Hero Section */}
         <View style={styles.heroContainer}>
           <Image 
@@ -377,7 +408,8 @@ export default function MerchantDetailScreen() {
             <Text style={styles.emptyText}>No products available for {localSelectedGender}</Text>
           </View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
+    </PremiumRefreshWrapper>
     </View>
   );
 }

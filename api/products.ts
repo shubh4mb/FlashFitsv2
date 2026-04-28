@@ -46,9 +46,11 @@ export const fetchBanners = async () => {
     }
 };
 
-export const productDetailPage = async (id: string) => {
+export const productDetailPage = async (id: string, lat?: number, lng?: number) => {
     try {
-        const response = await api.get(`user/products/${id}`);
+        const response = await api.get(`user/products/${id}`, {
+            params: { lat, lng }
+        });
         return response.data;
     } catch (error) {
         console.error('Error fetching product:', error);
@@ -124,10 +126,10 @@ export const fetchRelatedProducts = async (id: string, lat?: number, lng?: numbe
     }
 };
 
-export const fetchProductsByCollection = async (merchantId: string, collectionId: string) => {
+export const fetchProductsByCollection = async (merchantId: string, collectionId: string, lat?: number, lng?: number) => {
     try {
         const res = await api.get('user/products/collection', {
-            params: { merchantId, collectionId }
+            params: { merchantId, collectionId, lat, lng }
         });
         return res.data;
     } catch (error) {
@@ -135,9 +137,12 @@ export const fetchProductsByCollection = async (merchantId: string, collectionId
         throw error;
     }
 };
-export const fetchProductsByMerchant = async (merchantId: string) => {
+
+export const fetchProductsByMerchant = async (merchantId: string, lat?: number, lng?: number) => {
     try {
-        const res = await api.get(`user/products/merchant/${merchantId}`);
+        const res = await api.get(`user/products/merchant/${merchantId}`, {
+            params: { lat, lng }
+        });
         return res.data;
     } catch (error) {
         console.error('Error fetching merchant products:', error);

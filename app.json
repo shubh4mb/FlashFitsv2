@@ -60,7 +60,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "https://ff-api-web-2.onrender.com",
+      "BACKEND_URL": "https://5615-2405-201-f005-8083-1cc0-f2cc-620-d15a.ngrok-free.app",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

@@ -14,7 +14,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Loader from '@/components/common/Loader';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { useCourierCart } from '@/context/CourierCartContext';
+import { useToast } from '@/context/AlertContext';
 import {
   Alert,
   Animated,
@@ -29,8 +31,10 @@ import {
   Switch,
   ActivityIndicator,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 520;
@@ -47,6 +51,7 @@ const ProductDetailPage = () => {
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { cart, addToCart: addItemToCart } = useCart();
   const { courierCart, addToCourierCart: addItemToCourierCart } = useCourierCart();
+  const showToast = useToast();
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -64,11 +69,39 @@ const ProductDetailPage = () => {
   const [showAddedFeedback, setShowAddedFeedback] = useState(false);
   const feedbackOpacity = useRef(new Animated.Value(0)).current;
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const data = await productDetailPage(id as string, lat, lng);
+      setProduct(data);
+      if (data?._id) {
+        const relData = await fetchRelatedProducts(data._id, lat, lng);
+        setRelatedProducts(relData || []);
+      }
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleScrollEndDrag = (event: any) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
+
   useEffect(() => {
     const fetchProduct = async () => {
       try {
         setLoading(true);
-        const data = await productDetailPage(id as string);
+        const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+        const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+        const data = await productDetailPage(id as string, lat, lng);
         setProduct(data);
 
         if (data.variants?.[0]) {
@@ -163,34 +196,7 @@ const ProductDetailPage = () => {
     }
   };
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; // Radius of the earth in km
-    const dLat = deg2rad(lat2 - lat1);
-    const dLon = deg2rad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Distance in km
-  };
-
-  const deg2rad = (deg: number) => deg * (Math.PI / 180);
-
-  const productIsNearby = useMemo(() => {
-    if (!product?.merchantId?.address?.location?.coordinates) return false;
-    
-    // Use selected address or user current location
-    const userLat = selectedAddress?.location?.coordinates?.[1] || userLocation?.latitude;
-    const userLng = selectedAddress?.location?.coordinates?.[0] || userLocation?.longitude;
-    
-    if (!userLat || !userLng) return false;
-
-    const [merchLng, merchLat] = product.merchantId.address.location.coordinates;
-    const dist = calculateDistance(userLat as number, userLng as number, merchLat, merchLng);
-    
-    return dist <= 7; // 7km threshold for Try & Buy
-  }, [product, selectedAddress, userLocation]);
+  const productIsNearby = product?.isInstantBuyable || false;
 
   const showFeedback = () => {
     setShowAddedFeedback(true);
@@ -216,7 +222,7 @@ const ProductDetailPage = () => {
   const handleAddToCart = async () => {
     if (!selectedSize) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      alert('Please select a size');
+      showToast({ message: 'Please select a size', type: 'warning' });
       return;
     }
 
@@ -258,6 +264,7 @@ const ProductDetailPage = () => {
 
     } catch (error) {
       console.error('Failed to add to cart:', error);
+      showToast({ message: 'Failed to add item to bag. Please try again.', type: 'error' });
     } finally {
       setIsAdding(false);
     }
@@ -292,6 +299,12 @@ const ProductDetailPage = () => {
 
   return (
     <View style={styles.container}>
+
+      <PremiumRefreshWrapper
+        scrollY={scrollY}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      >
       {/* Animated Blur Header */}
       <Animated.View style={[styles.header, { opacity: headerOpacity, paddingTop: insets.top }]}>
         <View style={styles.headerContent}>
@@ -308,12 +321,11 @@ const ProductDetailPage = () => {
         <View style={{ width: 40 }} />
       </View>
 
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-        scrollEventThrottle={16}
-        bounces
-      >
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          bounces
+        >
         {/* Image Gallery with Parallax */}
         <View style={styles.imageGallery}>
           <ScrollView
@@ -564,6 +576,7 @@ const ProductDetailPage = () => {
           <View style={styles.spacer} />
         </View>
       </Animated.ScrollView>
+    </PremiumRefreshWrapper>
 
       {/* Bottom Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>

@@ -19,7 +19,8 @@ import { GenderThemes, Typography } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
 import Skeleton from '@/components/common/Skeleton';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
-import { Animated, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import { Animated, NativeSyntheticEvent, NativeScrollEvent, RefreshControl } from 'react-native';
 
 const CategoriesSkeleton = ({ headerHeight }: { headerHeight: number }) => (
   <View style={styles.container}>
@@ -214,6 +215,11 @@ export default function CategoriesScreen() {
 
         {/* Right Content - 2 Column Grid */}
         <View style={styles.productsContainer}>
+        <PremiumRefreshWrapper
+          scrollY={scrollY}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        >
           <Animated.FlatList
             data={subCategories}
             keyExtractor={(item) => item._id}
@@ -222,11 +228,6 @@ export default function CategoriesScreen() {
             showsVerticalScrollIndicator={false}
             columnWrapperStyle={styles.cardRow}
             contentContainerStyle={styles.listContent}
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: true }
-            )}
-            onScrollEndDrag={handleScrollEndDrag}
             scrollEventThrottle={16}
             ListHeaderComponent={() => (
               <Text style={styles.sectionTitle}>
@@ -250,16 +251,13 @@ export default function CategoriesScreen() {
                     style={[styles.productImage, { height: cardSize }]} 
                     contentFit="cover"
                   />
-                  {item.isTriable && (
-                    <View style={styles.triableBadge}>
-                      <Text style={styles.triableText}>Try at Home</Text>
-                    </View>
-                  )}
+
                 </View>
                 <Text style={styles.productTitle} numberOfLines={2}>{item.name}</Text>
               </TouchableOpacity>
             )}
           />
+        </PremiumRefreshWrapper>
         </View>
       </View>
     </ThemedView>
@@ -352,23 +350,7 @@ const styles = StyleSheet.create({
     color: '#334155',
     fontFamily: Typography.fontFamily.serifSemiBold
   },
-  triableBadge: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    paddingVertical: 3,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-  },
-  triableText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-    textAlign: 'center',
-    fontFamily: Typography.fontFamily.bold,
-    letterSpacing: 0.2,
-  },
+
   emptyContainer: {
     flex: 1,
     alignItems: 'center',

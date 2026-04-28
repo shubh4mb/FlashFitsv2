@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAlert, useToast } from '@/context/AlertContext';
 
 type OrderStep = { id: string; label: string; icon: string; completed: boolean };
 
@@ -64,6 +65,8 @@ export default function CourierTrackingScreen() {
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const showAlert = useAlert();
+  const showToast = useToast();
 
   const [order, setOrder] = useState<OrderData | null>(null);
   const [steps, setSteps] = useState<OrderStep[]>(statusToSteps());
@@ -97,10 +100,11 @@ export default function CourierTrackingScreen() {
   };
 
   const handleCancel = () => {
-    Alert.alert(
-      'Cancel Order',
-      'Are you sure you want to cancel this order?',
-      [
+    showAlert({
+      title: 'Cancel Order',
+      message: 'Are you sure you want to cancel this order?',
+      type: 'warning',
+      buttons: [
         { text: 'No', style: 'cancel' },
         {
           text: 'Yes, Cancel',
@@ -109,18 +113,23 @@ export default function CourierTrackingScreen() {
             setCancelling(true);
             try {
               await cancelCourierOrder(orderId!);
-              Alert.alert('Order Cancelled', 'Your courier order has been cancelled.', [
-                { text: 'OK', onPress: () => router.replace('/orders' as any) },
-              ]);
+              showAlert({
+                title: 'Order Cancelled',
+                message: 'Your courier order has been cancelled.',
+                type: 'success',
+                buttons: [
+                  { text: 'OK', onPress: () => router.replace('/orders' as any) },
+                ]
+              });
             } catch (err: any) {
-              Alert.alert('Error', err.response?.data?.message || 'Failed to cancel order.');
+              showToast({ message: err.response?.data?.message || 'Failed to cancel order.', type: 'error' });
             } finally {
               setCancelling(false);
             }
           },
         },
       ]
-    );
+    });
   };
 
   const status = order?.orderStatus?.toLowerCase() || '';

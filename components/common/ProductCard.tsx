@@ -134,7 +134,7 @@ const ProductCard = ({
         )}
 
         {/* Try & Buy / Speed Badge (Nearby Status) */}
-        {(isNearby || product.isNearby) && (
+        {(product.isInstantBuyable || isNearby || product.isNearby) && (
           <View style={[styles.tryBadge, { backgroundColor: isTriable ? theme.primary : "#22C55E" }]}>
             <Ionicons name="flash" size={8} color="#FFFFFF" />
             <Text style={styles.tryBadgeText}>
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     width: '100%',
-    height: 180,
+    height: 220,
     position: 'relative',
     backgroundColor: '#F8FAFC',
   },

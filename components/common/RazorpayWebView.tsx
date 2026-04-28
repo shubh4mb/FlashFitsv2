@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { View, Modal, ActivityIndicator, StyleSheet, Platform, Linking, Alert, SafeAreaView, TouchableOpacity } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
+import { useToast } from '@/context/AlertContext';
 
 export interface RazorpayOptions {
   key: string;
@@ -38,6 +39,7 @@ export default function RazorpayWebView({
 }: RazorpayWebViewProps) {
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
+  const showToast = useToast();
 
   if (!visible || !options) {
     return null;
@@ -124,7 +126,7 @@ export default function RazorpayWebView({
       if (supported) {
         Linking.openURL(url);
       } else {
-        Alert.alert('App not found', 'No application found to handle this payment method.');
+        showToast({ message: 'No application found to handle this payment method.', type: 'error' });
       }
     }).catch(err => console.error('An error occurred', err));
     

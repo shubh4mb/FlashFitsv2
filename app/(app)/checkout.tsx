@@ -15,7 +15,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, distanceInMeters } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { getAddresses, Address } from '@/api/address';
@@ -24,6 +24,7 @@ import AddressSelectorModal from '@/components/common/AddressSelectorModal';
 import CouponInput from '@/components/common/CouponInput';
 import { useOffers } from '@/context/OffersContext';
 import RazorpayWebView from '@/components/common/RazorpayWebView';
+import { useAlert, useToast } from '@/context/AlertContext';
 
 export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
@@ -33,9 +34,11 @@ export default function CheckoutScreen() {
 
   const { cart, refreshCart, deliveryTip, setDeliveryTip } = useCart();
   const { courierCart, refreshCart: refreshCourierCart, clearCart: clearCourierCart } = useCourierCart();
-  const { selectedAddress, setSelectedAddress, locationAddress, locationLoading } = useAddress();
+  const { selectedAddress, setSelectedAddress, locationAddress, locationLoading, userLocation } = useAddress();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const showAlert = useAlert();
+  const showToast = useToast();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [chosenAddress, setChosenAddress] = useState<Address | null>(selectedAddress);
@@ -146,9 +149,28 @@ export default function CheckoutScreen() {
     load();
   }, []);
 
+  const showMismatch = (() => {
+    if (!chosenAddress || !userLocation || !locationAddress || locationLoading) return false;
+    
+    let addrLat, addrLng;
+    if (chosenAddress.location?.coordinates) {
+      [addrLng, addrLat] = chosenAddress.location.coordinates;
+    } else if ((chosenAddress as any).latitude !== undefined && (chosenAddress as any).longitude !== undefined) {
+      addrLat = (chosenAddress as any).latitude;
+      addrLng = (chosenAddress as any).longitude;
+    }
+
+    if (addrLat !== undefined && addrLng !== undefined) {
+      const dist = distanceInMeters(userLocation.latitude, userLocation.longitude, Number(addrLat), Number(addrLng));
+      return dist > 100;
+    }
+    
+    return true; 
+  })();
+
   const handlePlaceOrder = async () => {
     if (!chosenAddress) {
-      Alert.alert('Address Required', 'Please select a delivery address.');
+      showToast({ message: 'Please select a delivery address.', type: 'warning' });
       return;
     }
 
@@ -157,7 +179,11 @@ export default function CheckoutScreen() {
       if (isTB) {
         // === VALIDATE MERCHANT STATUS ===
         if (merchantCart?.merchantDetails?.isOnline === false) {
-          Alert.alert('Store Offline', 'This merchant just switched offline. Please remove items or try again later.');
+          showAlert({ 
+            title: 'Store Offline', 
+            message: 'This merchant just switched offline. Please remove items or try again later.',
+            type: 'error'
+          });
           setPlacing(false);
           return;
         }
@@ -168,14 +194,16 @@ export default function CheckoutScreen() {
         if (result.isFreeOrder) {
           // Free order — already placed, no payment needed
           await refreshCart();
-          Alert.alert(
-            '✅ Order Placed!',
-            `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
-            [{
+          showAlert({
+            title: '✅ Order Placed!',
+            message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
+            type: 'success',
+            buttons: [{
               text: 'Track Order',
               onPress: () => router.replace({ pathname: '/order-tracking' as any, params: { orderId: result.orderId } }),
             }]
-          );
+          });
+
           Notifications.scheduleNotificationAsync({
             content: {
               title: "Order Placed Successfully! 🛍️",
@@ -215,14 +243,16 @@ export default function CheckoutScreen() {
 
         if (verifyResult.success) {
           await refreshCart();
-          Alert.alert(
-            '✅ Order Placed!',
-            `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
-            [{
+          showAlert({
+            title: '✅ Order Placed!',
+            message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
+            type: 'success',
+            buttons: [{
               text: 'Track Order',
               onPress: () => router.replace({ pathname: '/order-tracking' as any, params: { orderId: result.orderId } }),
             }]
-          );
+          });
+
           Notifications.scheduleNotificationAsync({
             content: {
               title: "Order Placed Successfully! 🛍️",
@@ -247,7 +277,11 @@ export default function CheckoutScreen() {
         for (const mid of merchantIds) {
           const item = itemsByMerchant[mid][0];
           if (item?.merchantId?.isOnline === false) {
-            Alert.alert('Store Offline', `One or more stores (including ${item.merchantId?.shopName || 'a merchant'}) are currently offline. Please remove their products from cart to continue.`);
+            showAlert({
+              title: 'Store Offline',
+              message: `One or more stores (including ${item.merchantId?.shopName || 'a merchant'}) are currently offline. Please remove their products from cart to continue.`,
+              type: 'error'
+            });
             setPlacing(false);
             return;
           }
@@ -303,10 +337,11 @@ export default function CheckoutScreen() {
 
         if (successCount > 0) {
           await clearCourierCart();
-          Alert.alert(
-            'Orders Placed!',
-            `${successCount} courier order${successCount > 1 ? 's' : ''} placed successfully.\nFlat ₹40 delivery per order.`
-          );
+          showAlert({
+            title: 'Orders Placed!',
+            message: `${successCount} courier order${successCount > 1 ? 's' : ''} placed successfully.\nFlat ₹40 delivery per order.`,
+            type: 'success'
+          });
           Notifications.scheduleNotificationAsync({
             content: {
               title: "Orders Placed Successfully! 🛍️",
@@ -316,7 +351,7 @@ export default function CheckoutScreen() {
             trigger: null,
           });
         } else {
-          Alert.alert('Error', 'Failed to place courier orders. Please try again.');
+          showToast({ message: 'Failed to place courier orders. Please try again.', type: 'error' });
         }
       }
     } catch (error: any) {
@@ -326,7 +361,7 @@ export default function CheckoutScreen() {
         return;
       }
       const msg = error.response?.data?.message || error.message || 'Something went wrong';
-      Alert.alert('Order Failed', msg);
+      showToast({ message: msg, type: 'error' });
     } finally {
       setPlacing(false);
     }
@@ -418,7 +453,7 @@ export default function CheckoutScreen() {
         </View>
 
         {/* Location Mismatch Tip */}
-        {chosenAddress && locationAddress && !locationLoading && (
+        {showMismatch && (
           <View style={styles.mismatchCard}>
             <View style={styles.mismatchHeader}>
               <Ionicons name="information-circle" size={20} color="#F59E0B" />

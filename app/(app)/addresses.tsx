@@ -8,7 +8,12 @@ import {
   Alert,
   RefreshControl,
   Image,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,16 +22,26 @@ import { getAddresses, deleteAddress, Address } from '@/api/address';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import Loader from '@/components/common/Loader';
+import { useAlert, useToast } from '@/context/AlertContext';
 
 const AddressesScreen = () => {
   const router = useRouter();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
+  const showAlert = useAlert();
+  const showToast = useToast();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
 
   const fetchAddresses = async () => {
     try {
@@ -51,10 +66,11 @@ const AddressesScreen = () => {
   }, []);
 
   const handleDelete = (id: string) => {
-    Alert.alert(
-      'Delete Address',
-      'Are you sure you want to delete this address?',
-      [
+    showAlert({
+      title: 'Delete Address',
+      message: 'Are you sure you want to delete this address?',
+      type: 'warning',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Delete', 
@@ -64,12 +80,12 @@ const AddressesScreen = () => {
               await deleteAddress(id);
               setAddresses(prev => prev.filter(addr => addr._id !== id));
             } catch (error) {
-              Alert.alert('Error', 'Failed to delete address');
+              showToast({ message: 'Failed to delete address', type: 'error' });
             }
           }
         },
       ]
-    );
+    });
   };
 
   const capitalize = (str?: string) => {
@@ -85,13 +101,16 @@ const AddressesScreen = () => {
         <View style={{ width: 32 }} />
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-        }
+      <PremiumRefreshWrapper
+        scrollY={scrollY}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       >
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+        >
         {loading && !refreshing ? (
           <View style={styles.loadingContainer}>
             <Loader size={60} />
@@ -169,7 +188,8 @@ const AddressesScreen = () => {
             <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
             <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+    </PremiumRefreshWrapper>
     </View>
   );
 };
