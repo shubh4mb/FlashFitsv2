@@ -12,6 +12,8 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import CustomSplashScreen from '@/components/common/SplashScreen';
+import { useFonts as usePlayfair, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
 import '../global.css';
 
 // Keep the splash screen visible while we fetch resources
@@ -55,28 +57,41 @@ export default function RootLayout() {
     WorkSans_900Black,
   });
 
-  if (!manropeLoaded || !workSansLoaded) {
+  const [playfairLoaded] = usePlayfair({
+    PlayfairDisplay_400Regular_Italic,
+  });
+
+  const [showCustomSplash, setShowCustomSplash] = React.useState(true);
+
+  useEffect(() => {
+    if (manropeLoaded && workSansLoaded && playfairLoaded) {
+      // Hide the native splash screen as soon as our custom one is ready to take over
+      SplashScreen.hideAsync();
+    }
+  }, [manropeLoaded, workSansLoaded, playfairLoaded]);
+
+  if (!manropeLoaded || !workSansLoaded || !playfairLoaded) {
     return null;
   }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
       <AuthProvider>
-        <AlertProvider>
-          <AddressProvider>
-            <WishlistProvider>
-              <CartProvider>
-                <CourierCartProvider>
-                  <OffersProvider>
-                    <RootNavigator />
-                    <GlobalAlert />
-                    <StatusBar style="dark" />
-                  </OffersProvider>
-                </CourierCartProvider>
-              </CartProvider>
-            </WishlistProvider>
-          </AddressProvider>
-        </AlertProvider>
+        <AddressProvider>
+          <WishlistProvider>
+            <CartProvider>
+              <CourierCartProvider>
+                <OffersProvider>
+                  <RootNavigator />
+                  <StatusBar style="dark" />
+                  {showCustomSplash && (
+                    <CustomSplashScreen onFinish={() => setShowCustomSplash(false)} />
+                  )}
+                </OffersProvider>
+              </CourierCartProvider>
+            </CartProvider>
+          </WishlistProvider>
+        </AddressProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );
@@ -96,7 +111,9 @@ function RootNavigator() {
 
   useEffect(() => {
     if (!isLoading) {
-      SplashScreen.hideAsync();
+      // The native splash is already hidden in RootLayout when fonts load.
+      // We don't need to do anything here regarding SplashScreen.hideAsync()
+      // because we are using a custom splash screen component.
     }
   }, [isLoading]);
 
