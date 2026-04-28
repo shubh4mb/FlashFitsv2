@@ -134,11 +134,11 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
     shineTranslateX.value = withDelay(1000, withTiming(300, { duration: 1000, easing: Easing.inOut(Easing.ease) }));
 
     // Tagline
-    taglineOpacity.value = withDelay(1800, withTiming(1, { duration: 800 }));
-    taglineScale.value = withDelay(1800, withTiming(1, { duration: 800 }));
+    taglineOpacity.value = withDelay(1200, withTiming(1, { duration: 500 }));
+    taglineScale.value = withDelay(1200, withTiming(1, { duration: 500 }));
 
     // Dot spring
-    dotScale.value = withDelay(2400, withTiming(1, { duration: 400, easing: Easing.back(1.5) }));
+    dotScale.value = withDelay(1800, withTiming(1, { duration: 400, easing: Easing.back(1.5) }));
 
     // Exit animation & trigger onFinish
     const exitTimer = setTimeout(() => {
@@ -216,6 +216,7 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
             {/* Tagline Reveal */}
             <Animated.View style={[styles.taglineWrapper, taglineStyle]}>
               <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+              <Text style={styles.subTaglineText}>TRY & BUY</Text>
             </Animated.View>
           </View>
 
@@ -285,13 +286,22 @@ const styles = StyleSheet.create({
   taglineText: {
     fontSize: 16,
     fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
+    color: '#000000ff',
     letterSpacing: 2.5,
     marginTop: 4,
-    opacity: 0.6,
-    textShadowColor: 'rgba(209, 213, 219, 0.4)',
+    opacity: 0.2,
+    // textShadowColor: 'rgba(209, 213, 219, 0.4)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
+    textAlign: 'center',
+  },
+  subTaglineText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#000000ff',
+    letterSpacing: 4,
+    marginTop: 8,
+    opacity: 0.4,
     textAlign: 'center',
   },
 });
