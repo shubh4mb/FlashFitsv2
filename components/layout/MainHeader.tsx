@@ -712,7 +712,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     categoryName: {
-        fontSize: 10.5,
+        fontSize: 8.5,
         fontFamily: Typography.fontFamily.serifSemiBold,
         textAlign: 'center',
         opacity: 0.85,
