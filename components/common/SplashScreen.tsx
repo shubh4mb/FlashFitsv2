@@ -9,9 +9,8 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withTiming,
   withRepeat,
-  withSequence,
+  withTiming
 } from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
@@ -44,11 +43,11 @@ const FloatingAsset = ({ source, index }: { source: any; index: number }) => {
   // Avoid overlap using sector-based distribution and alternating radius levels
   const sectorAngle = (Math.PI * 2) / SPLASH_ASSETS.length;
   const angle = (index * sectorAngle) + (Math.random() - 0.5) * (sectorAngle * 0.5);
-  
+
   const radiusLevel = index % 2 === 0 ? 0.45 : 0.75; // Alternate between inner and outer zones
   const targetRadiusX = (width / 2) * (radiusLevel + Math.random() * 0.2);
   const targetRadiusY = (height / 2) * (radiusLevel + Math.random() * 0.2);
-  
+
   const targetX = Math.cos(angle) * targetRadiusX;
   const targetY = Math.sin(angle) * targetRadiusY;
   const targetScale = 0.3 + Math.random() * 0.35;
@@ -56,19 +55,19 @@ const FloatingAsset = ({ source, index }: { source: any; index: number }) => {
 
   useEffect(() => {
     // Firework burst timing - hyper velocity
-    const delay = 1000; 
-    
-    // Near-instantaneous explosive burst to sides
-    x.value = withDelay(delay, withTiming(targetX, { duration: 400, easing: Easing.out(Easing.expo) }));
-    y.value = withDelay(delay, withTiming(targetY, { duration: 400, easing: Easing.out(Easing.expo) }));
-    scale.value = withDelay(delay, withTiming(targetScale, { duration: 400, easing: Easing.out(Easing.back(1)) }));
-    opacity.value = withDelay(delay, withTiming(0.8, { duration: 200 }));
-    rotation.value = withDelay(delay, withTiming(targetRotation, { duration: 400 }));
+    const delay = 600;
 
-    // Gentle floating oscillation after the burst
-    const floatDuration = 4000 + Math.random() * 2000;
-    const floatDelay = delay + 400;
-    
+    // Near-instantaneous explosive burst to sides
+    x.value = withDelay(delay, withTiming(targetX, { duration: 250, easing: Easing.out(Easing.expo) }));
+    y.value = withDelay(delay, withTiming(targetY, { duration: 250, easing: Easing.out(Easing.expo) }));
+    scale.value = withDelay(delay, withTiming(targetScale, { duration: 250, easing: Easing.out(Easing.back(1)) }));
+    opacity.value = withDelay(delay, withTiming(0.8, { duration: 150 }));
+    rotation.value = withDelay(delay, withTiming(targetRotation, { duration: 250 }));
+
+    // Rapid floating oscillation after the burst
+    const floatDuration = 1500 + Math.random() * 1000;
+    const floatDelay = delay + 250;
+
     x.value = withDelay(floatDelay, withRepeat(withTiming(targetX + (Math.random() - 0.5) * 50, { duration: floatDuration }), -1, true));
     y.value = withDelay(floatDelay, withRepeat(withTiming(targetY + (Math.random() - 0.5) * 50, { duration: floatDuration }), -1, true));
   }, []);
@@ -86,10 +85,10 @@ const FloatingAsset = ({ source, index }: { source: any; index: number }) => {
 
   return (
     <Animated.View style={animatedStyle}>
-      <Image 
-        source={source} 
-        style={{ width: 120, height: 120 }} 
-        contentFit="contain" 
+      <Image
+        source={source}
+        style={{ width: 120, height: 120 }}
+        contentFit="contain"
         priority="high"
       />
     </Animated.View>
@@ -123,32 +122,32 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
 
   useEffect(() => {
     // Container entry
-    containerY.value = withTiming(0, { duration: 1500, easing: Easing.bezier(0.22, 1, 0.36, 1) });
-    containerOpacity.value = withTiming(1, { duration: 1500 });
-    containerScale.value = withTiming(1, { duration: 1500 });
+    containerY.value = withTiming(0, { duration: 800, easing: Easing.bezier(0.22, 1, 0.36, 1) });
+    containerOpacity.value = withTiming(1, { duration: 800 });
+    containerScale.value = withTiming(1, { duration: 800 });
 
     // Logo reveal
-    logoOpacity.value = withDelay(800, withTiming(1, { duration: 1200 }));
-    logoScale.value = withDelay(800, withTiming(1, { duration: 1200 }));
+    logoOpacity.value = withDelay(400, withTiming(1, { duration: 600 }));
+    logoScale.value = withDelay(400, withTiming(1, { duration: 600 }));
 
-    // Shine sweep (translateX from -100 to 300)
-    shineTranslateX.value = withDelay(1800, withTiming(300, { duration: 1800, easing: Easing.inOut(Easing.ease) }));
+    // Shine sweep
+    shineTranslateX.value = withDelay(1000, withTiming(300, { duration: 1000, easing: Easing.inOut(Easing.ease) }));
 
     // Tagline
-    taglineOpacity.value = withDelay(3500, withTiming(1, { duration: 1500 }));
-    taglineScale.value = withDelay(3500, withTiming(1, { duration: 1500 }));
+    taglineOpacity.value = withDelay(1800, withTiming(1, { duration: 800 }));
+    taglineScale.value = withDelay(1800, withTiming(1, { duration: 800 }));
 
     // Dot spring
-    dotScale.value = withDelay(4500, withTiming(1, { duration: 500, easing: Easing.back(1.5) }));
+    dotScale.value = withDelay(2400, withTiming(1, { duration: 400, easing: Easing.back(1.5) }));
 
     // Exit animation & trigger onFinish
     const exitTimer = setTimeout(() => {
-      mainExitOpacity.value = withTiming(0, { duration: 800 }, (finished) => {
+      mainExitOpacity.value = withTiming(0, { duration: 500 }, (finished) => {
         if (finished) {
           runOnJS(handleFinish)();
         }
       });
-    }, 6000);
+    }, 3000);
 
     return () => {
       clearTimeout(exitTimer);
