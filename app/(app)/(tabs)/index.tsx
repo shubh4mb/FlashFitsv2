@@ -27,10 +27,12 @@ import {
   NativeScrollEvent,
   Image,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import Skeleton from '@/components/common/Skeleton';
 import logo from '@/assets/images/logo/logo.png';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
@@ -109,21 +111,15 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <MainHeader scrollY={scrollY} onHeaderLayout={setHeaderHeight} refreshKey={refreshKey} />
 
-      <CustomRefreshControl
+      <PremiumRefreshWrapper
         scrollY={scrollY}
         refreshing={refreshing}
         onRefresh={onRefresh}
-      />
-
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        onScrollEndDrag={handleScrollEndDrag}
-        scrollEventThrottle={16}
       >
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+        >
         {headerHeight > 0 && <View style={{ height: headerHeight }} />}
         
         {tbAvailable === null ? (
@@ -206,6 +202,7 @@ export default function HomeScreen() {
 
         <View style={{ height: 100 }} />
       </Animated.ScrollView>
+    </PremiumRefreshWrapper>
     </View>
   );
 }

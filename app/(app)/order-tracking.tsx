@@ -24,6 +24,7 @@ import { joinOrderRoom, listenOrderUpdates, removeOrderListeners } from '@/socke
 import { getSocket } from '@/config/socket';
 import { calculateFinalBilling } from '@/utils/ItemSelectionCalculation';
 import RazorpayWebView from '@/components/common/RazorpayWebView';
+import { useAlert, useToast } from '@/context/AlertContext';
 
 // ── Types ──
 type OrderStep = { id: string; label: string; completed: boolean };
@@ -137,6 +138,8 @@ export default function OrderTrackingScreen() {
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const showAlert = useAlert();
+  const showToast = useToast();
 
   const [order, setOrder] = useState<OrderData | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -278,7 +281,7 @@ export default function OrderTrackingScreen() {
             },
             trigger: null,
           });
-          Alert.alert('Rider Arrived 🏠', 'Your rider has reached your location!');
+          showToast({ message: 'Your rider has reached your location!', type: 'info' });
         }
 
         if (update.orderStatus) {
@@ -359,7 +362,7 @@ export default function OrderTrackingScreen() {
   // ── Submit selection (Mock Razorpay + real API) ──
   const handleSubmitSelection = async () => {
     if (!allSelected) {
-      Alert.alert('Select All Items', 'Please mark each item as Keep or Return.');
+      showToast({ message: 'Please mark each item as Keep or Return.', type: 'warning' });
       return;
     }
 
@@ -443,11 +446,12 @@ export default function OrderTrackingScreen() {
             });
           } else {
             // All items kept - show success
-            Alert.alert(
-              '✅ Payment Successful!',
-              `All ${billingSummary.itemsAccepted} items kept.\nTotal: ₹${billingSummary.totalPayable}`,
-              [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
-            );
+            showAlert({
+              title: '✅ Payment Successful!',
+              message: `All ${billingSummary.itemsAccepted} items kept.\nTotal: ₹${billingSummary.totalPayable}`,
+              type: 'success',
+              buttons: [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
+            });
           }
         }
       } catch (paymentErr: any) {
@@ -455,14 +459,14 @@ export default function OrderTrackingScreen() {
         if (paymentErr?.code === 'PAYMENT_CANCELLED') {
           // User cancelled — do nothing
         } else {
-          Alert.alert('Payment Failed', paymentErr?.description || paymentErr?.message || 'Payment could not be completed. Please try again.');
+          showToast({ message: paymentErr?.description || paymentErr?.message || 'Payment could not be completed. Please try again.', type: 'error' });
         }
       } finally {
         setSubmitting(false);
       }
     } catch (err: any) {
       console.error('Submit selection error:', err);
-      Alert.alert('Error', err.response?.data?.message || 'Failed to process. Please try again.');
+      showToast({ message: err.response?.data?.message || 'Failed to process. Please try again.', type: 'error' });
       setSubmitting(false);
     }
   };

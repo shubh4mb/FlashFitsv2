@@ -9,6 +9,7 @@ import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
 import { useGender } from '@/context/GenderContext';
 import { useOffers } from '@/context/OffersContext';
+import { useToast } from '@/context/AlertContext';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
@@ -16,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import logo from '@/assets/images/logo/logo.png';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import {
   Animated,
   Dimensions,
@@ -28,6 +30,7 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -35,6 +38,7 @@ type CartTab = 'instant' | 'standard';
 
 export default function CartScreen() {
   const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart, applyOffer, removeOffer } = useCart();
+  const showToast = useToast();
   const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart, applyOfferCourier, removeOfferCourier } = useCourierCart();
   const { selectedGender } = useGender();
   const { selectedAddress } = useAddress();
@@ -54,6 +58,13 @@ export default function CartScreen() {
   const merchantCarts = cart?.merchantCarts || [];
   const tbItems = cart?.items || [];
   const [refreshing, setRefreshing] = useState(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const handleScrollEndDrag = (event: any) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
 
   // Refresh cart on focus
   useFocusEffect(
@@ -81,12 +92,12 @@ export default function CartScreen() {
     }
 
     if (merchantCart.merchantDetails?.isOnline === false) {
-      alert("This merchant is currently offline");
+      showToast({ message: "This merchant is currently offline", type: 'error' });
       return;
     }
 
     if (merchantCart.deliveryDetails?.isEligibleForTryBuy === false) {
-      alert("This store is too far for Try & Buy. Move items to courier or remove them.");
+      showToast({ message: "This store is too far for Try & Buy. Move items to courier or remove them.", type: 'warning' });
       return;
     }
 
@@ -100,7 +111,7 @@ export default function CartScreen() {
     }
     const hasOffline = courierItems.some((item: any) => item.merchantId?.isOnline === false);
     if (hasOffline) {
-      alert("Some merchants are offline");
+      showToast({ message: "Some merchants are offline", type: 'error' });
       return;
     }
     router.push({ pathname: '/checkout', params: { type: 'courier' } } as any);
@@ -207,6 +218,7 @@ export default function CartScreen() {
         )}
       </View>
 
+
       {/* Main Content */}
       <View style={{ flex: 1 }}>
         {activeTab === 'instant' ? (
@@ -244,18 +256,16 @@ export default function CartScreen() {
 
                 return (
                   <View style={{ width: SCREEN_WIDTH }}>
-                    <ScrollView
-                      showsVerticalScrollIndicator={false}
-                      contentContainerStyle={styles.slideContent}
-                      refreshControl={
-                        <RefreshControl
-                          refreshing={refreshing}
-                          onRefresh={onRefresh}
-                          colors={[theme.primary]}
-                          tintColor={theme.primary}
-                        />
-                      }
+                    <PremiumRefreshWrapper
+                      scrollY={scrollY}
+                      refreshing={refreshing}
+                      onRefresh={onRefresh}
                     >
+                      <Animated.ScrollView
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={styles.slideContent}
+                        scrollEventThrottle={16}
+                      >
                       {/* Merchant Header Branding */}
                       <TouchableOpacity 
                         style={styles.brandingHeader}
@@ -386,7 +396,8 @@ export default function CartScreen() {
                         <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
                         <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
                       </View>
-                    </ScrollView>
+                      </Animated.ScrollView>
+                    </PremiumRefreshWrapper>
                   </View>
                 );
               }}
@@ -405,13 +416,16 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.standardContent}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} tintColor={theme.primary} />
-              }
+            <PremiumRefreshWrapper
+              scrollY={scrollY}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
             >
+              <Animated.ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.standardContent}
+                scrollEventThrottle={16}
+              >
               <View style={styles.standardBanner}>
                 <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
                 <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
@@ -468,7 +482,8 @@ export default function CartScreen() {
                 <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
                 <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
               </View>
-            </ScrollView>
+            </Animated.ScrollView>
+          </PremiumRefreshWrapper>
           )
         )}
       </View>

@@ -672,13 +672,13 @@ const styles = StyleSheet.create({
     },
     categoriesContainer: {
         paddingRight: 16,
-        gap: 12,
+        gap: 17
         // paddingBottom: 4,
     },
     categoryItem: {
         alignItems: 'center',
         gap: 2,
-        width: 62,
+        width: 74,
     },
     logoWrapper: {
         width: 72,

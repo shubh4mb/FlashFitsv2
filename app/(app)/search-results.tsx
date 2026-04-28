@@ -10,11 +10,20 @@ import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  RefreshControl,
   TextInput,
+  Switch,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { fetchFilteredProducts } from '@/api/products';
 import { fetchCategories } from '@/api/categories';
 import { fetchMerchants } from '@/api/merchants';
@@ -51,6 +60,13 @@ export default function SearchResultsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      handleRefresh();
+    }
+  };
   
   // Pagination
   const [page, setPage] = useState(1);
@@ -375,27 +391,6 @@ export default function SearchResultsScreen() {
               </>
             )}
 
-            {/* Delivery Mode */}
-            <Text style={styles.filterSectionTitle}>Delivery</Text>
-            <View style={styles.deliveryFilterContainer}>
-              <TouchableOpacity
-                style={[styles.deliveryTag, deliveryMode === 'tryAndBuy' && { backgroundColor: theme.primary, borderColor: theme.primary }]}
-                onPress={() => setDeliveryMode(prev => prev === 'tryAndBuy' ? null : 'tryAndBuy')}
-              >
-                <Ionicons name="storefront-outline" size={16} color={deliveryMode === 'tryAndBuy' ? '#FFF' : '#475569'} style={{ marginRight: 6 }} />
-                <Text style={[styles.deliveryTagText, deliveryMode === 'tryAndBuy' && { color: '#FFFFFF' }]}>Try & Buy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.deliveryTag, deliveryMode === 'courier' && { backgroundColor: theme.primary, borderColor: theme.primary }]}
-                onPress={() => setDeliveryMode(prev => prev === 'courier' ? null : 'courier')}
-              >
-                <Ionicons name="bicycle-outline" size={16} color={deliveryMode === 'courier' ? '#FFF' : '#475569'} style={{ marginRight: 6 }} />
-                <Text style={[styles.deliveryTagText, deliveryMode === 'courier' && { color: '#FFFFFF' }]}>Courier</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Gender removed from here as it's now outside */}
-
             {/* Categories */}
             <Text style={[styles.filterSectionTitle, { marginTop: 24 }]}>Categories</Text>
             <View style={styles.categoryFilterContainer}>
@@ -572,27 +567,32 @@ export default function SearchResultsScreen() {
           <Loader size={60} />
         </View>
       ) : products.length > 0 ? (
-        <FlatList
-          data={products}
-          renderItem={({ item }) => (
-            <ProductCard 
-              product={item} 
-              containerStyle={styles.productCard}
-              width={(width - 48) / 2} 
-              fromExplore={deliveryMode !== 'tryAndBuy'}
-            />
-          )}
-          keyExtractor={(item, index) => `${item._id || index}-${item.variantId || index}`}
-          numColumns={2}
-          contentContainerStyle={styles.listContent}
-          columnWrapperStyle={styles.columnWrapper}
-          onRefresh={handleRefresh}
+        <PremiumRefreshWrapper
+          scrollY={scrollY}
           refreshing={refreshing}
-          showsVerticalScrollIndicator={false}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={renderFooter}
-        />
+          onRefresh={handleRefresh}
+        >
+          <Animated.FlatList
+            data={products}
+            renderItem={({ item }) => (
+              <ProductCard 
+                product={item} 
+                containerStyle={styles.productCard}
+                width={(width - 48) / 2} 
+                fromExplore={deliveryMode !== 'tryAndBuy'}
+              />
+            )}
+            keyExtractor={(item, index) => `${item._id || index}-${item.variantId || index}`}
+            numColumns={2}
+            contentContainerStyle={styles.listContent}
+            columnWrapperStyle={styles.columnWrapper}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={renderFooter}
+          />
+        </PremiumRefreshWrapper>
       ) : (
         <View style={styles.centered}>
           <Ionicons name="search-outline" size={80} color="#CBD5E1" />
@@ -615,6 +615,53 @@ export default function SearchResultsScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Floating Bolt Toggle */}
+      <View style={[styles.floatingToggleContainer, { bottom: insets.bottom + 20 }]}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setDeliveryMode(deliveryMode === 'tryAndBuy' ? null : 'tryAndBuy');
+          }}
+          style={styles.floatingButtonWrapper}
+        >
+          {/* Outer Glow Ring for Active State */}
+          {deliveryMode === 'tryAndBuy' && (
+            <View style={[styles.pulseRing, { borderColor: theme.primary + '40' }]} />
+          )}
+          
+          <LinearGradient
+            colors={deliveryMode === 'tryAndBuy' ? [theme.primary, theme.primary, theme.primary + 'CC'] : ['#FFFFFF', '#F8FAFC']}
+            style={[
+              styles.floatingBolt,
+              deliveryMode !== 'tryAndBuy' && styles.floatingBoltInactive
+            ]}
+          >
+            <Ionicons 
+              name={deliveryMode === 'tryAndBuy' ? "flash" : "flash-outline"} 
+              size={32} 
+              color={deliveryMode === 'tryAndBuy' ? '#FFFFFF' : '#94A3B8'} 
+            />
+          </LinearGradient>
+          
+          {deliveryMode === 'tryAndBuy' && (
+            <View style={[styles.activeIndicator, { backgroundColor: '#10B981' }]} />
+          )}
+        </TouchableOpacity>
+        
+        <View style={[
+          styles.floatingLabelContainer,
+          deliveryMode === 'tryAndBuy' && { backgroundColor: theme.primary, borderColor: theme.primary }
+        ]}>
+          <Text style={[
+            styles.floatingLabel, 
+            deliveryMode === 'tryAndBuy' && { color: '#FFFFFF' }
+          ]}>
+            {deliveryMode === 'tryAndBuy' ? 'TRY & BUY: ON' : 'TRY & BUY: OFF'}
+          </Text>
+        </View>
+      </View>
 
       {renderSortModal()}
       {renderFilterModal()}
@@ -823,25 +870,72 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.bold,
     marginBottom: 16,
   },
-  deliveryFilterContainer: {
-    flexDirection: 'row',
-    gap: 12,
+  floatingToggleContainer: {
+    position: 'absolute',
+    alignSelf: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
   },
-  deliveryTag: {
-    flex: 1,
-    flexDirection: 'row',
+  floatingButtonWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 16,
+  },
+  floatingBolt: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    borderWidth: 2,
+  },
+  floatingBoltInactive: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    zIndex: 1001,
+  },
+  floatingLabelContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  deliveryTagText: {
-    fontSize: 14,
-    color: '#475569',
+  floatingLabel: {
+    fontSize: 11,
     fontFamily: Typography.fontFamily.bold,
+    color: '#64748B',
+    letterSpacing: 1.5,
+  },
+  modeToggleContainer: {
+    display: 'none',
   },
   categoryFilterContainer: {
     flexDirection: 'row',

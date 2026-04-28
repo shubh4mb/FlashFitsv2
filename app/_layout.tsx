@@ -4,6 +4,8 @@ import { CartProvider } from '@/context/CartContext';
 import { CourierCartProvider } from '@/context/CourierCartContext';
 import { WishlistProvider } from '@/context/WishlistContext';
 import { OffersProvider } from '@/context/OffersContext';
+import { AlertProvider } from '@/context/AlertContext';
+import GlobalAlert from '@/components/common/GlobalAlert';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';

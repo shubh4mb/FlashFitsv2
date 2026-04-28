@@ -9,13 +9,17 @@ import { useWishlist } from '@/context/WishlistContext';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import Loader from '@/components/common/Loader';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import {
   Dimensions,
   RefreshControl,
-  ScrollView,
   StyleSheet,
-  View
+  View,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 2;
@@ -29,6 +33,13 @@ export default function WishlistScreen() {
   const [wishlistItems, setWishlistItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
 
   const fetchFullWishlist = async () => {
     try {
@@ -76,12 +87,15 @@ export default function WishlistScreen() {
     <ThemedView style={styles.container}>
       <MainHeader onHeaderLayout={setHeaderHeight} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} />
-        }
+      <PremiumRefreshWrapper
+        scrollY={scrollY}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      >
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          scrollEventThrottle={16}
       >
         {headerHeight > 0 && <View style={{ height: headerHeight }} />}
 
@@ -113,7 +127,8 @@ export default function WishlistScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
+    </PremiumRefreshWrapper>
     </ThemedView>
   );
 }

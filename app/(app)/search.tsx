@@ -1,25 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  TextInput, 
-  TouchableOpacity, 
-  Keyboard,
-  Text,
-  Dimensions,
-  ScrollView
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
-import { useGender } from '@/context/GenderContext';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { fetchSearchSuggestions } from '@/api/products';
 import { ThemedText } from '@/components/common/themed-text';
 import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
-import { fetchSearchSuggestions } from '@/api/products';
+import { GenderThemes, Typography } from '@/constants/theme';
+import { useGender } from '@/context/GenderContext';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router, Stack } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Keyboard,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const RECENT_SEARCHES_KEY = '@flashfits_recent_searches';
 const POPULAR_TAGS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets', 'Perfumes', 'Belts'];
@@ -33,7 +32,7 @@ export default function SearchScreen() {
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
-  
+
   const inputRef = useRef<TextInput>(null);
   const debounceTimer = useRef<any>(null);
 
@@ -63,13 +62,13 @@ export default function SearchScreen() {
     saveSearch(term.trim());
     setShowSuggestions(false);
     setSuggestions([]);
-    
+
     // If it's a merchant suggestion, clear the query so we show all their products
     // and don't conflict with the merchant filter logic.
-    const params: any = { 
-        query: merchantId ? '' : term.trim(),
-        title: merchantId ? term.trim() : undefined,
-        merchantId: merchantId || undefined
+    const params: any = {
+      query: merchantId ? '' : term.trim(),
+      title: merchantId ? term.trim() : undefined,
+      merchantId: merchantId || undefined
     };
 
     router.push({
@@ -94,7 +93,7 @@ export default function SearchScreen() {
   // Debounced suggestions fetch
   const handleTextChange = (text: string) => {
     setQuery(text);
-    
+
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
     if (text.trim().length < 2) {
@@ -127,22 +126,22 @@ export default function SearchScreen() {
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      
+
       {/* Search Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backButton}
         >
           <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
-        
+
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color={theme.primary} style={styles.searchIcon} />
           <TextInput
             ref={inputRef}
             style={styles.input}
-            placeholder="Search products, brands..."
+            placeholder="Search products, stores..."
             placeholderTextColor="#94A3B8"
             value={query}
             onChangeText={handleTextChange}
@@ -167,11 +166,11 @@ export default function SearchScreen() {
               style={styles.suggestionItem}
               onPress={() => handleSearchNavigation(item.text, item.id)}
             >
-              <Ionicons 
-                name={getTypeIcon(item.type) as any} 
-                size={16} 
-                color="#94A3B8" 
-                style={{ marginRight: 12 }} 
+              <Ionicons
+                name={getTypeIcon(item.type) as any}
+                size={16}
+                color="#94A3B8"
+                style={{ marginRight: 12 }}
               />
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.suggestionText} numberOfLines={1}>{item.text}</Text>
@@ -202,15 +201,15 @@ export default function SearchScreen() {
                   <Text style={styles.clearAllText}>Clear All</Text>
                 </TouchableOpacity>
               </View>
-              <ScrollView 
-                horizontal 
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.tagScrollContent}
                 style={styles.tagScrollView}
               >
                 {recentSearches.map((item) => (
-                  <TouchableOpacity 
-                    key={item} 
+                  <TouchableOpacity
+                    key={item}
                     style={[styles.tag, { backgroundColor: '#F1F5F9' }]}
                     onPress={() => handleSearchNavigation(item)}
                     activeOpacity={0.6}
@@ -223,19 +222,17 @@ export default function SearchScreen() {
             </View>
           )}
 
-          <RecentlyViewedSection />
-
           <View style={[styles.section, { marginTop: 24 }]}>
             <ThemedText type="subtitle" style={styles.sectionTitle}>Popular Searches</ThemedText>
-            <ScrollView 
-              horizontal 
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tagScrollContent}
               style={styles.tagScrollView}
             >
               {POPULAR_TAGS.map(tag => (
-                <TouchableOpacity 
-                  key={tag} 
+                <TouchableOpacity
+                  key={tag}
                   style={[styles.tag, { backgroundColor: '#F8FAFC' }]}
                   onPress={() => handleSearchNavigation(tag)}
                   activeOpacity={0.6}
@@ -245,18 +242,20 @@ export default function SearchScreen() {
               ))}
             </ScrollView>
           </View>
-          
+
+          <RecentlyViewedSection />
+
           <View style={styles.trendingBanner}>
-              <LinearGradient
-                colors={['#F8FAFC', '#F1F5F9']}
-                style={styles.bannerContent}
-              >
-                <View>
-                  <Text style={styles.bannerLabel}>TRENDING NOW</Text>
-                  <Text style={styles.bannerTitle}>Summer Essentials</Text>
-                </View>
-                <Ionicons name="flash" size={24} color={theme.primary} />
-              </LinearGradient>
+            <LinearGradient
+              colors={['#F8FAFC', '#F1F5F9']}
+              style={styles.bannerContent}
+            >
+              <View>
+                <Text style={styles.bannerLabel}>TRENDING NOW</Text>
+                <Text style={styles.bannerTitle}>Summer Essentials</Text>
+              </View>
+              <Ionicons name="flash" size={24} color={theme.primary} />
+            </LinearGradient>
           </View>
         </ScrollView>
       )}
@@ -379,15 +378,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   tag: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
     backgroundColor: '#F8FAFC',
     flexDirection: 'row',
     alignItems: 'center',
   },
   tagText: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: Typography.fontFamily.medium,
     color: '#475569',
   },

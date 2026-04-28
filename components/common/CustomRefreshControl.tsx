@@ -68,16 +68,19 @@ const CustomRefreshControl = ({
       style={[
         styles.container,
         {
-          opacity,
+          opacity: refreshing ? 1 : opacity,
           transform: [
-            { translateY: scrollY.interpolate({
-                inputRange: [-threshold, 0],
-                outputRange: [threshold / 2, 0],
-                extrapolate: 'clamp',
-              }) 
+            {
+              translateY: refreshing
+                ? threshold / 2
+                : scrollY.interpolate({
+                    inputRange: [-threshold, 0],
+                    outputRange: [threshold / 2, 0],
+                    extrapolate: 'clamp',
+                  }),
             },
-            { scale },
-            { rotate: finalRotation }
+            { scale: refreshing ? 1 : scale },
+            { rotate: finalRotation },
           ],
         },
       ]}

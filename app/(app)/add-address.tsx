@@ -16,10 +16,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { addAddress } from '../../api/address';
 import { useAddress } from '../../context/AddressContext';
+import { useToast } from '@/context/AlertContext';
 
 export default function AddAddressScreen() {
     const { setSelectedAddress, setAddresses } = useAddress();
     const params = useLocalSearchParams();
+    const showToast = useToast();
     
     const rawAddress = params.address ? JSON.parse(params.address as string) : null;
     const latitude = params.lat ? Number(params.lat) : null;
@@ -58,7 +60,7 @@ export default function AddAddressScreen() {
           errors.push("Please select your location on the map");
     
         if (errors.length > 0) {
-          alert(errors[0]); // show first error only
+          showToast({ message: errors[0], type: 'warning' });
           return;
         }
 
@@ -91,7 +93,7 @@ export default function AddAddressScreen() {
             router.replace("/(app)/(tabs)");
         } catch (error) {
             console.error("Error saving address:", error);
-            alert("Error saving address");
+            showToast({ message: "Error saving address", type: 'error' });
         } finally {
             setSubmitting(false);
         }

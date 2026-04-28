@@ -26,7 +26,7 @@ const ProductSectionSkeleton = () => (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.listContent}>
       {[1, 2, 3].map((i) => (
         <View key={i} style={{ marginRight: 16 }}>
-          <Skeleton width={155} height={200} borderRadius={12} style={{ marginBottom: 8 }} />
+          <Skeleton width={155} height={250} borderRadius={12} style={{ marginBottom: 8 }} />
           <Skeleton width={120} height={16} style={{ marginBottom: 4 }} />
           <Skeleton width={80} height={14} />
         </View>

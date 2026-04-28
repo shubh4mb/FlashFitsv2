@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import * as Location from "expo-location";
 import { Ionicons } from '@expo/vector-icons';
 import { useAddress } from "@/context/AddressContext";
+import { useToast } from "@/context/AlertContext";
 
 const screen = Dimensions.get("window");
 
@@ -22,6 +23,7 @@ export default function SelectLocationScreen() {
     const [searchQuery, setSearchQuery] = useState("");
     const [locating, setLocating] = useState(false);
     const { selectedAddress } = useAddress();
+    const showToast = useToast();
 
     // If a saved address is selected, maybe we should close and go back?
     // But usually select-location is for NEW ones. 
@@ -42,7 +44,7 @@ export default function SelectLocationScreen() {
             setLocating(true);
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
-                alert('Location permission is required');
+                showToast({ message: 'Location permission is required', type: 'error' });
                 setLocating(false);
                 return;
             }
@@ -248,7 +250,7 @@ export default function SelectLocationScreen() {
                     style={styles.setLocationBtn}
                     onPress={() => {
                         if (!centerCoords.latitude || !centerCoords.longitude) {
-                            alert("Location not ready yet");
+                            showToast({ message: "Location not ready yet", type: 'warning' });
                             return;
                         }
 

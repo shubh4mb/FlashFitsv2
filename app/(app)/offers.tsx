@@ -3,11 +3,15 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
+import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,11 +27,12 @@ export default function OffersScreen() {
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { offers, flashSales, loading, refreshOffers, refreshFlashSales } = useOffers();
   const [refreshing, setRefreshing] = useState(false);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([refreshOffers(), refreshFlashSales()]);
-    setRefreshing(false);
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
   };
 
   // Categorize offers
@@ -64,13 +69,16 @@ export default function OffersScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.primary]} />
-        }
-        contentContainerStyle={styles.scrollContent}
+      <PremiumRefreshWrapper
+        scrollY={scrollY}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
       >
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          contentContainerStyle={styles.scrollContent}
+        >
         {/* Stats Bar */}
         <View style={styles.statsBar}>
           <View style={styles.statItem}>
@@ -107,7 +115,8 @@ export default function OffersScreen() {
         ))}
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </Animated.ScrollView>
+    </PremiumRefreshWrapper>
     </View>
   );
 }

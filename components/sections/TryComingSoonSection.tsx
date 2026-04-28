@@ -4,16 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography, GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { LinearGradient } from 'expo-linear-gradient';
-import AvailableBrandsSection from './AvailableBrandsSection';
-
 import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-const TryComingSoonSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
+const TryComingSoonSection = () => {
     const { selectedGender } = useGender();
-    const theme = GenderThemes[selectedGender] || GenderThemes.Men;
     const router = useRouter();
+    const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
     return (
         <View style={styles.container}>
@@ -28,32 +26,29 @@ const TryComingSoonSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
                     <View style={[styles.pulseCircle, { backgroundColor: theme.primary.slice(0, 7) + '10' }]} />
                 </View>
 
-                <Text style={styles.title}>Try & Buy Launching Soon</Text>
+                <Text style={styles.title}>Location not serviceable</Text>
                 
                 <View style={styles.messageContainer}>
                     <Text style={styles.message}>
-                        Try & Buy is not yet available at your location.
+                        Your current location is not serviceable for Try & Buy.
                     </Text>
                     <Text style={styles.subMessage}>
-                        We're currently serving limited zones and expanding fast to reach you!
+                        Continue with normal delivery option to explore products available for your area.
                     </Text>
-                    <TouchableOpacity 
-                        style={[styles.exploreBtn, { backgroundColor: theme.primary }]} 
-                        onPress={() => router.push('/(app)/(tabs)/explore')}
-                        activeOpacity={0.8}
-                    >
-                        <Text style={styles.exploreBtnText}>Explore Products</Text>
-                        <Ionicons name="arrow-forward" size={16} color="#FFF" />
-                    </TouchableOpacity>
                 </View>
+
+                <TouchableOpacity 
+                    style={[styles.exploreButton, { backgroundColor: theme.primary }]}
+                    onPress={() => router.push('/explore')}
+                    activeOpacity={0.8}
+                >
+                    <Text style={styles.exploreButtonText}>Explore Products</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                </TouchableOpacity>
 
                 <View style={styles.badge}>
                     <Ionicons name="flash" size={14} color={theme.primary} />
                     <Text style={[styles.badgeText, { color: theme.primary }]}>FASHION IN A FLASH</Text>
-                </View>
-
-                <View style={styles.brandsWrapper}>
-                    <AvailableBrandsSection refreshKey={refreshKey} />
                 </View>
             </View>
         </View>
@@ -65,9 +60,10 @@ export default TryComingSoonSection;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        paddingHorizontal: 30,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingVertical: 60,
+        paddingVertical: 100,
     },
     content: {
         alignItems: 'center',
@@ -98,15 +94,16 @@ const styles = StyleSheet.create({
         zIndex: -1,
     },
     title: {
-        fontSize: 28,
+        fontSize: 24,
         fontFamily: Typography.fontFamily.bold,
         color: '#0F172A',
         marginBottom: 16,
         letterSpacing: -0.5,
+        textAlign: 'center',
     },
     messageContainer: {
         alignItems: 'center',
-        marginBottom: 40,
+        marginBottom: 32,
     },
     message: {
         fontSize: 16,
@@ -120,21 +117,26 @@ const styles = StyleSheet.create({
         fontFamily: Typography.fontFamily.medium,
         color: '#94A3B8',
         textAlign: 'center',
-        marginTop: 8,
+        marginTop: 12,
         lineHeight: 20,
     },
-    exploreBtn: {
+    exploreButton: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: 100,
-        marginTop: 20,
-        gap: 8,
+        paddingVertical: 14,
+        borderRadius: 16,
+        gap: 10,
+        marginBottom: 40,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
     },
-    exploreBtnText: {
+    exploreButtonText: {
         color: '#FFF',
-        fontSize: 14,
+        fontSize: 16,
         fontFamily: Typography.fontFamily.bold,
     },
     badge: {
@@ -150,9 +152,5 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontFamily: Typography.fontFamily.bold,
         letterSpacing: 1.5,
-    },
-    brandsWrapper: {
-        width: width,
-        marginTop: 40,
     },
 });

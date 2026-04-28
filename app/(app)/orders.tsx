@@ -1,6 +1,7 @@
 import { getAllOrders, getCourierOrders } from "@/api/orders";
 import logo from "@/assets/images/logo/logo.png";
 import Loader from "@/components/common/Loader";
+import PremiumRefreshWrapper from "@/components/common/PremiumRefreshWrapper";
 import { GenderThemes, Typography } from "@/constants/theme";
 import { useGender } from "@/context/GenderContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,7 +16,10 @@ import {
   Text,
   TouchableOpacity,
   View,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
+import CustomRefreshControl from "@/components/common/CustomRefreshControl";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type OrderTab = 'trybuy' | 'courier';
@@ -32,6 +36,13 @@ const OrdersScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
+      onRefresh();
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -126,6 +137,7 @@ const OrdersScreen = () => {
         <View style={{ width: 32 }} />
       </View>
 
+
       {/* Tab Switcher */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
@@ -175,13 +187,16 @@ const OrdersScreen = () => {
       ) : orders.length === 0 ? (
         renderEmptyState()
       ) : (
-        <ScrollView
-          style={styles.container}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
-          }
+        <PremiumRefreshWrapper
+          scrollY={scrollY}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        >
+          <Animated.ScrollView
+            style={styles.container}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            scrollEventThrottle={16}
         >
           <Animated.View style={{ opacity: fadeAnim }}>
             <Text style={styles.orderCount}>
@@ -282,7 +297,8 @@ const OrdersScreen = () => {
               </TouchableOpacity>
             ))}
           </Animated.View>
-        </ScrollView>
+        </Animated.ScrollView>
+      </PremiumRefreshWrapper>
       )}
 
       <View style={styles.footer}>
