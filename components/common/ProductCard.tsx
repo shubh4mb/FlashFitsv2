@@ -128,20 +128,13 @@ const ProductCard = ({
           </BlurView>
         </TouchableOpacity>
 
-        {/* Online Indicator */}
-        {isOnline && (
-          <View style={styles.onlineDot} />
-        )}
-
-        {/* Try & Buy / Speed Badge (Nearby Status) */}
-        {(product.isInstantBuyable || isNearby || product.isNearby) && (
-          <View style={[styles.tryBadge, { backgroundColor: isTriable ? theme.primary : "#22C55E" }]}>
-            <Ionicons name="flash" size={8} color="#FFFFFF" />
-            <Text style={styles.tryBadgeText}>
-              {isTriable ? "TRY AND BUY" : "DELIVER IN 30 MINUTES"}
-            </Text>
-          </View>
-        )}
+        {/* Delivery Time Badge */}
+        <View style={[styles.tryBadge, { backgroundColor: (product.isInstantBuyable || isNearby || product.isNearby) ? "#22C55E" : "#64748B" }]}>
+          <Ionicons name={(product.isInstantBuyable || isNearby || product.isNearby) ? "flash" : "time-outline"} size={10} color="#FFFFFF" />
+          <Text style={styles.tryBadgeText}>
+            {(product.isInstantBuyable || isNearby || product.isNearby) ? "20-40 MINS" : "1-7 DAYS"}
+          </Text>
+        </View>
       </View>
 
       {/* Details Section */}

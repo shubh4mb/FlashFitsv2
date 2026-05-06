@@ -26,9 +26,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
-import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import Loader from '@/components/common/Loader';
-import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
@@ -46,7 +44,7 @@ export default function MerchantDetailScreen() {
   const router = useRouter();
   
   const { selectedGender, setSelectedGender } = useGender();
-  const { selectedAddress } = useAddress();
+  const { selectedAddress, userLocation } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [loading, setLoading] = useState(true);
@@ -203,12 +201,6 @@ export default function MerchantDetailScreen() {
       <StatusBar style="light" />
 
 
-      <PremiumRefreshWrapper
-        scrollY={scrollY}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-      >
-
       {/* Top Action Bar */}
       <View style={[styles.topActionBar, { paddingTop: insets.top + 4 }]}>
         <TouchableOpacity onPress={handleBack} style={styles.iconCircle}>
@@ -233,6 +225,16 @@ export default function MerchantDetailScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+            />
+          }
         >
         {/* Hero Section */}
         <View style={styles.heroContainer}>
@@ -409,7 +411,6 @@ export default function MerchantDetailScreen() {
           </View>
         )}
       </Animated.ScrollView>
-    </PremiumRefreshWrapper>
     </View>
   );
 }

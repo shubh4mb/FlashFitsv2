@@ -61,6 +61,13 @@ export default function SearchResultsScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = React.useRef(new Animated.Value(0)).current;
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 180);
+  
+  const clampedScroll = useMemo(() => Animated.diffClamp(scrollY, 0, headerHeight), [scrollY, headerHeight]);
+  const headerTranslateY = clampedScroll.interpolate({
+    inputRange: [0, headerHeight],
+    outputRange: [0, -headerHeight],
+  });
 
   const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
@@ -485,82 +492,91 @@ export default function SearchResultsScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
       
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color="#0F172A" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerLabel}>Search results for</Text>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {title || query || (categories.find(c => c._id === categoryId || c._id === subCategoryId)?.name || 'Products')}
-          </Text>
+      {/* Collapsible Header Section */}
+      <Animated.View 
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        style={[
+          styles.animatedHeaderContainer, 
+          { transform: [{ translateY: headerTranslateY }] }
+        ]}
+      >
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerLabel}>Search results for</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {title || query || (categories.find(c => c._id === categoryId || c._id === subCategoryId)?.name || 'Products')}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/search')} style={styles.searchButton}>
+            <Ionicons name="search" size={20} color="#0F172A" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => router.push('/search')} style={styles.searchButton}>
-          <Ionicons name="search" size={20} color="#0F172A" />
-        </TouchableOpacity>
-      </View>
 
-      {/* Filter Bar */}
-      <View style={styles.filterBar}>
-        <TouchableOpacity 
-          style={styles.filterBarButton}
-          onPress={() => setIsSortModalVisible(true)}
-        >
-          <MaterialCommunityIcons name="sort-variant" size={20} color="#475569" />
-          <Text style={styles.filterBarButtonText}>Sort</Text>
-          <Ionicons name="chevron-down" size={14} color="#94A3B8" />
-        </TouchableOpacity>
-        
-        <View style={styles.filterDivider} />
-        
-        <TouchableOpacity 
-          style={styles.filterBarButton}
-          onPress={() => setIsFilterModalVisible(true)}
-        >
-          <Ionicons name="filter-outline" size={18} color="#475569" />
-          <Text style={styles.filterBarButtonText}>Filter</Text>
-          {activeFilterCount > 0 && (
-            <View style={[styles.filterBadge, { backgroundColor: theme.primary }]}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Gender Filter Row (Moved Outside) */}
-      <View style={styles.genderFilterRow}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genderScrollContent}>
-          {['ALL', 'MEN', 'WOMEN', 'KIDS', 'UNISEX'].map((g) => {
-            const isSelected = (g === 'ALL' && !genderFilter) || genderFilter === g;
-            const label = g === 'ALL' ? 'All' : g === 'MEN' ? 'Men' : g === 'WOMEN' ? 'Women' : g === 'KIDS' ? 'Kids' : 'Unisex';
-            return (
-              <TouchableOpacity
-                key={g}
-                style={[
-                  styles.genderTab, 
-                  isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }
-                ]}
-                onPress={() => setGenderFilter(g === 'ALL' ? '' : g)}
-              >
-                <Text style={[
-                  styles.genderTabText, 
-                  isSelected && { color: '#FFFFFF', fontFamily: Typography.fontFamily.bold }
-                ]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Results count */}
-      {!loading && (
-        <View style={styles.resultsCountBar}>
-          <Text style={styles.resultsCountText}>{totalCount} {totalCount === 1 ? 'product' : 'products'} found</Text>
+        {/* Filter Bar */}
+        <View style={styles.filterBar}>
+          <TouchableOpacity 
+            style={styles.filterBarButton}
+            onPress={() => setIsSortModalVisible(true)}
+          >
+            <MaterialCommunityIcons name="sort-variant" size={20} color="#475569" />
+            <Text style={styles.filterBarButtonText}>Sort</Text>
+            <Ionicons name="chevron-down" size={14} color="#94A3B8" />
+          </TouchableOpacity>
+          
+          <View style={styles.filterDivider} />
+          
+          <TouchableOpacity 
+            style={styles.filterBarButton}
+            onPress={() => setIsFilterModalVisible(true)}
+          >
+            <Ionicons name="filter-outline" size={18} color="#475569" />
+            <Text style={styles.filterBarButtonText}>Filter</Text>
+            {activeFilterCount > 0 && (
+              <View style={[styles.filterBadge, { backgroundColor: theme.primary }]}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
-      )}
+
+        {/* Gender Filter Row (Moved Outside) */}
+        <View style={styles.genderFilterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genderScrollContent}>
+            {['ALL', 'MEN', 'WOMEN', 'KIDS', 'UNISEX'].map((g) => {
+              const isSelected = (g === 'ALL' && !genderFilter) || genderFilter === g;
+              const label = g === 'ALL' ? 'All' : g === 'MEN' ? 'Men' : g === 'WOMEN' ? 'Women' : g === 'KIDS' ? 'Kids' : 'Unisex';
+              return (
+                <TouchableOpacity
+                  key={g}
+                  style={[
+                    styles.genderTab, 
+                    isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }
+                  ]}
+                  onPress={() => setGenderFilter(g === 'ALL' ? '' : g)}
+                >
+                  <Text style={[
+                    styles.genderTabText, 
+                    isSelected && { color: '#FFFFFF', fontFamily: Typography.fontFamily.bold }
+                  ]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Results count */}
+        {!loading && (
+          <View style={styles.resultsCountBar}>
+            <Text style={styles.resultsCountText}>{totalCount} {totalCount === 1 ? 'product' : 'products'} found</Text>
+          </View>
+        )}
+      </Animated.View>
 
       {loading ? (
         <View style={styles.centered}>
@@ -584,7 +600,7 @@ export default function SearchResultsScreen() {
             )}
             keyExtractor={(item, index) => `${item._id || index}-${item.variantId || index}`}
             numColumns={2}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, { paddingTop: headerHeight }]}
             columnWrapperStyle={styles.columnWrapper}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
@@ -679,6 +695,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  animatedHeaderContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F8FAFC',

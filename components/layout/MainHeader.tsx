@@ -4,12 +4,19 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
     Animated,
+    Dimensions,
     Platform,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from "react-native";
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CATEGORY_GAP = 16;
+// Calculate item width to show exactly 4.3 items (4 full + peek of 5th)
+const CATEGORY_ITEM_WIDTH = (SCREEN_WIDTH - 32 - (CATEGORY_GAP * 4)) / 4.3;
+const LOGO_SIZE = CATEGORY_ITEM_WIDTH * 0.95; // Slightly smaller than container
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
@@ -430,8 +437,8 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                         {loading
                             ? [1, 2, 3, 4, 5].map((i) => (
                                 <View key={i} style={styles.categoryItem}>
-                                    <Skeleton width={72} height={72} borderRadius={16} style={{ marginBottom: 4 }} />
-                                    <Skeleton width={50} height={10} />
+                                    <Skeleton width={LOGO_SIZE} height={LOGO_SIZE} borderRadius={16} style={{ marginBottom: 4 }} />
+                                    <Skeleton width={CATEGORY_ITEM_WIDTH * 0.7} height={10} />
                                 </View>
                             ))
                             : categories.map((cat) => {
@@ -672,17 +679,16 @@ const styles = StyleSheet.create({
     },
     categoriesContainer: {
         paddingRight: 16,
-        gap: 17
-        // paddingBottom: 4,
+        gap: CATEGORY_GAP,
     },
     categoryItem: {
         alignItems: 'center',
         gap: 2,
-        width: 74,
+        width: CATEGORY_ITEM_WIDTH,
     },
     logoWrapper: {
-        width: 72,
-        height: 72,
+        width: LOGO_SIZE,
+        height: LOGO_SIZE,
         borderRadius: 16,
         backgroundColor: 'transparent',
         alignItems: 'center',

@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Loader from '@/components/common/Loader';
-import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+
 import { useCourierCart } from '@/context/CourierCartContext';
 import { useToast } from '@/context/AlertContext';
 import {
@@ -32,9 +32,10 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 520;
@@ -45,6 +46,8 @@ const ProductDetailPage = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
+  const [cartModalVisible, setCartModalVisible] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { userLocation, selectedAddress } = useAddress();
 
@@ -196,7 +199,9 @@ const ProductDetailPage = () => {
     }
   };
 
-  const productIsNearby = product?.isInstantBuyable || false;
+  const isNearby = product?.isNearby || false;
+  const isOnline = product?.isOnline !== false && product?.merchantId?.isOnline !== false;
+  const productIsNearby = isNearby; // Using proximity for showing range-based info
 
   const showFeedback = () => {
     setShowAddedFeedback(true);
@@ -219,51 +224,60 @@ const ProductDetailPage = () => {
     }
   };
 
-  const handleAddToCart = async () => {
+  const handleOpenCartModal = () => {
     if (!selectedSize) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast({ message: 'Please select a size', type: 'warning' });
       return;
     }
+    setCartModalVisible(true);
+  };
 
+  const handleConfirmAddToCartInstant = async () => {
     try {
       setIsAdding(true);
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
       const targetMerchantId = product.merchantId?._id || product.merchantId;
 
-      // Determine cart based on actual proximity
-      // productIsNearby is calculated from coordinates
-      if (productIsNearby) {
-        // In range -> Instant Cart (Try & Buy)
-        await addItemToCart({
-          productId: product._id,
-          variantId: activeVariant._id,
-          size: selectedSize,
-          quantity: 1,
-          merchantId: targetMerchantId,
-          image: { url: activeVariant.images?.[0]?.url || '' },
-        });
-        
-        // Redirection remains for Try & Buy to confirm trial
-        router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
-      } else {
-        // Out of range -> Standard Cart (Courier)
-        await addItemToCourierCart({
-          productId: product._id,
-          variantId: activeVariant._id,
-          size: selectedSize,
-          quantity: 1,
-          merchantId: targetMerchantId,
-          image: { url: activeVariant.images?.[0]?.url || '' },
-        });
-        
-        // Show non-interruptive feedback instead of redirection
-        showFeedback();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-
+      await addItemToCart({
+        productId: product._id,
+        variantId: activeVariant._id,
+        size: selectedSize,
+        quantity: 1,
+        merchantId: targetMerchantId,
+        image: { url: activeVariant.images?.[0]?.url || '' },
+      });
+      
+      setCartModalVisible(false);
+      router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
     } catch (error) {
       console.error('Failed to add to cart:', error);
+      showToast({ message: 'Failed to add item to bag. Please try again.', type: 'error' });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleConfirmAddToCartStandard = async () => {
+    try {
+      setIsAdding(true);
+      const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
+      const targetMerchantId = product.merchantId?._id || product.merchantId;
+
+      await addItemToCourierCart({
+        productId: product._id,
+        variantId: activeVariant._id,
+        size: selectedSize,
+        quantity: 1,
+        merchantId: targetMerchantId,
+        image: { url: activeVariant.images?.[0]?.url || '' },
+      });
+      
+      setCartModalVisible(false);
+      showFeedback();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Failed to add to courier cart:', error);
       showToast({ message: 'Failed to add item to bag. Please try again.', type: 'error' });
     } finally {
       setIsAdding(false);
@@ -300,11 +314,6 @@ const ProductDetailPage = () => {
   return (
     <View style={styles.container}>
 
-      <PremiumRefreshWrapper
-        scrollY={scrollY}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-      >
       {/* Animated Blur Header */}
       <Animated.View style={[styles.header, { opacity: headerOpacity, paddingTop: insets.top }]}>
         <View style={styles.headerContent}>
@@ -325,6 +334,16 @@ const ProductDetailPage = () => {
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           bounces
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+            />
+          }
         >
         {/* Image Gallery with Parallax */}
         <View style={styles.imageGallery}>
@@ -413,8 +432,50 @@ const ProductDetailPage = () => {
             )}
           </View>
 
+          {/* Merchant Section */}
+          <TouchableOpacity 
+            style={styles.merchantSection}
+            onPress={() => router.push(`/merchant/${product.merchantId?._id}` as any)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.merchantLogoContainer}>
+              <Image 
+                source={{ uri: product.merchantId?.logo?.url }} 
+                style={styles.merchantLogo}
+                contentFit="contain"
+              />
+            </View>
+            <View style={styles.merchantInfo}>
+              <Text style={styles.merchantLabel}>Sold by</Text>
+              <Text style={styles.merchantName}>{product.merchantId?.shopName}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+
           {/* Divider */}
           <View style={styles.divider} />
+
+          {/* Merchant / Delivery Status Info */}
+          {productIsNearby && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 6 }}>
+              {product?.merchantId?.isOnline === false && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                  <Ionicons name="moon" size={12} color="#D97706" style={{ marginRight: 5 }} />
+                  <Text style={{ color: '#92400E', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
+                    Merchant Offline
+                  </Text>
+                </View>
+              )}
+              {product?.isTriable && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#A7F3D0' }}>
+                  <Ionicons name="flash" size={12} color="#059669" style={{ marginRight: 5 }} />
+                  <Text style={{ color: '#065F46', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
+                    Try & Buy Available
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Color Selection */}
           <Text style={styles.sectionTitle}>
@@ -515,10 +576,26 @@ const ProductDetailPage = () => {
             </View>
           </View>
 
-          <Text style={styles.description}>
-            {product.description ||
-              'Elevate your wardrobe with this stylish and durable piece. Crafted with premium materials for ultimate comfort and a sleek modern look.'}
-          </Text>
+          <View style={{ marginBottom: 24 }}>
+            <Text 
+              style={styles.description}
+              numberOfLines={showFullDescription ? undefined : 3}
+            >
+              {product.description ||
+                'Elevate your wardrobe with this stylish and durable piece. Crafted with premium materials for ultimate comfort and a sleek modern look.'}
+            </Text>
+            {(product.description?.length > 150 || (!product.description && 130 > 150)) && (
+              <TouchableOpacity 
+                onPress={() => setShowFullDescription(!showFullDescription)}
+                style={{ marginTop: 4 }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: theme.primary, fontFamily: Typography.fontFamily.bold, fontSize: 13 }}>
+                  {showFullDescription ? 'Show Less' : 'Read More'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* Related Products Section */}
           <View style={styles.relatedSection}>
@@ -576,7 +653,6 @@ const ProductDetailPage = () => {
           <View style={styles.spacer} />
         </View>
       </Animated.ScrollView>
-    </PremiumRefreshWrapper>
 
       {/* Bottom Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
@@ -596,7 +672,7 @@ const ProductDetailPage = () => {
         </Animated.View>
         <TouchableOpacity
           style={[styles.cartBtn, { backgroundColor: theme.primary }, isAdding && { opacity: 0.8 }]}
-          onPress={handleAddToCart}
+          onPress={handleOpenCartModal}
           activeOpacity={0.85}
           disabled={isAdding}
         >
@@ -629,6 +705,69 @@ const ProductDetailPage = () => {
            </BlurView>
         </Animated.View>
       )}
+
+      {/* Add To Cart Modal */}
+      <Modal
+        visible={cartModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCartModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setCartModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Choose Delivery Option</Text>
+            
+            {/* Instant Delivery Option */}
+            <TouchableOpacity 
+              style={[styles.deliveryOptionBtn, !isNearby && styles.deliveryOptionBtnDisabled]} 
+              onPress={isNearby ? handleConfirmAddToCartInstant : undefined}
+              activeOpacity={0.7}
+            >
+              <View style={styles.deliveryOptionIcon}>
+                <Ionicons name="flash" size={24} color={isNearby ? "#22C55E" : "#94A3B8"} />
+              </View>
+              <View style={styles.deliveryOptionTexts}>
+                <Text style={[styles.deliveryOptionTitle, !isNearby && { color: "#94A3B8" }]}>Instant Delivery</Text>
+                <Text style={styles.deliveryOptionSub}>20 - 40 Mins</Text>
+                {!isNearby ? (
+                  <Text style={styles.deliveryOptionReason}>Out of range for instant delivery</Text>
+                ) : !isOnline ? (
+                  <Text style={[styles.deliveryOptionReason, { color: '#D97706' }]}>
+                    Merchant is offline. Item will be added to {product.merchantId?.shopName}'s instant cart.
+                  </Text>
+                ) : (
+                  <Text style={[styles.deliveryOptionReason, { color: '#64748B' }]}>
+                    Item will be added to {product.merchantId?.shopName}'s instant cart.
+                  </Text>
+                )}
+              </View>
+              {isNearby && <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />}
+            </TouchableOpacity>
+
+            {/* Standard Delivery Option */}
+            <TouchableOpacity 
+              style={styles.deliveryOptionBtn} 
+              onPress={handleConfirmAddToCartStandard}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.deliveryOptionIcon, { backgroundColor: '#F1F5F9' }]}>
+                <Ionicons name="cube-outline" size={24} color="#64748B" />
+              </View>
+              <View style={styles.deliveryOptionTexts}>
+                <Text style={styles.deliveryOptionTitle}>Standard Delivery</Text>
+                <Text style={styles.deliveryOptionSub}>1 - 7 Days</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+            </TouchableOpacity>
+
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -1152,6 +1291,116 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#F1F5F9',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    marginBottom: 20,
+  },
+  deliveryOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  deliveryOptionBtnDisabled: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#F1F5F9',
+  },
+  deliveryOptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  deliveryOptionTexts: {
+    flex: 1,
+  },
+  deliveryOptionTitle: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  deliveryOptionSub: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
+  },
+  deliveryOptionReason: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#EF4444',
+    marginTop: 4,
+  },
+  merchantSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  merchantLogoContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  merchantLogo: {
+    width: '70%',
+    height: '70%',
+  },
+  merchantInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  merchantLabel: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  merchantName: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
   },
 });
 
