@@ -5,8 +5,8 @@ import { Image } from 'expo-image';
 import ProductCard from '@/components/common/ProductCard';
 import MerchantCollectionBanners from '@/components/sections/MerchantCollectionBanners';
 import { GenderThemes, Typography } from '@/constants/theme';
-import { useAddress } from '@/context/AddressContext';
-import { useGender } from '@/context/GenderContext';
+import { useCart } from '@/context/CartContext';
+import { useCourierCart } from '@/context/CourierCartContext';
 import { calculateDistanceKm } from '@/utils/locationHelper';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,6 +53,12 @@ export default function MerchantDetailScreen() {
   const [merchantOffers, setMerchantOffers] = useState<any[]>([]);
   const [localSelectedGender, setLocalSelectedGender] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const { cart } = useCart();
+  const { courierCart } = useCourierCart();
+
+  const instantCartCount = cart?.merchantCarts?.length || 0;
+  const courierCartCount = courierCart?.items?.length || 0;
+
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
   const fetchData = async () => {
@@ -212,6 +218,23 @@ export default function MerchantDetailScreen() {
             onPress={() => router.push('/cart' as any)}
           >
             <Ionicons name="cart-outline" size={22} color="#fff" />
+            
+            {/* Instant Cart Badge (Top Right) */}
+            {instantCartCount > 0 && (
+              <View style={[styles.badge, styles.instantBadge, { backgroundColor: '#F59E0B' }]}>
+                <View style={styles.badgeContent}>
+                  <Ionicons name="flash" size={7} color="#fff" style={{ marginRight: 1 }} />
+                  <Text style={styles.badgeText}>{instantCartCount > 9 ? '9+' : instantCartCount}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Courier Cart Badge (Bottom Right) */}
+            {courierCartCount > 0 && (
+              <View style={[styles.badge, styles.courierBadge, { backgroundColor: theme.primary }]}>
+                <Text style={styles.badgeText}>{courierCartCount > 9 ? '9+' : courierCartCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.iconCircle}
@@ -775,5 +798,38 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.bold,
     color: '#15803D',
     letterSpacing: 0.5,
+  },
+  badge: {
+    position: 'absolute',
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    zIndex: 10,
+  },
+  instantBadge: {
+    top: -4,
+    right: -4,
+    zIndex: 2,
+  },
+  courierBadge: {
+    bottom: -2,
+    right: -4,
+    zIndex: 1,
+  },
+  badgeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 8,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: -0.2,
   },
 });

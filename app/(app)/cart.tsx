@@ -147,6 +147,8 @@ export default function CartScreen() {
     );
   }
 
+  const isUpdating = loading || courierLoading;
+
   return (
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -159,7 +161,15 @@ export default function CartScreen() {
           </TouchableOpacity>
           <ThemedText type="subtitle" style={styles.headerTitle}>Shopping Cart</ThemedText>
           <TouchableOpacity
-            onPress={activeTab === 'instant' ? clearCart : clearCourierCart}
+            onPress={() => {
+              if (activeTab === 'instant') {
+                if (currentMerchantCart) {
+                  clearCart(currentMerchantCart.merchantId);
+                }
+              } else {
+                clearCourierCart();
+              }
+            }}
             disabled={(activeTab === 'instant' ? merchantCarts : courierItems).length === 0}
           >
             <Text style={[styles.clearText, { color: (activeTab === 'instant' ? merchantCarts : courierItems).length > 0 ? '#EF4444' : '#CBD5E1' }]}>Clear</Text>
@@ -227,10 +237,10 @@ export default function CartScreen() {
               <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
                 <Ionicons name="flash-outline" size={60} color={theme.primary} />
               </View>
-              <ThemedText style={styles.emptyTitle}>Your Instant Cart is empty</ThemedText>
-              <Text style={styles.emptyDesc}>Try & Buy isn't just fast, it's instant. Add items to try them at home now!</Text>
+              <ThemedText style={styles.emptyTitle}>Your Try & Buy Cart is Empty!</ThemedText>
+              <Text style={styles.emptyDesc}>Experience fashion in a flash! Add items from nearby stores to try them at home before you buy.</Text>
               <TouchableOpacity style={[styles.exploreButton, { backgroundColor: theme.primary }]} onPress={() => router.push('/(tabs)' as any)}>
-                <Text style={styles.exploreText}>Browse Shops</Text>
+                <Text style={styles.exploreText}>Explore Nearby Shops</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -343,13 +353,12 @@ export default function CartScreen() {
                       {/* Bill Summary */}
                       <View style={styles.premiumBill}>
                         <Text style={styles.billTitle}>Bill Summary</Text>
-                         <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.mrpTotal}</Text></View>
-                         {mTotals?.discount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Shop Discount</Text><Text style={[styles.billValue, { color: '#10B981' }]}>- ₹{mTotals?.discount}</Text></View>}
+                         <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.subtotal}</Text></View>
                          {mOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{mOffers.totalDiscount}</Text></View>}
                          
-                         {(mTotals?.discount > 0 || mOffers?.totalDiscount > 0) && (
+                         {mOffers?.totalDiscount > 0 && (
                            <View style={[styles.billRow, { marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: '#F1F5F9' }]}>
-                             <Text style={[styles.billLabel, { fontWeight: '700', color: '#0F172A' }]}>Total after discounts</Text>
+                             <Text style={[styles.billLabel, { fontWeight: '700', color: '#0F172A' }]}>Total after offer</Text>
                              <Text style={[styles.billValue, { fontWeight: '800' }]}>₹{((mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)}</Text>
                            </View>
                          )}
@@ -410,9 +419,10 @@ export default function CartScreen() {
               <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
                 <Ionicons name="cart-outline" size={60} color={theme.primary} />
               </View>
-              <ThemedText style={styles.emptyTitle}>Your Cart is empty</ThemedText>
+              <ThemedText style={styles.emptyTitle}>Your Shopping Cart{'\n'}is Empty</ThemedText>
+              <Text style={styles.emptyDesc}>Find your next favorite outfit. Explore our latest arrivals and exclusive collections today.</Text>
               <TouchableOpacity style={[styles.exploreButton, { backgroundColor: theme.primary }]} onPress={() => router.push('/(tabs)/explore' as any)}>
-                <Text style={styles.exploreText}>Explore Products</Text>
+                <Text style={styles.exploreText}>Explore Now</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -466,8 +476,7 @@ export default function CartScreen() {
 
               <View style={styles.summaryCard}>
                 <Text style={styles.billTitle}>Order Summary</Text>
-                <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.mrpTotal || 0}</Text></View>
-                {((courierTotals?.discount || 0) - (courierAppliedOffers?.totalDiscount || 0)) > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Shop Discount</Text><Text style={[styles.billValue, { color: '#10B981' }]}>- ₹{(courierTotals?.discount || 0) - (courierAppliedOffers?.totalDiscount || 0)}</Text></View>}
+                <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.subtotal || 0}</Text></View>
                 {courierAppliedOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: theme.primary, fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{courierAppliedOffers.totalDiscount}</Text></View>}
                 <View style={styles.billRow}><Text style={styles.billLabel}>Delivery Fee</Text><Text style={styles.billValue}>₹{courierTotals?.courierDeliveryCharge || 40}</Text></View>
                 <View style={styles.billDivider} />
@@ -522,6 +531,13 @@ export default function CartScreen() {
       )}
 
       <AddressSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+
+      {/* Loading Overlay */}
+      {isUpdating && (
+        <View style={styles.loadingOverlay}>
+          <Loader size={40} />
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -607,9 +623,9 @@ const styles = StyleSheet.create({
   checkoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 20 },
   checkoutBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
 
-  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingBottom: 100 },
   emptyIconContainer: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginBottom: 8 },
+  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
   emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   exploreButton: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16 },
   exploreText: { color: '#fff', fontSize: 15, fontWeight: '800' },
@@ -639,5 +655,12 @@ const styles = StyleSheet.create({
     width: 140,
     height: 60,
     opacity: 0.25,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
   },
 });

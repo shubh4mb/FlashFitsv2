@@ -77,11 +77,13 @@ export const deleteCartItem = async (itemId: string) => {
 };
 
 /**
- * Clears the entire cart for the logged-in user.
+ * Clears the cart for the logged-in user.
+ * If merchantId is provided, only items from that merchant are removed.
  */
-export const clearCart = async () => {
+export const clearCart = async (merchantId?: string) => {
   try {
-    const res = await api.delete('user/cart/clear');
+    const url = merchantId ? `user/cart/clear?merchantId=${merchantId}` : 'user/cart/clear';
+    const res = await api.delete(url);
     return res.data;
   } catch (error) {
     // Auth errors are ignored gracefully

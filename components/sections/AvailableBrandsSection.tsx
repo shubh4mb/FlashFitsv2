@@ -92,7 +92,7 @@ export default function AvailableBrandsSection({
         activeOpacity={0.7}
       >
         <View>
-          <Text style={styles.sectionTitle}>Explore Stores</Text>
+          <Text style={styles.sectionTitle}>Explore Products</Text>
         </View>
         {!hideExploreLink && (
           <Ionicons name="chevron-forward" size={20} color="#94A3B8" />

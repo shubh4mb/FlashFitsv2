@@ -10,6 +10,8 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useCart } from "@/context/CartContext";
+import { useCourierCart } from "@/context/CourierCartContext";
 
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
 
@@ -21,9 +23,13 @@ interface HomeHeaderProps {
 
 export default function HomeHeader({ 
   address = "Select Location", 
-  cartCount = 0, 
   wishlistCount = 0 
 }: HomeHeaderProps) {
+  const { cart } = useCart();
+  const { courierCart } = useCourierCart();
+
+  const instantCartCount = cart?.merchantCarts?.length || 0;
+  const courierCartCount = courierCart?.items?.length || 0;
   const insets = useSafeAreaInsets();
   
   // Search bar animation
@@ -85,7 +91,23 @@ export default function HomeHeader({
             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           >
             <Ionicons name="bag-handle-outline" size={24} color="#000" />
-            {cartCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{cartCount}</Text></View>}
+            
+            {/* Instant Cart Badge (Top Right) */}
+            {instantCartCount > 0 && (
+              <View style={[styles.badge, styles.instantBadge, { backgroundColor: '#F59E0B' }]}>
+                <View style={styles.badgeContent}>
+                  <Ionicons name="flash" size={7} color="#fff" style={{ marginRight: 1 }} />
+                  <Text style={styles.badgeText}>{instantCartCount > 9 ? '9+' : instantCartCount}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Courier Cart Badge (Bottom Right) */}
+            {courierCartCount > 0 && (
+              <View style={[styles.badge, styles.courierBadge, { backgroundColor: '#000' }]}>
+                <Text style={styles.badgeText}>{courierCartCount > 9 ? '9+' : courierCartCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -187,18 +209,33 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: "absolute",
-    top: 0,
-    right: 0,
-    backgroundColor: "#ff3b30",
-    width: 14,
+    minWidth: 14,
     height: 14,
     borderRadius: 7,
     alignItems: "center",
     justifyContent: 'center',
+    paddingHorizontal: 2,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  instantBadge: {
+    top: 0,
+    right: 0,
+    zIndex: 2,
+  },
+  courierBadge: {
+    bottom: -2,
+    right: 0,
+    zIndex: 1,
+  },
+  badgeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   badgeText: {
     color: "#fff",
-    fontSize: 8,
+    fontSize: 7.5,
     fontWeight: "bold",
   },
   profileButton: {

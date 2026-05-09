@@ -69,7 +69,7 @@ interface CartContextType {
   addToCart: (params: AddToCartParams) => Promise<void>;
   updateQuantity: (cartId: string, quantity: number) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
-  clearCart: () => Promise<void>;
+  clearCart: (merchantId?: string) => Promise<void>;
   refreshCart: () => Promise<void>;
   moveToCourier: (params: { merchantId?: string; itemId?: string }) => Promise<void>;
   deliveryTip: number;
@@ -193,15 +193,26 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [cart, fetchCart]);
 
-  const clearCart = useCallback(async () => {
+  const clearCart = useCallback(async (merchantId?: string) => {
     try {
-      await clearCartApi();
-      setCart({ items: [], totalItems: 0, merchantCarts: [] });
+      await clearCartApi(merchantId);
+      if (merchantId) {
+        if (cart) {
+          setCart({
+            ...cart,
+            items: cart.items.filter(item => item.merchantId.toString() !== merchantId.toString()),
+            merchantCarts: cart.merchantCarts.filter(mc => mc.merchantId.toString() !== merchantId.toString()),
+          });
+        }
+      } else {
+        setCart({ items: [], totalItems: 0, merchantCarts: [] });
+      }
+      await fetchCart();
     } catch (error) {
       console.error('Clear cart failed:', error);
       await fetchCart();
     }
-  }, [fetchCart]);
+  }, [cart, fetchCart]);
 
   const moveToCourier = useCallback(async (params: { merchantId?: string; itemId?: string }) => {
     try {

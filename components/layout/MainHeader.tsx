@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
 
 import { useCart } from "@/context/CartContext";
+import { useCourierCart } from "@/context/CourierCartContext";
 import { fetchCategories } from "../../api/categories";
 import { GenderThemes, Typography } from "../../constants/theme";
 import { useAddress } from "../../context/AddressContext";
@@ -47,8 +48,12 @@ const capitalize = (str?: string) => {
 
 export default function MainHeader({ hideCategories = false, scrollY, onHeaderLayout, refreshKey }: MainHeaderProps) {
     const { cart } = useCart();
+    const { courierCart } = useCourierCart();
 
-    const cartCount = cart?.totalItems || cart?.items?.length || 0;
+    const instantCartCount = cart?.merchantCarts?.length || 0;
+    const courierCartCount = courierCart?.items?.length || 0;
+    const totalCartCount = instantCartCount + courierCartCount;
+
     const router = useRouter();
     const { 
         locationAddress, 
@@ -270,10 +275,22 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                             onPress={() => router.push("/cart" as any)}
                             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                         >
-                            <Ionicons name="bag-handle-outline" size={22} color={theme.text} />
-                            {cartCount > 0 && (
-                                <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-                                    <Text style={styles.badgeText}>{cartCount > 9 ? '9+' : cartCount}</Text>
+                            <Ionicons name="bag-handle-outline" size={24} color={theme.text} />
+                            
+                            {/* Instant Cart Badge (Top Right) */}
+                            {instantCartCount > 0 && (
+                                <View style={[styles.badge, styles.instantBadge, { backgroundColor: '#F59E0B' }]}>
+                                    <View style={styles.badgeContent}>
+                                        <Ionicons name="flash" size={7} color="#fff" style={{ marginRight: 1 }} />
+                                        <Text style={styles.badgeText}>{instantCartCount > 9 ? '9+' : instantCartCount}</Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Courier Cart Badge (Bottom Right) */}
+                            {courierCartCount > 0 && (
+                                <View style={[styles.badge, styles.courierBadge, { backgroundColor: theme.accent }]}>
+                                    <Text style={styles.badgeText}>{courierCartCount > 9 ? '9+' : courierCartCount}</Text>
                                 </View>
                             )}
                         </TouchableOpacity>
@@ -580,8 +597,6 @@ const styles = StyleSheet.create({
     },
     badge: {
         position: 'absolute',
-        top: -3,
-        right: -3,
         minWidth: 16,
         height: 16,
         borderRadius: 8,
@@ -589,7 +604,22 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingHorizontal: 3,
         borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.2)',
+        borderColor: '#fff',
+    },
+    instantBadge: {
+        top: -4,
+        right: -4,
+        zIndex: 2,
+    },
+    courierBadge: {
+        bottom: -2,
+        right: -4,
+        zIndex: 1,
+    },
+    badgeContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     badgeText: {
         color: '#fff',

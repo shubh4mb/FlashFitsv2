@@ -1,15 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { LinearGradient } from 'expo-linear-gradient';
-import AvailableBrandsSection from './AvailableBrandsSection';
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
 const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     const { selectedGender } = useGender();
+    const router = useRouter();
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
     return (
@@ -41,9 +42,14 @@ const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
                     <Text style={[styles.badgeText, { color: theme.primary }]}>FASHION IN A FLASH</Text>
                 </View>
 
-                <View style={styles.brandsWrapper}>
-                    <AvailableBrandsSection refreshKey={refreshKey} />
-                </View>
+                <TouchableOpacity 
+                    style={[styles.exploreButton, { backgroundColor: theme.primary }]}
+                    onPress={() => router.push('/explore')}
+                    activeOpacity={0.8}
+                >
+                    <Text style={styles.exploreButtonText}>Explore Products</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -125,6 +131,25 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontFamily: Typography.fontFamily.bold,
         letterSpacing: 1.5,
+    },
+    exploreButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        paddingVertical: 14,
+        borderRadius: 16,
+        gap: 10,
+        marginTop: 32,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    exploreButtonText: {
+        color: '#FFF',
+        fontSize: 16,
+        fontFamily: Typography.fontFamily.bold,
     },
     brandsWrapper: {
         width: width,
