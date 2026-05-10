@@ -149,7 +149,7 @@ export default function ExploreScreen() {
               <View style={styles.infoBannerText}>
                 <Text style={styles.infoBannerTitle}>Explore Collection</Text>
                 <Text style={styles.infoBannerSubtitle}>
-                  Shop from anywhere • Flat ₹40 delivery • No distance limit
+                  Shop from anywhere • Flat ₹40 delivery • Delivery across Country
                 </Text>
               </View>
             </View>

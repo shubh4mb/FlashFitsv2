@@ -157,12 +157,6 @@ const ProductCard = ({
           </View>
 
           <Text style={styles.reviewsText}>(120)</Text>
-
-          {isTriable && (
-            <View style={styles.tryContainer}>
-              <Text style={styles.tryText}>Try and Buy</Text>
-            </View>
-          )}
         </View>
       </View>
     </TouchableOpacity>

@@ -76,23 +76,26 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <AuthProvider>
-        <AddressProvider>
-          <WishlistProvider>
-            <CartProvider>
-              <CourierCartProvider>
-                <OffersProvider>
-                  <RootNavigator />
-                  <StatusBar style="dark" />
-                  {showCustomSplash && (
-                    <CustomSplashScreen onFinish={() => setShowCustomSplash(false)} />
-                  )}
-                </OffersProvider>
-              </CourierCartProvider>
-            </CartProvider>
-          </WishlistProvider>
-        </AddressProvider>
-      </AuthProvider>
+      <AlertProvider>
+        <AuthProvider>
+          <AddressProvider>
+            <WishlistProvider>
+              <CartProvider>
+                <CourierCartProvider>
+                  <OffersProvider>
+                    <RootNavigator />
+                    <GlobalAlert />
+                    <StatusBar style="dark" />
+                    {showCustomSplash && (
+                      <CustomSplashScreen onFinish={() => setShowCustomSplash(false)} />
+                    )}
+                  </OffersProvider>
+                </CourierCartProvider>
+              </CartProvider>
+            </WishlistProvider>
+          </AddressProvider>
+        </AuthProvider>
+      </AlertProvider>
     </GestureHandlerRootView>
   );
 }

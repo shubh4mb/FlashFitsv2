@@ -181,13 +181,13 @@ export default function PhoneLogin() {
                       borderColor: errorMessage
                         ? "#EF4444"
                         : isFocused
-                        ? "#78787cff"
-                        : "#e2e8f0",
+                          ? "#78787cff"
+                          : "#e2e8f0",
                       backgroundColor: errorMessage
                         ? "#FEF2F2"
                         : isFocused
-                        ? "#ffffff"
-                        : "#f8fafc",
+                          ? "#ffffff"
+                          : "#f8fafc",
                     },
                   ]}
                 >
@@ -264,7 +264,7 @@ export default function PhoneLogin() {
                           phoneNumber.length === 10 ? styles.txtActive : styles.txtDisabled,
                         ]}
                       >
-                         {isLoading ? "Sending OTP..." : "Continue"}
+                        {isLoading ? "Sending OTP..." : "Continue"}
                       </Text>
                       {phoneNumber.length === 10 && !isLoading && (
                         <AntDesign name="right" size={20} color="#fff" />
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0F0F0F",
     marginBottom: 8,
-     fontFamily: "Manrope-Bold",
+    fontFamily: "Manrope-Bold",
   },
 
   /* ── INPUT ── */

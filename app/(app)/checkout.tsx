@@ -13,6 +13,7 @@ import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
 import { useAddress, distanceInMeters } from '@/context/AddressContext';
@@ -111,10 +112,12 @@ export default function CheckoutScreen() {
   
   const returnCharge = isTB ? (merchantTotals?.totalReturnCharge || 0) : 0;
   const baseServiceGST = isTB ? (merchantTotals?.serviceGST || 0) : 0;
-  const serviceGST = Number((baseServiceGST + (deliveryTip * 0.18)).toFixed(2));
+  const serviceGST = isTB 
+    ? Number((baseServiceGST + (deliveryTip * 0.18)).toFixed(2))
+    : 0;
   const baseUpfrontPayable = isTB ? (merchantTotals?.totalUpfrontPayable || 0) : deliveryCharge;
-  const upfrontPayable = Number((baseUpfrontPayable + deliveryTip + (deliveryTip * 0.18)).toFixed(2));
-  const totalPayableNow = Number((isTB ? upfrontPayable : (subtotal + deliveryCharge + deliveryTip + (deliveryTip * 0.18))).toFixed(2));
+  const upfrontPayable = Number((baseUpfrontPayable + deliveryTip + (isTB ? (deliveryTip * 0.18) : 0)).toFixed(2));
+  const totalPayableNow = Number((isTB ? upfrontPayable : (subtotal + deliveryCharge + deliveryTip)).toFixed(2));
   const payLaterAmount = isTB ? subtotal : 0;
   const merchantOffers = merchantCart?.appliedOffers;
   const tbOfferDiscount = merchantOffers?.totalDiscount || 0;
@@ -272,20 +275,6 @@ export default function CheckoutScreen() {
         }, {});
 
         const merchantIds = Object.keys(itemsByMerchant);
-
-        // === VALIDATE ALL MERCHANTS STATUS (Courier) ===
-        for (const mid of merchantIds) {
-          const item = itemsByMerchant[mid][0];
-          if (item?.merchantId?.isOnline === false) {
-            showAlert({
-              title: 'Store Offline',
-              message: `One or more stores (including ${item.merchantId?.shopName || 'a merchant'}) are currently offline. Please remove their products from cart to continue.`,
-              type: 'error'
-            });
-            setPlacing(false);
-            return;
-          }
-        }
 
         let successCount = 0;
         let lastOrderId: string | null = null;
@@ -479,9 +468,16 @@ export default function CheckoutScreen() {
           </Text>
           {items.slice(0, 3).map((item, idx) => (
             <View key={item._id || idx} style={styles.summaryItem}>
-              <Text style={styles.itemName} numberOfLines={1}>{item.productId?.name || 'Product'}</Text>
-              <Text style={styles.itemMeta}>Qty: {item.quantity} • Size: {item.size}</Text>
-              <Text style={styles.itemPrice}>₹{item.price * item.quantity}</Text>
+              <Image 
+                source={{ uri: item.image?.url || item.image }} 
+                style={styles.summaryImage} 
+                contentFit="cover"
+              />
+              <View style={styles.summaryItemDetails}>
+                <Text style={styles.itemName} numberOfLines={1}>{item.productId?.name || 'Product'}</Text>
+                <Text style={styles.itemMeta}>Qty: {item.quantity} • Size: {item.size}</Text>
+                <Text style={styles.itemPrice}>₹{item.price * item.quantity}</Text>
+              </View>
             </View>
           ))}
           {items.length > 3 && (
@@ -576,13 +572,23 @@ export default function CheckoutScreen() {
             {!isTB && (
               <>
                 <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Item Total</Text>
+                  <Text style={styles.billValue}>₹{subtotal}</Text>
+                </View>
+                <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Delivery Fee</Text>
                   <Text style={styles.billValue}>₹{deliveryCharge}</Text>
                 </View>
+                {deliveryTip > 0 && (
+                  <View style={styles.billRow}>
+                    <Text style={styles.billLabel}>Delivery Tip</Text>
+                    <Text style={styles.billValue}>₹{deliveryTip}</Text>
+                  </View>
+                )}
                 <View style={styles.divider} />
                 <View style={styles.billRow}>
                   <Text style={styles.totalLabel}>Total Payable</Text>
-                  <Text style={[styles.totalValue, { color: theme.primary }]}>₹{totalPayableNow - offerDiscount}</Text>
+                  <Text style={[styles.totalValue, { color: theme.primary }]}>₹{Number(totalPayableNow - offerDiscount).toFixed(0)}</Text>
                 </View>
               </>
             )}
@@ -685,7 +691,14 @@ const styles = StyleSheet.create({
   addAddressBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   addAddressText: { fontSize: 13, fontWeight: '600' },
   summaryItem: {
-    paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F8FAFC',
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F8FAFC',
+    flexDirection: 'row', gap: 12, alignItems: 'center'
+  },
+  summaryImage: {
+    width: 50, height: 50, borderRadius: 10, backgroundColor: '#F8FAFC'
+  },
+  summaryItemDetails: {
+    flex: 1,
   },
   itemName: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
   itemMeta: { fontSize: 12, color: '#94A3B8', marginTop: 2 },

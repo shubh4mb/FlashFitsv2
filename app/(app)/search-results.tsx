@@ -1,37 +1,33 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import {
-  StyleSheet,
-  View,
-  TouchableOpacity,
-  FlatList,
-  Text,
-  Dimensions,
-  Platform,
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  RefreshControl,
-  TextInput,
-  Switch,
-  Animated,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
-} from 'react-native';
-import CustomRefreshControl from '@/components/common/CustomRefreshControl';
-import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
-import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { fetchFilteredProducts } from '@/api/products';
 import { fetchCategories } from '@/api/categories';
 import { fetchMerchants } from '@/api/merchants';
-import ProductCard from '@/components/common/ProductCard';
-import { useGender } from '@/context/GenderContext';
-import { useAddress } from '@/context/AddressContext';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { fetchFilteredProducts } from '@/api/products';
 import Loader from '@/components/common/Loader';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import ProductCard from '@/components/common/ProductCard';
+import { GenderThemes, Typography } from '@/constants/theme';
+import { useAddress } from '@/context/AddressContext';
+import { useGender } from '@/context/GenderContext';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 const PAGE_SIZE = 20;
@@ -40,10 +36,10 @@ type SortOption = 'relevance' | 'price_low' | 'price_high' | 'newest' | 'trendin
 type DeliveryMode = 'tryAndBuy' | 'courier' | null;
 
 export default function SearchResultsScreen() {
-  const { query, categoryId, subCategoryId, gender, collectionId, title, merchantId, sortBy: initialSortBy } = useLocalSearchParams<{ 
-    query?: string; 
-    categoryId?: string; 
-    subCategoryId?: string; 
+  const { query, categoryId, subCategoryId, gender, collectionId, title, merchantId, sortBy: initialSortBy } = useLocalSearchParams<{
+    query?: string;
+    categoryId?: string;
+    subCategoryId?: string;
     gender?: string;
     collectionId?: string;
     title?: string;
@@ -62,11 +58,13 @@ export default function SearchResultsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const [headerHeight, setHeaderHeight] = useState(insets.top + 180);
-  
-  const clampedScroll = useMemo(() => Animated.diffClamp(scrollY, 0, headerHeight), [scrollY, headerHeight]);
+  const [topHeaderHeight, setTopHeaderHeight] = useState(insets.top + 62);
+
+  const maxTranslateY = Math.max(topHeaderHeight - insets.top, 0);
+  const clampedScroll = useMemo(() => Animated.diffClamp(scrollY, 0, maxTranslateY), [scrollY, maxTranslateY]);
   const headerTranslateY = clampedScroll.interpolate({
-    inputRange: [0, headerHeight],
-    outputRange: [0, -headerHeight],
+    inputRange: [0, maxTranslateY],
+    outputRange: [0, -maxTranslateY],
   });
 
   const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -74,7 +72,7 @@ export default function SearchResultsScreen() {
       handleRefresh();
     }
   };
-  
+
   // Pagination
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -89,7 +87,7 @@ export default function SearchResultsScreen() {
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(null);
   const [collectionFilter, setCollectionFilter] = useState<string | undefined>(collectionId);
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(merchantId ? [merchantId] : []);
-  
+
   const [isSortModalVisible, setIsSortModalVisible] = useState(false);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
@@ -208,19 +206,19 @@ export default function SearchResultsScreen() {
   };
 
   const toggleCategory = (id: string) => {
-    setSelectedCategoryIds(prev => 
+    setSelectedCategoryIds(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
   };
 
   const toggleSubCategory = (id: string) => {
-    setSelectedSubCategoryIds(prev => 
+    setSelectedSubCategoryIds(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
   };
 
-  const activeFilterCount = selectedCategoryIds.length + selectedSubCategoryIds.length 
-    + (genderFilter ? 1 : 0) + (deliveryMode ? 1 : 0) 
+  const activeFilterCount = selectedCategoryIds.length + selectedSubCategoryIds.length
+    + (genderFilter ? 1 : 0) + (deliveryMode ? 1 : 0)
     + ((priceRange[0] !== 0 || priceRange[1] !== 10000) ? 1 : 0)
     + (collectionFilter ? 1 : 0)
     + selectedStoreIds.length;
@@ -256,9 +254,9 @@ export default function SearchResultsScreen() {
       animationType="slide"
       onRequestClose={() => setIsSortModalVisible(false)}
     >
-      <TouchableOpacity 
-        style={styles.modalOverlay} 
-        activeOpacity={1} 
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
         onPress={() => setIsSortModalVisible(false)}
       >
         <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
@@ -269,7 +267,7 @@ export default function SearchResultsScreen() {
               <Ionicons name="close" size={24} color="#0F172A" />
             </TouchableOpacity>
           </View>
-          
+
           {([
             { key: 'relevance', label: 'Relevance' },
             { key: 'trending', label: 'Popularity' },
@@ -277,7 +275,7 @@ export default function SearchResultsScreen() {
             { key: 'price_low', label: 'Price: Low to High' },
             { key: 'price_high', label: 'Price: High to Low' },
           ] as { key: SortOption; label: string }[]).map(({ key, label }) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               key={key}
               style={styles.sortOption}
               onPress={() => {
@@ -306,9 +304,9 @@ export default function SearchResultsScreen() {
       animationType="slide"
       onRequestClose={() => setIsFilterModalVisible(false)}
     >
-      <TouchableOpacity 
-        style={styles.modalOverlay} 
-        activeOpacity={1} 
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
         onPress={() => setIsFilterModalVisible(false)}
       >
         <View style={[styles.modalContent, { height: '80%' }]} onStartShouldSetResponder={() => true}>
@@ -365,9 +363,9 @@ export default function SearchResultsScreen() {
                       const s = merchantSearchQuery.toLowerCase();
                       const city = m.address?.city || m.city || (typeof m.address === 'string' ? m.address : '');
                       const area = m.address?.area || '';
-                      return m.shopName.toLowerCase().includes(s) || 
-                             city.toLowerCase().includes(s) || 
-                             area.toLowerCase().includes(s);
+                      return m.shopName.toLowerCase().includes(s) ||
+                        city.toLowerCase().includes(s) ||
+                        area.toLowerCase().includes(s);
                     })
                     .map((merchant) => {
                       const isSelected = selectedStoreIds.includes(merchant._id);
@@ -377,7 +375,7 @@ export default function SearchResultsScreen() {
                           key={merchant._id}
                           style={[styles.filterTag, isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }]}
                           onPress={() => {
-                            setSelectedStoreIds(prev => 
+                            setSelectedStoreIds(prev =>
                               prev.includes(merchant._id) ? prev.filter(id => id !== merchant._id) : [...prev, merchant._id]
                             );
                           }}
@@ -463,7 +461,7 @@ export default function SearchResultsScreen() {
           </ScrollView>
 
           <View style={styles.filterFooter}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.resetButton}
               onPress={() => {
                 setSelectedCategoryIds([]);
@@ -476,7 +474,7 @@ export default function SearchResultsScreen() {
             >
               <Text style={styles.resetButtonText}>Reset</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.applyButton, { backgroundColor: theme.primary }]}
               onPress={() => setIsFilterModalVisible(false)}
             >
@@ -491,17 +489,29 @@ export default function SearchResultsScreen() {
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      
+
+      {/* Mask for Status Bar to prevent text overlapping when scrolling up */}
+      <View style={{ 
+        position: 'absolute', 
+        top: 0, left: 0, right: 0, 
+        height: insets.top, 
+        backgroundColor: '#FFFFFF', 
+        zIndex: 1000 
+      }} />
+
       {/* Collapsible Header Section */}
-      <Animated.View 
+      <Animated.View
         onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
         style={[
-          styles.animatedHeaderContainer, 
+          styles.animatedHeaderContainer,
           { transform: [{ translateY: headerTranslateY }] }
         ]}
       >
         {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View 
+          onLayout={(e) => setTopHeaderHeight(e.nativeEvent.layout.height)}
+          style={[styles.header, { paddingTop: insets.top + 10 }]}
+        >
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={24} color="#0F172A" />
           </TouchableOpacity>
@@ -518,7 +528,7 @@ export default function SearchResultsScreen() {
 
         {/* Filter Bar */}
         <View style={styles.filterBar}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.filterBarButton}
             onPress={() => setIsSortModalVisible(true)}
           >
@@ -526,10 +536,10 @@ export default function SearchResultsScreen() {
             <Text style={styles.filterBarButtonText}>Sort</Text>
             <Ionicons name="chevron-down" size={14} color="#94A3B8" />
           </TouchableOpacity>
-          
+
           <View style={styles.filterDivider} />
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.filterBarButton}
             onPress={() => setIsFilterModalVisible(true)}
           >
@@ -553,13 +563,13 @@ export default function SearchResultsScreen() {
                 <TouchableOpacity
                   key={g}
                   style={[
-                    styles.genderTab, 
+                    styles.genderTab,
                     isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }
                   ]}
                   onPress={() => setGenderFilter(g === 'ALL' ? '' : g)}
                 >
                   <Text style={[
-                    styles.genderTabText, 
+                    styles.genderTabText,
                     isSelected && { color: '#FFFFFF', fontFamily: Typography.fontFamily.bold }
                   ]}>
                     {label}
@@ -591,10 +601,10 @@ export default function SearchResultsScreen() {
           <Animated.FlatList
             data={products}
             renderItem={({ item }) => (
-              <ProductCard 
-                product={item} 
+              <ProductCard
+                product={item}
                 containerStyle={styles.productCard}
-                width={(width - 48) / 2} 
+                width={(width - 48) / 2}
                 fromExplore={deliveryMode !== 'tryAndBuy'}
               />
             )}
@@ -614,7 +624,7 @@ export default function SearchResultsScreen() {
           <Ionicons name="search-outline" size={80} color="#CBD5E1" />
           <Text style={styles.emptyTitle}>No products found</Text>
           <Text style={styles.emptyText}>Try adjusting your filters or search for something else</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.clearFiltersButton, { backgroundColor: theme.primary }]}
             onPress={() => {
               setSelectedCategoryIds([]);
@@ -646,7 +656,7 @@ export default function SearchResultsScreen() {
           {deliveryMode === 'tryAndBuy' && (
             <View style={[styles.pulseRing, { borderColor: theme.primary + '40' }]} />
           )}
-          
+
           <LinearGradient
             colors={deliveryMode === 'tryAndBuy' ? [theme.primary, theme.primary, theme.primary + 'CC'] : ['#FFFFFF', '#F8FAFC']}
             style={[
@@ -654,24 +664,24 @@ export default function SearchResultsScreen() {
               deliveryMode !== 'tryAndBuy' && styles.floatingBoltInactive
             ]}
           >
-            <Ionicons 
-              name={deliveryMode === 'tryAndBuy' ? "flash" : "flash-outline"} 
-              size={32} 
-              color={deliveryMode === 'tryAndBuy' ? '#FFFFFF' : '#94A3B8'} 
+            <Ionicons
+              name={deliveryMode === 'tryAndBuy' ? "flash" : "flash-outline"}
+              size={32}
+              color={deliveryMode === 'tryAndBuy' ? '#FFFFFF' : '#94A3B8'}
             />
           </LinearGradient>
-          
+
           {deliveryMode === 'tryAndBuy' && (
             <View style={[styles.activeIndicator, { backgroundColor: '#10B981' }]} />
           )}
         </TouchableOpacity>
-        
+
         <View style={[
           styles.floatingLabelContainer,
           deliveryMode === 'tryAndBuy' && { backgroundColor: theme.primary, borderColor: theme.primary }
         ]}>
           <Text style={[
-            styles.floatingLabel, 
+            styles.floatingLabel,
             deliveryMode === 'tryAndBuy' && { color: '#FFFFFF' }
           ]}>
             {deliveryMode === 'tryAndBuy' ? 'TRY & BUY: ON' : 'TRY & BUY: OFF'}

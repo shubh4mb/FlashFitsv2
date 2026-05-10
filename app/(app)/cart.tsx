@@ -109,11 +109,6 @@ export default function CartScreen() {
       setModalVisible(true);
       return;
     }
-    const hasOffline = courierItems.some((item: any) => item.merchantId?.isOnline === false);
-    if (hasOffline) {
-      showToast({ message: "Some merchants are offline", type: 'error' });
-      return;
-    }
     router.push({ pathname: '/checkout', params: { type: 'courier' } } as any);
   };
 
@@ -134,7 +129,10 @@ export default function CartScreen() {
   const courierItems = courierCart?.items || [];
   const courierTotals = courierCart?.totals;
   const courierAppliedOffers = courierCart?.appliedOffers;
-  const courierTotal = courierTotals?.totalPayable || courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) + (courierItems.length > 0 ? 40 : 0);
+  const courierTotal = courierTotals?.totalPayable || (
+    courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) + 
+    (courierItems.length > 0 ? 40 : 0)
+  );
 
   const currentMerchantCart = merchantCarts[activeIndex];
 
@@ -474,6 +472,13 @@ export default function CartScreen() {
                 </View>
               )}
 
+              <View style={styles.logisticsNote}>
+                <Ionicons name="information-circle" size={18} color="#64748B" />
+                <Text style={styles.logisticsNoteText}>
+                  Standard delivery does not include the 'Try & Buy' option. Logistics are managed by our retail partners directly. {'\n'}Note: Cash on Delivery (COD) is not available.
+                </Text>
+              </View>
+
               <View style={styles.summaryCard}>
                 <Text style={styles.billTitle}>Order Summary</Text>
                 <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.subtotal || 0}</Text></View>
@@ -482,7 +487,7 @@ export default function CartScreen() {
                 <View style={styles.billDivider} />
                 <View style={styles.billRow}>
                   <Text style={styles.grandTotalLabel}>Total Amount</Text>
-                  <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{courierTotal}</Text>
+                  <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Number(courierTotal).toFixed(0)}</Text>
                 </View>
               </View>
 
@@ -507,7 +512,7 @@ export default function CartScreen() {
               <Text style={styles.pinnedPrice}>
                 ₹{activeTab === 'instant'
                   ? Number((currentMerchantCart?.totals?.totalUpfrontPayable || 0) + deliveryTip).toFixed(0)
-                  : courierTotal}
+                  : Number(courierTotal).toFixed(2)}
               </Text>
               <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
             </View>
@@ -613,6 +618,24 @@ const styles = StyleSheet.create({
   standardBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F3E8FF', padding: 14, borderRadius: 16, marginBottom: 20 },
   standardBannerText: { fontSize: 13, fontWeight: '700', color: '#7C3AED' },
   summaryCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },
+  logisticsNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  logisticsNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
 
   // Pinned Bottom
   pinnedContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', paddingHorizontal: 20, paddingTop: 10 },
