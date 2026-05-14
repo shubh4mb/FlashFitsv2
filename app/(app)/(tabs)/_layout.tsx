@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
+import ActiveOrderBanner from '@/components/common/ActiveOrderBanner';
 import {
   Animated,
   Platform,
@@ -162,6 +163,7 @@ function TabsContainer() {
         <Tabs.Screen name="stores" />
         <Tabs.Screen name="wishlist" />
       </Tabs>
+      <ActiveOrderBanner />
     </View>
   );
 }

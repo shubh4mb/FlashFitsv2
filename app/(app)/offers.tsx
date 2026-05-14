@@ -123,6 +123,7 @@ export default function OffersScreen() {
 
 function OfferListItem({ offer, theme }: { offer: Offer; theme: any }) {
   const [timeLeft, setTimeLeft] = useState('');
+  const isNotEligible = offer.eligible === false;
 
   useEffect(() => {
     if (!offer.isFlashSale) return;
@@ -142,24 +143,48 @@ function OfferListItem({ offer, theme }: { offer: Offer; theme: any }) {
     ? `₹${offer.discountValue} OFF`
     : `${offer.discountValue}% OFF`;
 
+  const applicableLabel = offer.applicableTo === 'try_and_buy'
+    ? 'Try & Buy Only'
+    : offer.applicableTo === 'courier'
+      ? 'Standard Cart Only'
+      : 'All Orders';
+
+  const applicableColor = offer.applicableTo === 'try_and_buy'
+    ? '#16A34A'
+    : offer.applicableTo === 'courier'
+      ? '#7C3AED'
+      : '#64748B';
+
+  const applicableBg = offer.applicableTo === 'try_and_buy'
+    ? '#DCFCE7'
+    : offer.applicableTo === 'courier'
+      ? '#F3E8FF'
+      : '#F1F5F9';
+
   return (
-    <View style={styles.offerCard}>
+    <View style={[styles.offerCard, isNotEligible && { opacity: 0.5 }]}>
       <View style={styles.offerLeft}>
-        <View style={[styles.discountCircle, { backgroundColor: theme.primary + '15' }]}>
-          <Text style={[styles.discountText, { color: theme.primary }]}>{discountLabel}</Text>
+        <View style={[styles.discountCircle, { backgroundColor: isNotEligible ? '#F1F5F9' : theme.primary + '15' }]}>
+          <Text style={[styles.discountText, { color: isNotEligible ? '#94A3B8' : theme.primary }]}>{discountLabel}</Text>
         </View>
       </View>
       <View style={styles.offerCenter}>
-        <Text style={styles.offerTitle} numberOfLines={2}>{offer.title}</Text>
+        <Text style={[styles.offerTitle, isNotEligible && { color: '#94A3B8' }]} numberOfLines={2}>{offer.title}</Text>
         {offer.description ? (
           <Text style={styles.offerDesc} numberOfLines={1}>{offer.description}</Text>
         ) : null}
         <View style={styles.offerMeta}>
           <OfferBadge type={offer.type} compact />
+          <View style={{ backgroundColor: applicableBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+            <Text style={{ fontSize: 9, fontWeight: '700', color: applicableColor }}>{applicableLabel}</Text>
+          </View>
           {offer.conditions?.minCartValue ? (
             <Text style={styles.offerCondition}>Above ₹{offer.conditions.minCartValue}</Text>
           ) : null}
         </View>
+        {isNotEligible && offer.reason ? (
+          <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: '600', marginTop: 4 }}>{offer.reason}</Text>
+        ) : null}
       </View>
       <View style={styles.offerRight}>
         {offer.couponCode ? (

@@ -33,6 +33,7 @@ export interface Offer {
   freeDelivery: boolean;
   priority: number;
   isActive: boolean;
+  applicableTo?: 'try_and_buy' | 'courier' | 'both';
   // Added by API
   eligible?: boolean;
   reason?: string;

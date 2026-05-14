@@ -60,7 +60,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "http://192.168.0.103:5000",
+      "BACKEND_URL": "https://97a8-2405-201-f001-8ff-b00b-a574-926e-1561.ngrok-free.app",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

@@ -59,7 +59,7 @@ export default function ReturnItemsScreen() {
     const initListener = async () => {
       await listenOrderUpdates((data) => {
         const orderStatus = data?.orderStatus;
-        if (orderStatus === 'otp-verified-return' || orderStatus === 'delivered' || orderStatus === 'completed') {
+        if (orderStatus === 'return_in_progress' || orderStatus === 'completed') {
           setShowCompletion(true);
         }
       });
