@@ -87,15 +87,17 @@ const OrdersScreen = () => {
 
   const getStatusColor = (status: string) => {
     const statusColors: Record<string, string> = {
+      pending: "#FF9800",
       placed: "#FF9800",
-      confirmed: "#2196F3",
-      preparing: "#9C27B0",
+      accepted: "#2196F3",
       packed: "#673AB7",
-      shipped: "#00BCD4",
-      ready: "#4CAF50",
-      picked: "#00BCD4",
-      delivered: "#4CAF50",
+      in_transit: "#00BCD4",
+      try_phase: "#9C27B0",
+      selection_made: "#FF5722",
+      return_in_progress: "#FF9800",
+      completed: "#4CAF50",
       cancelled: "#F44336",
+      rejected: "#F44336",
     };
     return statusColors[status?.toLowerCase()] || "#666";
   };

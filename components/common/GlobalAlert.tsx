@@ -97,7 +97,7 @@ const GlobalAlert: React.FC = () => {
       >
         <Pressable style={styles.alertBackdrop} onPress={hideAlert} />
         <Animated.View 
-          entering={withSpring(SCREEN_HEIGHT > 800 ? SlideInDown : FadeIn)}
+          entering={SCREEN_HEIGHT > 800 ? SlideInDown.springify() : FadeIn}
           exiting={FadeOut}
           style={styles.alertContainer}
         >

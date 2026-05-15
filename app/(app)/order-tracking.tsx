@@ -79,13 +79,13 @@ const statusToSteps = (status?: string): OrderStep[] => {
     case 'packed':
       steps[0].completed = true;
       break;
-    case 'out_for_delivery':
+    case 'in_transit':
       steps[0].completed = true;
       steps[1].completed = true;
       break;
-    case 'arrived at delivery':
-    case 'try phase':
-    case 'completed try phase':
+    case 'try_phase':
+    case 'selection_made':
+    case 'return_in_progress':
       steps[0].completed = true;
       steps[1].completed = true;
       steps[2].completed = true;
@@ -211,7 +211,7 @@ export default function OrderTrackingScreen() {
       if (!data) return;
 
       // Handle completed try phase -> redirect to return page
-      if (data.orderStatus === 'completed try phase') {
+      if (data.orderStatus === 'selection_made') {
         router.replace({
           pathname: '/return-items' as any,
           params: {
@@ -259,7 +259,7 @@ export default function OrderTrackingScreen() {
         console.log('📦 Order update:', update);
 
         // Handle completed try phase -> redirect
-        if (update.orderStatus === 'completed try phase') {
+        if (update.orderStatus === 'selection_made') {
           router.replace({
             pathname: '/return-items' as any,
             params: {
@@ -272,7 +272,7 @@ export default function OrderTrackingScreen() {
           return;
         }
 
-        if (update.orderStatus === 'arrived at delivery') {
+        if (update.orderStatus === 'try_phase') {
           Notifications.scheduleNotificationAsync({
             content: {
               title: 'Rider Arrived! 🏠',
@@ -472,9 +472,9 @@ export default function OrderTrackingScreen() {
   };
 
   const status = order?.orderStatus || '';
-  const isTryPhase = ['try phase', 'completed try phase', 'arrived at delivery'].includes(status);
-  const isCompleted = ['delivered', 'completed', 'otp-verified-return'].includes(status);
-  const isTracking = ['placed', 'accepted', 'packed', 'out_for_delivery'].includes(status);
+  const isTryPhase = ['try_phase', 'selection_made'].includes(status);
+  const isCompleted = ['completed', 'return_in_progress'].includes(status);
+  const isTracking = ['placed', 'accepted', 'packed', 'in_transit'].includes(status);
 
   if (loading) {
     return (
@@ -581,7 +581,7 @@ export default function OrderTrackingScreen() {
         )}
 
         {/* ─── OTP Badge ─── */}
-        {otp && (isTryPhase || isTracking) && (
+        {otp && isTryPhase && (
           <View style={styles.otpCard}>
             <Ionicons name="key-outline" size={18} color="#1A73E8" />
             <Text style={styles.otpText}>OTP: <Text style={{ fontWeight: '900', letterSpacing: 2 }}>{otp}</Text></Text>
@@ -716,10 +716,10 @@ export default function OrderTrackingScreen() {
               <Ionicons name="checkmark-circle" size={80} color="#10B981" />
             </View>
             <Text style={styles.completedTitle}>
-              {status === 'otp-verified-return' ? 'Return Processed!' : 'Order Completed!'}
+              {status === 'return_in_progress' ? 'Return Processed!' : 'Order Completed!'}
             </Text>
             <Text style={styles.completedSub}>
-              {status === 'otp-verified-return'
+              {status === 'return_in_progress'
                 ? 'Your return has been processed successfully'
                 : 'Thank you for shopping with FlashFits'}
             </Text>

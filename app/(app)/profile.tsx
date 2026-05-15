@@ -78,7 +78,7 @@ export default function ProfileScreen() {
             title: 'Help & Support',
             subtitle: 'FAQs and customer care',
             icon: 'help-buoy-outline' as const,
-            onPress: () => {},
+            onPress: () => router.push('/(app)/help-center' as any),
         },
         {
             title: 'About Us',
