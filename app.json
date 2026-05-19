@@ -60,7 +60,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "http://192.168.29.18:5000",
+      "BACKEND_URL": "http://192.168.0.102:5000",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

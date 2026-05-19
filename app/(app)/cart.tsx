@@ -1,28 +1,28 @@
+import logo from '@/assets/images/logo/logo.png';
 import AddressSelectorModal from '@/components/common/AddressSelectorModal';
 import CartItem from '@/components/common/CartItem';
+import CouponInput from '@/components/common/CouponInput';
 import Loader from '@/components/common/Loader';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
+import { useToast } from '@/context/AlertContext';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
 import { useGender } from '@/context/GenderContext';
 import { useOffers } from '@/context/OffersContext';
-import { useToast } from '@/context/AlertContext';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import logo from '@/assets/images/logo/logo.png';
-import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
   FlatList,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,7 +30,6 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -41,14 +40,14 @@ export default function CartScreen() {
   const showToast = useToast();
   const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart, applyOfferCourier, removeOfferCourier } = useCourierCart();
   const { selectedGender } = useGender();
-  const { selectedAddress } = useAddress();
+  const { selectedAddress, tbAvailable } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { tab } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<CartTab>((tab === 'courier' ? 'standard' : 'instant'));
   const [modalVisible, setModalVisible] = useState(false);
-  const { computeBestOffers, couponCode } = useOffers();
+  const { computeBestOffers, couponCode, appliedOffers } = useOffers();
 
   // Carousel state
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -129,8 +128,9 @@ export default function CartScreen() {
   const courierItems = courierCart?.items || [];
   const courierTotals = courierCart?.totals;
   const courierAppliedOffers = courierCart?.appliedOffers;
+  const couponDiscount = appliedOffers?.totalDiscount || 0;
   const courierTotal = courierTotals?.totalPayable || (
-    courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) + 
+    courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) +
     (courierItems.length > 0 ? 40 : 0)
   );
 
@@ -256,7 +256,7 @@ export default function CartScreen() {
                   setActiveIndex(index);
                 }
               }}
-              renderItem={({ item: mc }) => {
+              renderItem={({ item: mc, index }) => {
                 const mTotals = mc.totals;
                 const mOffers = mc.appliedOffers;
                 const isOffline = mc.merchantDetails?.isOnline === false;
@@ -274,135 +274,217 @@ export default function CartScreen() {
                         contentContainerStyle={styles.slideContent}
                         scrollEventThrottle={16}
                       >
-                      {/* Merchant Header Branding */}
-                      <TouchableOpacity 
-                        style={styles.brandingHeader}
-                        activeOpacity={0.7}
-                        onPress={() => router.push(`/merchant/${mc.merchantId}` as any)}
-                      >
-                        <View style={styles.brandingInfo}>
-                          <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName}</Text>
-                          <View style={styles.brandingStatusRow}>
-                            {isOffline ? (
-                              <View style={{ gap: 4, alignItems: 'flex-start' }}>
-                                <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#FEE2E2' }]}>Shop Closed</Text>
-                                <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#ffffffff', fontSize: 8 }]}>Reopens tomorrow at 9 AM</Text>
-                              </View>
-                            ) : !isEligible ? (
-                              <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
-                            ) : (
-                              <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>Try & Buy</Text>
-                            )}
-                            {!isOffline && (
-                              <Text style={styles.brandingMins}>Delivery in {mc.deliveryDetails?.estimatedTime || '25-30'} mins</Text>
-                            )}
-                          </View>
-                        </View>
-                        <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.brandingLogo} contentFit="contain" />
-                      </TouchableOpacity>
-
-                      {!isEligible && !isOffline && (
-                        <View style={styles.warningBanner}>
-                          <Ionicons name="warning" size={20} color="#B45309" />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.warningText}>This store is too far for Try & Buy. Move items to standard cart to continue.</Text>
-                            <TouchableOpacity style={styles.warningAction} onPress={() => handleMoveToCourier(mc.merchantId)}>
-                              <Text style={styles.warningActionText}>Move to Standard Cart</Text>
-                              <Feather name="arrow-right" size={14} color="#0F172A" />
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      )}
-
-                      {/* Items */}
-                      <View style={styles.itemsContainer}>
-                        {mc.items.map((item) => (
-                          <CartItem key={item._id} item={item} />
-                        ))}
-                      </View>
-
-                      {/* Offers Section */}
-                      {mOffers?.availableOffers?.length > 0 && (
-                        <View style={{ backgroundColor: '#fff', padding: 16, marginBottom: 12, borderRadius: 12 }}>
-                          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: '#0F172A' }}>Offers & Benefits</Text>
-                          {mOffers.availableOffers.map((offer: any) => {
-                            const isApplied = mOffers.appliedOffers?.some((o: any) => o._id === offer._id || o.offerId === offer._id);
-                            return (
-                              <View key={offer._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
-                                <View style={{ flex: 1, paddingRight: 16 }}>
-                                  <Text style={{ fontSize: 14, fontWeight: '600', color: theme.primary }}>{offer.couponCode || offer.title}</Text>
-                                  <Text style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>{offer.description || `Get ₹${offer.discountAmount} off`}</Text>
+                        {/* Merchant Header Branding */}
+                        <TouchableOpacity
+                          style={styles.brandingHeader}
+                          activeOpacity={0.7}
+                          onPress={() => router.push(`/merchant/${mc.merchantId}` as any)}
+                        >
+                          <View style={styles.brandingInfo}>
+                            <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName}</Text>
+                            <View style={styles.brandingStatusRow}>
+                              {isOffline ? (
+                                <View style={{ gap: 4, alignItems: 'flex-start' }}>
+                                  <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#FEE2E2' }]}>Shop Closed</Text>
+                                  <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#ffffffff', fontSize: 8 }]}>Reopens tomorrow at 9 AM</Text>
                                 </View>
-                                {isApplied ? (
-                                  <TouchableOpacity onPress={() => removeOffer(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' }}>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#EF4444' }}>Remove</Text>
-                                  </TouchableOpacity>
-                                ) : (
-                                  <TouchableOpacity onPress={() => applyOffer(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: theme.primary + '10', borderWidth: 1, borderColor: theme.primary }}>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: theme.primary }}>Apply</Text>
-                                  </TouchableOpacity>
-                                )}
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
+                              ) : !isEligible ? (
+                                <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
+                              ) : (
+                                <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>Try & Buy</Text>
+                              )}
+                              {!isOffline && (
+                                <Text style={styles.brandingMins}>Delivery in {mc.deliveryDetails?.estimatedTime || '25-30'} mins</Text>
+                              )}
+                            </View>
+                          </View>
+                          <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.brandingLogo} contentFit="contain" />
+                        </TouchableOpacity>
 
-                      {/* Bill Summary */}
-                      <View style={styles.premiumBill}>
-                        <Text style={styles.billTitle}>Bill Summary</Text>
-                         <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.subtotal}</Text></View>
-                         {mOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{mOffers.totalDiscount}</Text></View>}
-                         
-                         {mOffers?.totalDiscount > 0 && (
-                           <View style={[styles.billRow, { marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: '#F1F5F9' }]}>
-                             <Text style={[styles.billLabel, { fontWeight: '700', color: '#0F172A' }]}>Total after offer</Text>
-                             <Text style={[styles.billValue, { fontWeight: '800' }]}>₹{((mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)}</Text>
-                           </View>
-                         )}
-
-                        <View style={styles.billDivider} />
-
-                        <View style={styles.payLaterSection}>
-                          <Ionicons name="time-outline" size={14} color="#64748B" />
-                          <Text style={styles.payLaterText}>Keep what you love, pay only for those after trying, return the rest (Max: ₹{((mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)})</Text>
-                        </View>
-
-                        <Text style={styles.upfrontTitle}>Payable Now</Text>
-                        <View style={styles.billRow}><Text style={styles.billLabel}>Delivery Charge (Partial refundable)</Text><Text style={styles.billValue}>₹{mOffers?.freeDelivery ? 0 : (mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge)}</Text></View>
-                        {mTotals?.totalReturnCharge > 0 && !mOffers?.freeDelivery && (
-                          <Text style={styles.billSubText}>₹{mTotals.totalReturnCharge} will be refunded if nothing is returned</Text>
+                        {!isEligible && !isOffline && (
+                          <View style={styles.warningBanner}>
+                            <Ionicons name="warning" size={20} color="#B45309" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.warningText}>This store is too far for Try & Buy. Move items to standard cart to continue.</Text>
+                              <TouchableOpacity style={styles.warningAction} onPress={() => handleMoveToCourier(mc.merchantId)}>
+                                <Text style={styles.warningActionText}>Move to Standard Cart</Text>
+                                <Feather name="arrow-right" size={14} color="#0F172A" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
                         )}
-                        <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{((mTotals?.serviceGST || 0) + deliveryTip * 0.18).toFixed(2)}</Text></View>
-                        {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
 
-                        <View style={[styles.billRow, { marginTop: 12 }]}>
-                          <Text style={styles.grandTotalLabel}>Total Payable Now</Text>
-                          <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Number(mTotals?.totalUpfrontPayable + deliveryTip).toFixed(2)}</Text>
-                        </View>
-                      </View>
-
-                      {/* Tip Section */}
-                      <View style={styles.slideTipSection}>
-                        <Text style={styles.tipSectionTitle}>Tip your Delivery Partner</Text>
-                        <View style={styles.tipRow}>
-                          {[10, 20, 50].map((amount) => (
-                            <TouchableOpacity
-                              key={amount}
-                              style={[styles.tipPill, deliveryTip === amount && { borderColor: theme.primary, backgroundColor: theme.primary + '10' }]}
-                              onPress={() => setDeliveryTip(deliveryTip === amount ? 0 : amount)}
-                            >
-                              <Text style={[styles.tipPillText, deliveryTip === amount && { color: theme.primary }]}>₹{amount}</Text>
-                            </TouchableOpacity>
+                        {/* Items */}
+                        <View style={styles.itemsContainer}>
+                          {mc.items.map((item) => (
+                            <CartItem key={item._id} item={item} />
                           ))}
                         </View>
-                      </View>
-                      
-                      <View style={styles.footer}>
-                        <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
-                        <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-                        <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
-                      </View>
+
+                        {/* Offers Section */}
+                        {mOffers?.availableOffers?.length > 0 && (
+                          <View style={styles.offersSection}>
+                            <View style={styles.offersHeaderRow}>
+                              <View style={styles.offersHeaderTitleContainer}>
+                                <MaterialCommunityIcons name="ticket-percent-outline" size={22} color={theme.primary} />
+                                <Text style={[styles.offersSectionTitle, { fontFamily: Typography.fontFamily.bold }]}>Offers & Benefits</Text>
+                              </View>
+                              <View style={[styles.offersCountBadge, { backgroundColor: theme.primary + '10' }]}>
+                                <Text style={[styles.offersCountText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
+                                  {mOffers.availableOffers.length} {mOffers.availableOffers.length === 1 ? 'Offer' : 'Offers'}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {mOffers.availableOffers.map((offer: any) => {
+                              const isApplied = mOffers.appliedOffers?.some((o: any) => (o._id?.toString() || o.offerId?.toString()) === (offer._id?.toString() || offer.offerId?.toString()));
+                              return (
+                                <View
+                                  key={offer._id}
+                                  style={[
+                                    styles.offerCard,
+                                    isApplied && {
+                                      borderColor: theme.primary,
+                                      backgroundColor: theme.primary + '05',
+                                    }
+                                  ]}
+                                >
+                                  {isApplied && (
+                                    <View style={[styles.appliedBadge, { backgroundColor: theme.primary }]}>
+                                      <Ionicons name="checkmark" size={10} color="#fff" />
+                                    </View>
+                                  )}
+
+                                  <View style={styles.offerCardLeft}>
+                                    <View style={[styles.iconContainer, { backgroundColor: theme.primary + '12' }]}>
+                                      <MaterialCommunityIcons name="ticket-percent" size={22} color={theme.primary} />
+                                    </View>
+                                    <View style={styles.offerDetails}>
+                                      <View style={styles.codeRow}>
+                                        <View style={[styles.codeBadge, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
+                                          <Text style={[styles.codeText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
+                                            {offer.couponCode || offer.title}
+                                          </Text>
+                                        </View>
+                                        {!!offer.discountAmount && (
+                                          <Text style={[styles.saveTag, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
+                                            Save ₹{offer.discountAmount}
+                                          </Text>
+                                        )}
+                                      </View>
+                                      <Text style={[styles.offerDescription, { fontFamily: Typography.fontFamily.medium }]} numberOfLines={2}>
+                                        {offer.description || `Get ₹${offer.discountAmount} off on your order`}
+                                      </Text>
+                                    </View>
+                                  </View>
+
+                                  <View style={styles.offerCardRight}>
+                                    {isApplied ? (
+                                      <TouchableOpacity
+                                        onPress={() => removeOffer(offer._id)}
+                                        activeOpacity={0.7}
+                                        style={[styles.actionBtn, styles.removeBtn]}
+                                      >
+                                        <Text style={[styles.removeBtnText, { fontFamily: Typography.fontFamily.bold }]}>Remove</Text>
+                                      </TouchableOpacity>
+                                    ) : (
+                                      <TouchableOpacity
+                                        onPress={() => applyOffer(offer._id)}
+                                        activeOpacity={0.7}
+                                        style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+                                      >
+                                        <Text style={[styles.applyBtnText, { fontFamily: Typography.fontFamily.bold }]}>Apply</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
+
+                        {/* Coupon Input */}
+                        <CouponInput
+                          cartContext={{
+                            items: mc.items,
+                            subtotal: mTotals?.subtotal,
+                            merchantTotals: {
+                              [mc.merchantId]: mTotals?.subtotal,
+                            },
+                          }}
+                          themeColor={theme.primary}
+                          orderType="try_and_buy"
+                          appliedOffersData={mc.appliedOffers}
+                        />
+
+
+                        {/* Tip Section */}
+                        <View style={styles.slideTipSection}>
+                          <Text style={styles.tipSectionTitle}>Tip your Delivery Partner</Text>
+                          <View style={styles.tipRow}>
+                            {[10, 20, 50].map((amount) => (
+                              <TouchableOpacity
+                                key={amount}
+                                style={[styles.tipPill, deliveryTip === amount && { borderColor: theme.primary, backgroundColor: theme.primary + '10' }]}
+                                onPress={() => setDeliveryTip(deliveryTip === amount ? 0 : amount)}
+                              >
+                                <Text style={[styles.tipPillText, deliveryTip === amount && { color: theme.primary }]}>₹{amount}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+
+
+                        {/* Bill Summary */}
+                        <View style={styles.premiumBill}>
+                          <Text style={styles.billTitle}>Bill Summary</Text>
+                          <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.subtotal}</Text></View>
+                          {mOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{mOffers.totalDiscount}</Text></View>}
+
+                          {mOffers?.totalDiscount > 0 && (
+                            <View style={[styles.billRow, { marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: '#F1F5F9' }]}>
+                              <Text style={[styles.billLabel, { fontWeight: '700', color: '#0F172A' }]}>Total after offer</Text>
+                              <Text style={[styles.billValue, { fontWeight: '800' }]}>₹{Math.max(0, (mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)}</Text>
+                            </View>
+                          )}
+
+                          <View style={styles.billDivider} />
+
+                          <View style={styles.payLaterSection}>
+                            <Ionicons name="time-outline" size={14} color="#64748B" />
+                            <Text style={styles.payLaterText}>Keep what you love, pay only for those after trying, return the rest (Max: ₹{Math.max(0, (mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)})</Text>
+                          </View>
+
+                          <Text style={styles.upfrontTitle}>Payable Now</Text>
+                          <View style={styles.billRow}>
+                            <Text style={styles.billLabel}>Delivery Charge (Partial refundable)</Text>
+                            <Text style={[styles.billValue, mOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
+                              {mOffers?.freeDelivery ? 'FREE' : `₹${mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge}`}
+                            </Text>
+                          </View>
+                          {mOffers?.freeDelivery ? (
+                            <Text style={[styles.billSubText, { color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }]}>
+                              Free Delivery applied via Offer!
+                            </Text>
+                          ) : (
+                            mTotals?.totalReturnCharge > 0 && (
+                              <Text style={styles.billSubText}>₹{mTotals.totalReturnCharge} will be deducted from total, if nothing is returned</Text>
+                            )
+                          )}
+                          <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{Math.round(mTotals?.serviceGST || 0)}</Text></View>
+                          {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
+
+                          <View style={[styles.billRow, { marginTop: 12 }]}>
+                            <Text style={styles.grandTotalLabel}>Total Payable Now</Text>
+                            <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Math.max(0, Math.round(mTotals?.totalUpfrontPayable || 0))}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.footer}>
+                          <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
+                          <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                          <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                        </View>
                       </Animated.ScrollView>
                     </PremiumRefreshWrapper>
                   </View>
@@ -434,70 +516,151 @@ export default function CartScreen() {
                 contentContainerStyle={styles.standardContent}
                 scrollEventThrottle={16}
               >
-              <View style={styles.standardBanner}>
-                <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
-                <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
-              </View>
+                <View style={styles.standardBanner}>
+                  <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
+                  <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
+                </View>
 
-              <View style={styles.itemsContainer}>
-                {courierItems.map((item) => (
-                  <CartItem key={item._id} item={item} isCourier={true} />
-                ))}
-              </View>
+                <View style={styles.itemsContainer}>
+                  {courierItems.map((item) => (
+                    <CartItem key={item._id} item={item} isCourier={true} />
+                  ))}
+                </View>
 
-              {/* Courier Offers Section */}
-              {courierAppliedOffers?.availableOffers?.length > 0 && (
-                <View style={{ backgroundColor: '#fff', padding: 16, marginBottom: 12, borderRadius: 12, marginHorizontal: 16 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: '#0F172A' }}>Offers & Benefits</Text>
-                  {courierAppliedOffers.availableOffers.map((offer: any) => {
-                    const isApplied = courierAppliedOffers.appliedOffers?.some((o: any) => o._id === offer._id || o.offerId === offer._id);
-                    return (
-                      <View key={offer._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#F1F5F9' }}>
-                        <View style={{ flex: 1, paddingRight: 16 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '600', color: theme.primary }}>{offer.couponCode || offer.title}</Text>
-                          <Text style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>{offer.description || `Get ₹${offer.discountAmount} off`}</Text>
-                        </View>
-                        {isApplied ? (
-                          <TouchableOpacity onPress={() => removeOfferCourier(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' }}>
-                            <Text style={{ fontSize: 12, fontWeight: '600', color: '#EF4444' }}>Remove</Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <TouchableOpacity onPress={() => applyOfferCourier(offer._id)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: theme.primary + '10', borderWidth: 1, borderColor: theme.primary }}>
-                            <Text style={{ fontSize: 12, fontWeight: '600', color: theme.primary }}>Apply</Text>
-                          </TouchableOpacity>
-                        )}
+                {/* Courier Offers Section */}
+                {courierAppliedOffers?.availableOffers?.length > 0 && (
+                  <View style={styles.offersSection}>
+                    <View style={styles.offersHeaderRow}>
+                      <View style={styles.offersHeaderTitleContainer}>
+                        <MaterialCommunityIcons name="ticket-percent-outline" size={22} color={theme.primary} />
+                        <Text style={[styles.offersSectionTitle, { fontFamily: Typography.fontFamily.bold }]}>Offers & Benefits</Text>
                       </View>
-                    );
-                  })}
+                      <View style={[styles.offersCountBadge, { backgroundColor: theme.primary + '10' }]}>
+                        <Text style={[styles.offersCountText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
+                          {courierAppliedOffers.availableOffers.length} {courierAppliedOffers.availableOffers.length === 1 ? 'Offer' : 'Offers'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {courierAppliedOffers.availableOffers.map((offer: any) => {
+                      const isApplied = courierAppliedOffers.appliedOffers?.some((o: any) => (o._id?.toString() || o.offerId?.toString()) === (offer._id?.toString() || offer.offerId?.toString()));
+                      return (
+                        <View
+                          key={offer._id}
+                          style={[
+                            styles.offerCard,
+                            isApplied && {
+                              borderColor: theme.primary,
+                              backgroundColor: theme.primary + '05',
+                            }
+                          ]}
+                        >
+                          {isApplied && (
+                            <View style={[styles.appliedBadge, { backgroundColor: theme.primary }]}>
+                              <Ionicons name="checkmark" size={10} color="#fff" />
+                            </View>
+                          )}
+
+                          <View style={styles.offerCardLeft}>
+                            <View style={[styles.iconContainer, { backgroundColor: theme.primary + '12' }]}>
+                              <MaterialCommunityIcons name="ticket-percent" size={22} color={theme.primary} />
+                            </View>
+                            <View style={styles.offerDetails}>
+                              <View style={styles.codeRow}>
+                                <View style={[styles.codeBadge, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
+                                  <Text style={[styles.codeText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
+                                    {offer.couponCode || offer.title}
+                                  </Text>
+                                </View>
+                                {!!offer.discountAmount && (
+                                  <Text style={[styles.saveTag, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
+                                    Save ₹{offer.discountAmount}
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={[styles.offerDescription, { fontFamily: Typography.fontFamily.medium }]} numberOfLines={2}>
+                                {offer.description || `Get ₹${offer.discountAmount} off on your order`}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.offerCardRight}>
+                            {isApplied ? (
+                              <TouchableOpacity
+                                onPress={() => removeOfferCourier(offer._id)}
+                                activeOpacity={0.7}
+                                style={[styles.actionBtn, styles.removeBtn]}
+                              >
+                                <Text style={[styles.removeBtnText, { fontFamily: Typography.fontFamily.bold }]}>Remove</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                onPress={() => applyOfferCourier(offer._id)}
+                                activeOpacity={0.7}
+                                style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+                              >
+                                <Text style={[styles.applyBtnText, { fontFamily: Typography.fontFamily.bold }]}>Apply</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Coupon Input */}
+                <CouponInput
+                  cartContext={{
+                    items: courierItems,
+                    subtotal: courierTotals?.subtotal || 0,
+                    merchantTotals: courierItems.reduce((acc: Record<string, number>, item: any) => {
+                      const mid = item.merchantId?._id || item.merchantId || 'unknown';
+                      acc[mid] = (acc[mid] || 0) + ((item.price || 0) * (item.quantity || 1));
+                      return acc;
+                    }, {}),
+                  }}
+                  themeColor={theme.primary}
+                  orderType="courier"
+                  appliedOffersData={courierAppliedOffers}
+                />
+
+                <View style={styles.logisticsNote}>
+                  <Ionicons name="information-circle" size={18} color="#64748B" />
+                  <Text style={styles.logisticsNoteText}>
+                    Standard delivery does not include the 'Try & Buy' option. Logistics are managed by our retail partners directly. {'\n'}Note: Cash on Delivery (COD) is not available.
+                  </Text>
                 </View>
-              )}
 
-              <View style={styles.logisticsNote}>
-                <Ionicons name="information-circle" size={18} color="#64748B" />
-                <Text style={styles.logisticsNoteText}>
-                  Standard delivery does not include the 'Try & Buy' option. Logistics are managed by our retail partners directly. {'\n'}Note: Cash on Delivery (COD) is not available.
-                </Text>
-              </View>
-
-              <View style={styles.summaryCard}>
-                <Text style={styles.billTitle}>Order Summary</Text>
-                <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.subtotal || 0}</Text></View>
-                {courierAppliedOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: theme.primary, fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{courierAppliedOffers.totalDiscount}</Text></View>}
-                <View style={styles.billRow}><Text style={styles.billLabel}>Delivery Fee</Text><Text style={styles.billValue}>₹{courierTotals?.courierDeliveryCharge || 40}</Text></View>
-                <View style={styles.billDivider} />
-                <View style={styles.billRow}>
-                  <Text style={styles.grandTotalLabel}>Total Amount</Text>
-                  <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Number(courierTotal).toFixed(0)}</Text>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.billTitle}>Order Summary</Text>
+                  <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.subtotal || 0}</Text></View>
+                  {courierAppliedOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: theme.primary, fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{courierAppliedOffers.totalDiscount}</Text></View>}
+                  <View style={styles.billRow}>
+                    <Text style={styles.billLabel}>Delivery Fee</Text>
+                    <Text style={[styles.billValue, courierAppliedOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
+                      {courierAppliedOffers?.freeDelivery ? 'FREE' : `₹${courierTotals?.courierDeliveryCharge || 40}`}
+                    </Text>
+                  </View>
+                  {courierAppliedOffers?.freeDelivery && (
+                    <Text style={[styles.billSubText, { color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }]}>
+                      Free Delivery applied via Offer!
+                    </Text>
+                  )}
+                  <View style={styles.billDivider} />
+                  <View style={styles.billRow}>
+                    <Text style={styles.grandTotalLabel}>Total Amount</Text>
+                    <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Math.max(0, Number(courierTotal)).toFixed(0)}</Text>
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.footer}>
-                <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
-                <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-                <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
-              </View>
-            </Animated.ScrollView>
-          </PremiumRefreshWrapper>
+                <View style={styles.footer}>
+                  <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
+                  <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                  <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                </View>
+              </Animated.ScrollView>
+            </PremiumRefreshWrapper>
           )
         )}
       </View>
@@ -511,8 +674,8 @@ export default function CartScreen() {
             <View>
               <Text style={styles.pinnedPrice}>
                 ₹{activeTab === 'instant'
-                  ? Number((currentMerchantCart?.totals?.totalUpfrontPayable || 0) + deliveryTip).toFixed(0)
-                  : Number(courierTotal).toFixed(2)}
+                  ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
+                  : Math.round(courierTotal)}
               </Text>
               <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
             </View>
@@ -521,15 +684,31 @@ export default function CartScreen() {
               style={[
                 styles.checkoutBtn,
                 { backgroundColor: theme.primary },
-                activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false) && { backgroundColor: '#CBD5E1' }
+                activeTab === 'instant' && (
+                  currentMerchantCart?.merchantDetails?.isOnline === false || 
+                  currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ||
+                  tbAvailable === false
+                ) && { backgroundColor: '#CBD5E1' }
               ]}
-              disabled={activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false)}
+              disabled={activeTab === 'instant' && (
+                currentMerchantCart?.merchantDetails?.isOnline === false || 
+                currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ||
+                tbAvailable === false
+              )}
               onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
             >
               <Text style={styles.checkoutBtnText}>
-                {activeTab === 'instant' ? 'Proceed to Try & Buy' : 'Checkout Now'}
+                {activeTab === 'instant'
+                  ? currentMerchantCart?.merchantDetails?.isOnline === false
+                    ? "Sorry, Shop Closed Now"
+                    : tbAvailable === false
+                      ? "Try & Buy Unavailable"
+                      : 'Proceed to Try & Buy'
+                  : 'Checkout Now'}
               </Text>
-              <Feather name="arrow-right" size={20} color="#fff" />
+              {!(activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || tbAvailable === false)) && (
+                <Feather name="arrow-right" size={20} color="#fff" />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -597,7 +776,7 @@ const styles = StyleSheet.create({
   billRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   billLabel: { fontSize: 14, color: '#64748B' },
   billValue: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  billSubText: { fontSize: 11, color: '#64748B', marginTop: -6, marginBottom: 10, fontWeight: '500', marginLeft: 0 },
+  billSubText: { fontSize: 8, color: '#64748B', marginTop: -6, marginBottom: 10, fontWeight: '500', marginLeft: 0 },
   billDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
 
   payLaterSection: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 12, marginBottom: 20 },
@@ -685,5 +864,130 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 999,
+  },
+  offersSection: {
+    backgroundColor: '#ffffff',
+    padding: 16,
+    marginBottom: 16,
+    borderRadius: 24,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  offersHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  offersHeaderTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  offersSectionTitle: {
+    fontSize: 16,
+    color: '#0F172A',
+  },
+  offersCountBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  offersCountText: {
+    fontSize: 11,
+  },
+  offerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    padding: 14,
+    marginBottom: 12,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  appliedBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    borderBottomLeftRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  offerCardLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 12,
+  },
+  iconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  offerDetails: {
+    flex: 1,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  codeBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  codeText: {
+    fontSize: 12,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  saveTag: {
+    fontSize: 12,
+  },
+  offerDescription: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+  offerCardRight: {
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  actionBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 70,
+  },
+  removeBtn: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  removeBtnText: {
+    fontSize: 12,
+    color: '#EF4444',
+  },
+  applyBtnText: {
+    fontSize: 12,
+    color: '#FFFFFF',
   },
 });

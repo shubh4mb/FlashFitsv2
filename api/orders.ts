@@ -117,12 +117,25 @@ export const finalPaymentVerify = async (paymentData: any, internalOrderId: stri
  * Initiate a courier order (creates real Razorpay order)
  * Returns razorpayOrderId, key_id, amount, orderId, isFreeOrder etc.
  */
-export const initiateCourierOrder = async (merchantId: string, addressId: string, deliveryTip: number = 0, couponCode?: string) => {
+export const initiateCourierOrder = async (merchantId: string, addressId: string, deliveryTip: number = 0, couponCode?: string, deliveryCharge?: number) => {
     try {
-        const res = await api.post('/courier/orders/initiate', { merchantId, addressId, deliveryTip, couponCode });
+        const res = await api.post('/courier/orders/initiate', { merchantId, addressId, deliveryTip, couponCode, deliveryCharge });
         return res.data;
     } catch (error: any) {
         console.error('Initiate courier order error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+/**
+ * Initiate global courier checkout (single Razorpay order for the whole cart)
+ */
+export const initiateCourierCheckout = async (addressId: string, deliveryTip: number = 0) => {
+    try {
+        const res = await api.post('/courier/orders/checkout', { addressId, deliveryTip });
+        return res.data;
+    } catch (error: any) {
+        console.error('Initiate courier checkout error:', error.response?.data || error.message);
         throw error;
     }
 };
@@ -134,7 +147,7 @@ export const verifyCourierOrderPayment = async (params: {
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
-    orderId: string;
+    orderId?: string;
 }) => {
     try {
         const res = await api.post('/courier/orders/verify', params);

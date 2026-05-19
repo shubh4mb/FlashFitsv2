@@ -5,6 +5,7 @@ import {
   getBestOffersForCart,
   getPromotionalBanners,
   applyCoupon as applyCouponApi,
+  removeCouponApi as removeCouponApiApi,
   Offer,
   AppliedOffers,
 } from '../api/offers';
@@ -23,7 +24,7 @@ interface OffersContextType {
   refreshFlashSales: () => Promise<void>;
   refreshPromotionalBanners: () => Promise<void>;
   computeBestOffers: (cartContext: any, couponCode?: string) => Promise<void>;
-  applyCoupon: (code: string, cartContext: any) => Promise<boolean>;
+  applyCoupon: (code: string, cartContext: any, orderType?: 'try_and_buy' | 'courier') => Promise<boolean>;
   removeCoupon: () => void;
   clearAppliedOffers: () => void;
 }
@@ -82,11 +83,11 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated, couponCode]);
 
-  const applyCoupon = useCallback(async (code: string, cartContext: any): Promise<boolean> => {
+  const applyCoupon = useCallback(async (code: string, cartContext: any, orderType?: 'try_and_buy' | 'courier'): Promise<boolean> => {
     setCouponLoading(true);
     setCouponError(null);
     try {
-      await applyCouponApi(code, cartContext);
+      await applyCouponApi(code, cartContext, orderType);
       setCouponCode(code.toUpperCase());
       // Recompute offers with coupon applied
       const result = await getBestOffersForCart(cartContext, code);
@@ -100,16 +101,26 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const removeCoupon = useCallback(() => {
+  const removeCoupon = useCallback(async () => {
     setCouponCode(null);
     setCouponError(null);
     setAppliedOffers(null);
+    try {
+      await removeCouponApiApi();
+    } catch (error) {
+      console.error('Failed to remove coupon on backend:', error);
+    }
   }, []);
 
-  const clearAppliedOffers = useCallback(() => {
+  const clearAppliedOffers = useCallback(async () => {
     setAppliedOffers(null);
     setCouponCode(null);
     setCouponError(null);
+    try {
+      await removeCouponApiApi();
+    } catch (error) {
+      console.error('Failed to clear coupon on backend:', error);
+    }
   }, []);
 
   // Fetch flash sales on mount (public)

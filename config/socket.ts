@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { io, Socket } from 'socket.io-client';
 import * as SecureStore from 'expo-secure-store';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'https://ff-api-web-2.onrender.com';
+const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.0.102:5000';
 
 let socket: Socket | null = null;
 

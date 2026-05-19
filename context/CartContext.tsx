@@ -108,18 +108,18 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
                          (selectedAddress?.addressType !== 'Non-serviceable' && (selectedAddress as any)?.isServiceable !== false) : 
                          !!userLocation;
       
-      const response = await getCartApi(addressId, serviceable, 0, latitude, longitude);
+      const response = await getCartApi(addressId, serviceable, deliveryTip, latitude, longitude);
       setCart(response);
     } catch (error) {
       console.error('Failed to fetch cart:', error);
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, selectedAddress, userLocation]);
+  }, [isAuthenticated, selectedAddress, userLocation, deliveryTip]);
 
   useEffect(() => {
     fetchCart();
-  }, [selectedAddress, userLocation]);
+  }, [fetchCart]);
 
   useEffect(() => {
     if (!isAuthenticated) {

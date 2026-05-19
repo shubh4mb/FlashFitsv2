@@ -67,10 +67,11 @@ export const getAvailableOffers = async (subtotal?: number, merchantId?: string)
  */
 export const applyCoupon = async (
   couponCode: string,
-  cartContext?: { items: any[]; subtotal: number; merchantTotals?: Record<string, number> }
+  cartContext?: { items: any[]; subtotal: number; merchantTotals?: Record<string, number> },
+  orderType?: 'try_and_buy' | 'courier'
 ) => {
   try {
-    const res = await api.post('user/offers/apply', { couponCode, cartContext });
+    const res = await api.post('user/offers/apply', { couponCode, cartContext, orderType });
     return res.data;
   } catch (error: any) {
     const message = error.response?.data?.message || 'Invalid coupon code';
@@ -130,5 +131,18 @@ export const getPromotionalBanners = async (): Promise<Offer[]> => {
   } catch (error) {
     console.error('Get promotional banners error:', error);
     return [];
+  }
+};
+
+/**
+ * Remove the applied coupon code.
+ */
+export const removeCouponApi = async () => {
+  try {
+    const res = await api.post('user/offers/remove');
+    return res.data;
+  } catch (error: any) {
+    const message = error.response?.data?.message || 'Failed to remove coupon';
+    throw new Error(message);
   }
 };

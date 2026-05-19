@@ -1,38 +1,37 @@
-import { productDetailPage, fetchRelatedProducts } from '@/api/products';
-import { GenderThemes, Typography, Palette } from '@/constants/theme';
+import { fetchRelatedProducts, productDetailPage } from '@/api/products';
+import Loader from '@/components/common/Loader';
+import ProductCard from '@/components/common/ProductCard';
+import { GenderThemes, Typography } from '@/constants/theme';
+import { useAddress } from '@/context/AddressContext';
 import { useCart } from '@/context/CartContext';
 import { useGender } from '@/context/GenderContext';
 import { useWishlist } from '@/context/WishlistContext';
-import { useAddress } from '@/context/AddressContext';
 import { addToRecentlyViewed } from '@/utils/recentlyViewed';
-import ProductCard from '@/components/common/ProductCard';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import Loader from '@/components/common/Loader';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useCourierCart } from '@/context/CourierCartContext';
 import { useToast } from '@/context/AlertContext';
+import { useCourierCart } from '@/context/CourierCartContext';
 import {
-  Alert,
+  ActivityIndicator,
   Animated,
   Dimensions,
+  FlatList,
+  Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
-  View,
-  Switch,
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  Modal,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -54,6 +53,9 @@ const ProductDetailPage = () => {
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { cart, addToCart: addItemToCart } = useCart();
   const { courierCart, addToCourierCart: addItemToCourierCart } = useCourierCart();
+  const instantCartCount = cart?.merchantCarts?.length || 0;
+  const courierCartCount = courierCart?.items?.length || 0;
+  const totalCartCount = instantCartCount + courierCartCount;
   const showToast = useToast();
 
   const [product, setProduct] = useState<any>(null);
@@ -109,13 +111,13 @@ const ProductDetailPage = () => {
 
         if (data.variants?.[0]) {
           // Find target variant based on variantId param or fallback to first
-          const targetVariant = variantId 
-            ? data.variants.find((v: any) => v._id === variantId) 
+          const targetVariant = variantId
+            ? data.variants.find((v: any) => v._id === variantId)
             : data.variants[0];
 
           if (targetVariant) {
             setSelectedColor(targetVariant.color.name);
-            
+
             // Set size from param or first in stock
             if (size) {
               setSelectedSize(size as string);
@@ -126,7 +128,7 @@ const ProductDetailPage = () => {
           }
         }
 
-        const activeVariant = variantId 
+        const activeVariant = variantId
           ? data.variants.find((v: any) => v._id === variantId) || data.variants[0]
           : data.variants[0];
 
@@ -247,7 +249,7 @@ const ProductDetailPage = () => {
         merchantId: targetMerchantId,
         image: { url: activeVariant.images?.[0]?.url || '' },
       });
-      
+
       setCartModalVisible(false);
       router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
     } catch (error) {
@@ -272,7 +274,7 @@ const ProductDetailPage = () => {
         merchantId: targetMerchantId,
         image: { url: activeVariant.images?.[0]?.url || '' },
       });
-      
+
       setCartModalVisible(false);
       showFeedback();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -330,21 +332,21 @@ const ProductDetailPage = () => {
         <View style={{ width: 40 }} />
       </View>
 
-        <Animated.ScrollView
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          bounces
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: true }
-          )}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-            />
-          }
-        >
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        bounces
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
+      >
         {/* Image Gallery with Parallax */}
         <View style={styles.imageGallery}>
           <ScrollView
@@ -419,28 +421,51 @@ const ProductDetailPage = () => {
             </View>
           </View>
 
-          {/* Price */}
-          <View style={styles.priceRow}>
-            <Text style={styles.price}>₹{activeVariant.price}</Text>
-            {discountPercent > 0 && (
-              <>
-                <Text style={styles.mrp}>₹{activeVariant.mrp}</Text>
-                <View style={styles.discountBadge}>
-                  <Text style={styles.discountText}>{discountPercent}% OFF</Text>
-                </View>
-              </>
+          {/* Price & Status Badges */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.price}>₹{activeVariant.price}</Text>
+              {discountPercent > 0 && (
+                <>
+                  <Text style={styles.mrp}>₹{activeVariant.mrp}</Text>
+                  <View style={styles.discountBadge}>
+                    <Text style={styles.discountText}>{discountPercent}% OFF</Text>
+                  </View>
+                </>
+              )}
+            </View>
+
+            {productIsNearby && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {product?.merchantId?.isOnline === false && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                    <Ionicons name="moon" size={12} color="#D97706" style={{ marginRight: 5 }} />
+                    <Text style={{ color: '#92400E', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
+                      Merchant Offline
+                    </Text>
+                  </View>
+                )}
+                {product?.isTriable && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#A7F3D0' }}>
+                    <Ionicons name="flash" size={12} color="#059669" style={{ marginRight: 5 }} />
+                    <Text style={{ color: '#065F46', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
+                      Try & Buy Available
+                    </Text>
+                  </View>
+                )}
+              </View>
             )}
           </View>
 
           {/* Merchant Section */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.merchantSection}
             onPress={() => router.push(`/merchant/${product.merchantId?._id}` as any)}
             activeOpacity={0.7}
           >
             <View style={styles.merchantLogoContainer}>
-              <Image 
-                source={{ uri: product.merchantId?.logo?.url }} 
+              <Image
+                source={{ uri: product.merchantId?.logo?.url }}
                 style={styles.merchantLogo}
                 contentFit="contain"
               />
@@ -454,28 +479,6 @@ const ProductDetailPage = () => {
 
           {/* Divider */}
           <View style={styles.divider} />
-
-          {/* Merchant / Delivery Status Info */}
-          {productIsNearby && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 6 }}>
-              {product?.merchantId?.isOnline === false && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
-                  <Ionicons name="moon" size={12} color="#D97706" style={{ marginRight: 5 }} />
-                  <Text style={{ color: '#92400E', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
-                    Merchant Offline
-                  </Text>
-                </View>
-              )}
-              {product?.isTriable && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#A7F3D0' }}>
-                  <Ionicons name="flash" size={12} color="#059669" style={{ marginRight: 5 }} />
-                  <Text style={{ color: '#065F46', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
-                    Try & Buy Available
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
 
           {/* Color Selection */}
           <Text style={styles.sectionTitle}>
@@ -577,7 +580,7 @@ const ProductDetailPage = () => {
           </View>
 
           <View style={{ marginBottom: 24 }}>
-            <Text 
+            <Text
               style={styles.description}
               numberOfLines={showFullDescription ? undefined : 3}
             >
@@ -585,7 +588,7 @@ const ProductDetailPage = () => {
                 'Elevate your wardrobe with this stylish and durable piece. Crafted with premium materials for ultimate comfort and a sleek modern look.'}
             </Text>
             {(product.description?.length > 150 || (!product.description && 130 > 150)) && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowFullDescription(!showFullDescription)}
                 style={{ marginTop: 4 }}
                 activeOpacity={0.7}
@@ -604,7 +607,7 @@ const ProductDetailPage = () => {
                 <Text style={[styles.sectionTitle, { marginBottom: 0, marginTop: 0 }]}>You May Also Like</Text>
                 {loadingRelated && <ActivityIndicator size="small" color={theme.primary} />}
               </View>
-              
+
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
                   <Text style={styles.toggleLabel}>Instant Try & Buy</Text>
@@ -622,7 +625,7 @@ const ProductDetailPage = () => {
                 />
               </View>
             </View>
-            
+
             {filteredRelated.length > 0 ? (
               <FlatList
                 data={filteredRelated}
@@ -631,8 +634,8 @@ const ProductDetailPage = () => {
                 keyExtractor={(item) => item._id}
                 contentContainerStyle={styles.relatedList}
                 renderItem={({ item }) => (
-                  <ProductCard 
-                    product={item} 
+                  <ProductCard
+                    product={item}
                     width={160}
                     containerStyle={styles.relatedCard}
                     fromExplore={isExplore}
@@ -642,8 +645,8 @@ const ProductDetailPage = () => {
             ) : !loadingRelated && (
               <View style={styles.emptyRelated}>
                 <Text style={styles.emptyRelatedText}>
-                  {showOnlyNearby 
-                    ? "No instant try items nearby. Try turning off the filter!" 
+                  {showOnlyNearby
+                    ? "No instant try items nearby. Try turning off the filter!"
                     : "No related products found."}
                 </Text>
               </View>
@@ -670,6 +673,32 @@ const ProductDetailPage = () => {
             />
           </TouchableOpacity>
         </Animated.View>
+
+        <TouchableOpacity
+          style={styles.cartIconBtn}
+          onPress={() => router.push('/cart')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="bag-handle-outline" size={24} color="#64748B" />
+
+          {/* Instant Cart Badge (Top Right) */}
+          {instantCartCount > 0 && (
+            <View style={[styles.cartBadge, styles.cartInstantBadge, { backgroundColor: '#F59E0B' }]}>
+              <View style={styles.cartBadgeContent}>
+                <Ionicons name="flash" size={7} color="#fff" style={{ marginRight: 1 }} />
+                <Text style={styles.cartBadgeText}>{instantCartCount > 9 ? '9+' : instantCartCount}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Courier Cart Badge (Bottom Right) */}
+          {courierCartCount > 0 && (
+            <View style={[styles.cartBadge, styles.cartCourierBadge, { backgroundColor: theme.accent || theme.primary }]}>
+              <Text style={styles.cartBadgeText}>{courierCartCount > 9 ? '9+' : courierCartCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.cartBtn, { backgroundColor: theme.primary }, isAdding && { opacity: 0.8 }]}
           onPress={handleOpenCartModal}
@@ -696,13 +725,13 @@ const ProductDetailPage = () => {
       {/* Product Added Feedback Indicator */}
       {showAddedFeedback && (
         <Animated.View style={[styles.feedbackIndicator, { opacity: feedbackOpacity, bottom: insets.bottom + 100 }]}>
-           <BlurView intensity={90} tint="dark" style={styles.feedbackBlur}>
-              <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-              <Text style={styles.feedbackText}>Added to Bag</Text>
-              <TouchableOpacity onPress={() => router.push('/cart')}>
-                <Text style={[styles.viewCartText, { color: theme.primary }]}>VIEW CART</Text>
-              </TouchableOpacity>
-           </BlurView>
+          <BlurView intensity={90} tint="dark" style={styles.feedbackBlur}>
+            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+            <Text style={styles.feedbackText}>Added to Bag</Text>
+            <TouchableOpacity onPress={() => router.push('/cart')}>
+              <Text style={[styles.viewCartText, { color: theme.primary }]}>VIEW CART</Text>
+            </TouchableOpacity>
+          </BlurView>
         </Animated.View>
       )}
 
@@ -713,18 +742,18 @@ const ProductDetailPage = () => {
         animationType="slide"
         onRequestClose={() => setCartModalVisible(false)}
       >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
           onPress={() => setCartModalVisible(false)}
         >
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Choose Delivery Option</Text>
-            
+
             {/* Instant Delivery Option */}
-            <TouchableOpacity 
-              style={[styles.deliveryOptionBtn, !isNearby && styles.deliveryOptionBtnDisabled]} 
+            <TouchableOpacity
+              style={[styles.deliveryOptionBtn, !isNearby && styles.deliveryOptionBtnDisabled]}
               onPress={isNearby ? handleConfirmAddToCartInstant : undefined}
               activeOpacity={0.7}
             >
@@ -750,8 +779,8 @@ const ProductDetailPage = () => {
             </TouchableOpacity>
 
             {/* Standard Delivery Option */}
-            <TouchableOpacity 
-              style={styles.deliveryOptionBtn} 
+            <TouchableOpacity
+              style={styles.deliveryOptionBtn}
               onPress={handleConfirmAddToCartStandard}
               activeOpacity={0.7}
             >
@@ -1401,6 +1430,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: Typography.fontFamily.bold,
     color: '#0F172A',
+  },
+  cartIconBtn: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    position: 'relative',
+  },
+  cartBadge: {
+    position: 'absolute',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  cartInstantBadge: {
+    top: -4,
+    right: -4,
+    zIndex: 2,
+  },
+  cartCourierBadge: {
+    bottom: -2,
+    right: -4,
+    zIndex: 1,
+  },
+  cartBadgeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: -0.2,
   },
 });
 

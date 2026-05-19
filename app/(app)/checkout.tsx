@@ -1,31 +1,28 @@
-import React, { useEffect, useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import * as Notifications from 'expo-notifications';
-import { Ionicons } from '@expo/vector-icons';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import { Address, getAddresses } from '@/api/address';
+import { createRazorpayOrder, initiateCourierOrder, initiateCourierCheckout, verifyCourierOrderPayment, verifyPayment } from '@/api/orders';
+import AddressSelectorModal from '@/components/common/AddressSelectorModal';
+import RazorpayWebView from '@/components/common/RazorpayWebView';
+import { GenderThemes } from '@/constants/theme';
+import { distanceInMeters, useAddress } from '@/context/AddressContext';
+import { useAlert, useToast } from '@/context/AlertContext';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
-import { useAddress, distanceInMeters } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
-import { GenderThemes, Typography } from '@/constants/theme';
-import { getAddresses, Address } from '@/api/address';
-import { createRazorpayOrder, verifyPayment, initiateCourierOrder, verifyCourierOrderPayment } from '@/api/orders';
-import AddressSelectorModal from '@/components/common/AddressSelectorModal';
-import CouponInput from '@/components/common/CouponInput';
 import { useOffers } from '@/context/OffersContext';
-import RazorpayWebView from '@/components/common/RazorpayWebView';
-import { useAlert, useToast } from '@/context/AlertContext';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as Notifications from 'expo-notifications';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
@@ -35,7 +32,7 @@ export default function CheckoutScreen() {
 
   const { cart, refreshCart, deliveryTip, setDeliveryTip } = useCart();
   const { courierCart, refreshCart: refreshCourierCart, clearCart: clearCourierCart } = useCourierCart();
-  const { selectedAddress, setSelectedAddress, locationAddress, locationLoading, userLocation } = useAddress();
+  const { selectedAddress, setSelectedAddress, locationAddress, locationLoading, userLocation, tbAvailable } = useAddress();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const showAlert = useAlert();
@@ -88,39 +85,45 @@ export default function CheckoutScreen() {
 
   const offerDiscount = appliedOffers?.totalDiscount || 0;
 
-  const tipOptions = [0, 10, 20, 30, 50];
-
   // Calculate totals
   const isTB = checkoutType === 'trybuy';
-  
+
   // For T&B, get data from the specific merchant's cart
-  const merchantCart = isTB && checkoutMerchantId 
+  const merchantCart = isTB && checkoutMerchantId
     ? cart?.merchantCarts?.find(mc => mc.merchantId === checkoutMerchantId)
     : null;
-  
-  const items = isTB 
-    ? (merchantCart?.items || []) 
+
+  const items = isTB
+    ? (merchantCart?.items || [])
     : (courierCart?.items || []);
   const subtotal = items.reduce((a, i) => a + i.price * i.quantity, 0);
   const mrpTotal = items.reduce((a, i) => a + i.mrp * i.quantity, 0);
   const discount = mrpTotal - subtotal;
-  
+
   const merchantTotals = merchantCart?.totals;
+  const courierTotals = courierCart?.totals;
+  const courierOfferDiscount = courierCart?.appliedOffers?.totalDiscount || 0;
+  const courierFreeDelivery = !!courierCart?.appliedOffers?.freeDelivery;
+
   const deliveryCharge = isTB
     ? (merchantTotals?.totalDeliveryCharge || 0)
-    : (items.length > 0 ? 40 : 0);
-  
+    : (courierTotals?.courierDeliveryCharge || 0);
+
   const returnCharge = isTB ? (merchantTotals?.totalReturnCharge || 0) : 0;
   const baseServiceGST = isTB ? (merchantTotals?.serviceGST || 0) : 0;
-  const serviceGST = isTB 
-    ? Number((baseServiceGST + (deliveryTip * 0.18)).toFixed(2))
-    : 0;
-  const baseUpfrontPayable = isTB ? (merchantTotals?.totalUpfrontPayable || 0) : deliveryCharge;
-  const upfrontPayable = Number((baseUpfrontPayable + deliveryTip + (isTB ? (deliveryTip * 0.18) : 0)).toFixed(2));
-  const totalPayableNow = Number((isTB ? upfrontPayable : (subtotal + deliveryCharge + deliveryTip)).toFixed(2));
+  const serviceGST = isTB ? Math.round(baseServiceGST) : 0;
+  const upfrontPayable = isTB ? Math.round(merchantTotals?.totalUpfrontPayable || 0) : Math.round(deliveryCharge);
+  const totalPayableNow = isTB
+    ? upfrontPayable
+    : Math.round(
+        courierTotals?.totalPayable !== undefined
+          ? (courierTotals.totalPayable + deliveryTip)
+          : (subtotal - courierOfferDiscount + deliveryCharge + deliveryTip)
+      );
   const payLaterAmount = isTB ? subtotal : 0;
   const merchantOffers = merchantCart?.appliedOffers;
   const tbOfferDiscount = merchantOffers?.totalDiscount || 0;
+  const finalPayable = totalPayableNow;
 
   // Sync local chosenAddress with global selectedAddress if it changes
   useEffect(() => {
@@ -129,13 +132,28 @@ export default function CheckoutScreen() {
     }
   }, [selectedAddress]);
 
+  // Re-evaluate best offers (coupon) for checkout cart context if couponCode is active
+  useEffect(() => {
+    if (couponCode && items.length > 0) {
+      computeBestOffers({
+        items,
+        subtotal,
+        merchantTotals: items.reduce((acc: Record<string, number>, item: any) => {
+          const mid = item.merchantId?._id || item.merchantId || 'unknown';
+          acc[mid] = (acc[mid] || 0) + ((item.price || 0) * (item.quantity || 1));
+          return acc;
+        }, {}),
+      }, couponCode);
+    }
+  }, [couponCode, items, subtotal, computeBestOffers]);
+
   useEffect(() => {
     const load = async () => {
       try {
         const res = await getAddresses();
         const addrs = res?.addresses || [];
         setAddresses(addrs);
-        
+
         // If no address selected yet, pick default or first
         if (!selectedAddress && addrs.length > 0) {
           const defaultAddr = addrs.find((a: Address) => a.isDefault) || addrs[0];
@@ -154,7 +172,7 @@ export default function CheckoutScreen() {
 
   const showMismatch = (() => {
     if (!chosenAddress || !userLocation || !locationAddress || locationLoading) return false;
-    
+
     let addrLat, addrLng;
     if (chosenAddress.location?.coordinates) {
       [addrLng, addrLat] = chosenAddress.location.coordinates;
@@ -167,8 +185,8 @@ export default function CheckoutScreen() {
       const dist = distanceInMeters(userLocation.latitude, userLocation.longitude, Number(addrLat), Number(addrLng));
       return dist > 100;
     }
-    
-    return true; 
+
+    return true;
   })();
 
   const handlePlaceOrder = async () => {
@@ -182,8 +200,8 @@ export default function CheckoutScreen() {
       if (isTB) {
         // === VALIDATE MERCHANT STATUS ===
         if (merchantCart?.merchantDetails?.isOnline === false) {
-          showAlert({ 
-            title: 'Store Offline', 
+          showAlert({
+            title: 'Store Offline',
             message: 'This merchant just switched offline. Please remove items or try again later.',
             type: 'error'
           });
@@ -202,8 +220,8 @@ export default function CheckoutScreen() {
             message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
             type: 'success',
             buttons: [{
-              text: 'Track Order',
-              onPress: () => router.replace({ pathname: '/order-tracking' as any, params: { orderId: result.orderId } }),
+              text: 'Go to Home',
+              onPress: () => router.replace('/(tabs)' as any),
             }]
           });
 
@@ -251,8 +269,8 @@ export default function CheckoutScreen() {
             message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
             type: 'success',
             buttons: [{
-              text: 'Track Order',
-              onPress: () => router.replace({ pathname: '/order-tracking' as any, params: { orderId: result.orderId } }),
+              text: 'Go to Home',
+              onPress: () => router.replace('/(tabs)' as any),
             }]
           });
 
@@ -267,75 +285,73 @@ export default function CheckoutScreen() {
         }
       } else {
         // === REAL RAZORPAY FLOW: Courier ===
-        const itemsByMerchant = items.reduce((acc: Record<string, any[]>, item) => {
-          const mid = item.merchantId?._id || item.merchantId || 'unknown';
-          if (!acc[mid]) acc[mid] = [];
-          acc[mid].push(item);
-          return acc;
-        }, {});
+        const initRes = await initiateCourierCheckout(
+          chosenAddress._id,
+          deliveryTip
+        );
 
-        const merchantIds = Object.keys(itemsByMerchant);
-
-        let successCount = 0;
-        let lastOrderId: string | null = null;
-
-        for (const merchantId of merchantIds) {
-          try {
-            const initRes = await initiateCourierOrder(merchantId, chosenAddress._id, deliveryTip, couponCode || undefined);
-            
-            if (initRes.isFreeOrder) {
-              // Free order — already confirmed
-              successCount++;
-              lastOrderId = initRes.orderId;
-              continue;
-            }
-
-            // Open Razorpay Checkout WebView
-            const options = {
-              description: 'Courier Order Payment',
-              currency: 'INR',
-              key: initRes.key_id,
-              amount: initRes.amount,
-              name: 'FlashFits',
-              order_id: initRes.razorpayOrderId,
-              prefill: {
-                contact: initRes.contact,
-                name: initRes.name,
-                email: initRes.email,
-              },
-              theme: { color: '#0F172A' },
-            };
-
-            const paymentData = await openRazorpayCheckout(options);
-
-            const verifyResult = await verifyCourierOrderPayment({
-              razorpay_order_id: paymentData.razorpay_order_id,
-              razorpay_payment_id: paymentData.razorpay_payment_id,
-              razorpay_signature: paymentData.razorpay_signature,
-              orderId: initRes.orderId,
-            });
-
-            if (verifyResult.success) {
-              successCount++;
-              lastOrderId = initRes.orderId;
-            }
-          } catch (err) {
-            console.error(`Failed to place courier order for merchant ${merchantId}:`, err);
-          }
-        }
-
-        if (successCount > 0) {
-          await clearCourierCart();
+        if (initRes.isFreeOrder) {
+          await refreshCourierCart();
           showAlert({
             title: 'Orders Placed!',
-            message: `${successCount} courier order${successCount > 1 ? 's' : ''} placed successfully.\nFlat ₹40 delivery per order.`,
-            type: 'success'
+            message: `Your courier order(s) have been placed successfully.`,
+            type: 'success',
+            buttons: [{
+              text: 'Go to Home',
+              onPress: () => router.replace('/(tabs)' as any),
+            }]
           });
           Notifications.scheduleNotificationAsync({
             content: {
               title: "Orders Placed Successfully! 🛍️",
-              body: `${successCount} courier order${successCount > 1 ? 's' : ''} placed successfully.`,
-              data: { orderId: lastOrderId },
+              body: `Your courier order(s) have been placed successfully.`,
+              data: { orderId: initRes.orderId },
+            },
+            trigger: null,
+          });
+          return;
+        }
+
+        // Open Razorpay Checkout WebView (Single Payment!)
+        const options = {
+          description: 'Courier Order Payment',
+          currency: 'INR',
+          key: initRes.key_id,
+          amount: initRes.amount,
+          name: 'FlashFits',
+          order_id: initRes.razorpayOrderId,
+          prefill: {
+            contact: initRes.contact,
+            name: initRes.name,
+            email: initRes.email,
+          },
+          theme: { color: '#0F172A' },
+        };
+
+        const paymentData = await openRazorpayCheckout(options);
+
+        const verifyResult = await verifyCourierOrderPayment({
+          razorpay_order_id: paymentData.razorpay_order_id,
+          razorpay_payment_id: paymentData.razorpay_payment_id,
+          razorpay_signature: paymentData.razorpay_signature,
+        });
+
+        if (verifyResult.success) {
+          await refreshCourierCart();
+          showAlert({
+            title: 'Orders Placed!',
+            message: `Your courier order(s) have been placed successfully.`,
+            type: 'success',
+            buttons: [{
+              text: 'Go to Home',
+              onPress: () => router.replace('/(tabs)' as any),
+            }]
+          });
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Orders Placed Successfully! 🛍️",
+              body: `Your courier order(s) have been placed successfully.`,
+              data: { orderId: verifyResult.orderId || initRes.orderId },
             },
             trigger: null,
           });
@@ -398,10 +414,10 @@ export default function CheckoutScreen() {
               </TouchableOpacity>
             )}
           </View>
-          
+
           {chosenAddress ? (
-            <TouchableOpacity 
-              style={styles.addressDisplay} 
+            <TouchableOpacity
+              style={styles.addressDisplay}
               activeOpacity={0.7}
               onPress={() => setModalVisible(true)}
             >
@@ -441,6 +457,19 @@ export default function CheckoutScreen() {
           )}
         </View>
 
+        {/* Try & Buy Location Unavailable Warning */}
+        {isTB && tbAvailable === false && (
+          <View style={[styles.mismatchCard, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
+            <View style={styles.mismatchHeader}>
+              <Ionicons name="warning" size={18} color="#EF4444" />
+              <Text style={[styles.mismatchTitle, { color: '#EF4444' }]}>Try & Buy Unavailable</Text>
+            </View>
+            <Text style={[styles.mismatchText, { color: '#991B1B' }]}>
+              Try & Buy delivery is not serviceable at the selected address. Please switch to a different address or move items to the Standard cart to proceed.
+            </Text>
+          </View>
+        )}
+
         {/* Location Mismatch Tip */}
         {showMismatch && (
           <View style={styles.mismatchCard}>
@@ -449,10 +478,10 @@ export default function CheckoutScreen() {
               <Text style={styles.mismatchTitle}>Location Mismatch?</Text>
             </View>
             <Text style={styles.mismatchText}>
-              We detect you are at <Text style={styles.boldText}>{locationAddress.split(',')[0]}</Text>. 
+              We detect you are at <Text style={styles.boldText}>{locationAddress.split(',')[0]}</Text>.
               Want to ship here instead?
             </Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.switchLocationBtn}
               onPress={() => setSelectedAddress(null)}
             >
@@ -468,9 +497,9 @@ export default function CheckoutScreen() {
           </Text>
           {items.slice(0, 3).map((item, idx) => (
             <View key={item._id || idx} style={styles.summaryItem}>
-              <Image 
-                source={{ uri: item.image?.url || item.image }} 
-                style={styles.summaryImage} 
+              <Image
+                source={{ uri: item.image?.url || item.image }}
+                style={styles.summaryImage}
                 contentFit="cover"
               />
               <View style={styles.summaryItemDetails}>
@@ -485,29 +514,7 @@ export default function CheckoutScreen() {
           )}
         </View>
 
-        {/* Delivery Tip (T&B only) */}
-        {isTB && (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Delivery Tip</Text>
-            <Text style={styles.tipDesc}>Thank your delivery partner!</Text>
-            <View style={styles.tipRow}>
-              {tipOptions.map(tip => (
-                <TouchableOpacity
-                  key={tip}
-                  onPress={() => setDeliveryTip(tip)}
-                  style={[
-                    styles.tipChip,
-                    deliveryTip === tip && { backgroundColor: theme.primary, borderColor: theme.primary },
-                  ]}
-                >
-                  <Text style={[styles.tipText, deliveryTip === tip && { color: '#fff' }]}>
-                    {tip === 0 ? 'None' : `₹${tip}`}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
+
 
         {/* Bill Breakdown */}
         <View style={styles.sectionCard}>
@@ -529,7 +536,7 @@ export default function CheckoutScreen() {
                     <Text style={[styles.billValue, { color: '#16A34A', fontWeight: '800' }]}>- ₹{tbOfferDiscount}</Text>
                   </View>
                 )}
-                
+
                 <View style={styles.divider} />
                 <View style={[styles.billRow, { marginBottom: 16 }]}>
                   <Text style={[styles.billLabel, { fontSize: 13, color: '#64748B' }]}>Pay Later (For items you decide to keep)</Text>
@@ -539,7 +546,17 @@ export default function CheckoutScreen() {
                 {/* --- DELIVERY TOTAL (PAY NOW) --- */}
                 <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 8, marginTop: 8 }}>Pay Upfront Now</Text>
 
-                {!merchantOffers?.freeDelivery && (
+                {merchantOffers?.freeDelivery ? (
+                  <>
+                    <View style={styles.billRow}>
+                      <Text style={styles.billLabel}>Delivery Fee</Text>
+                      <Text style={[styles.billValue, { color: '#10B981', fontWeight: '700' }]}>FREE</Text>
+                    </View>
+                    <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }}>
+                      Free Delivery applied via Offer!
+                    </Text>
+                  </>
+                ) : (
                   <>
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Delivery Fee</Text>
@@ -577,37 +594,37 @@ export default function CheckoutScreen() {
                 </View>
                 <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Delivery Fee</Text>
-                  <Text style={styles.billValue}>₹{deliveryCharge}</Text>
+                  <Text style={[styles.billValue, courierFreeDelivery && { color: '#10B981', fontWeight: '700' }]}>
+                    {courierFreeDelivery ? 'FREE' : `₹${deliveryCharge}`}
+                  </Text>
                 </View>
+                {courierFreeDelivery && (
+                  <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }}>
+                    Free Delivery applied via Offer!
+                  </Text>
+                )}
                 {deliveryTip > 0 && (
                   <View style={styles.billRow}>
                     <Text style={styles.billLabel}>Delivery Tip</Text>
                     <Text style={styles.billValue}>₹{deliveryTip}</Text>
                   </View>
                 )}
+                {courierOfferDiscount > 0 && (
+                  <View style={styles.billRow}>
+                    <Text style={[styles.billLabel, { color: '#16A34A' }]}>Offer Savings</Text>
+                    <Text style={[styles.billValue, { color: '#16A34A', fontWeight: '800' }]}>- ₹{courierOfferDiscount}</Text>
+                  </View>
+                )}
+
                 <View style={styles.divider} />
                 <View style={styles.billRow}>
                   <Text style={styles.totalLabel}>Total Payable</Text>
-                  <Text style={[styles.totalValue, { color: theme.primary }]}>₹{Number(totalPayableNow - offerDiscount).toFixed(0)}</Text>
+                  <Text style={[styles.totalValue, { color: theme.primary }]}>₹{finalPayable}</Text>
                 </View>
               </>
             )}
           </View>
         </View>
-
-        {/* Coupon & Offers */}
-        <CouponInput
-          cartContext={{
-            items,
-            subtotal,
-            merchantTotals: items.reduce((acc: Record<string, number>, item: any) => {
-              const mid = item.merchantId?._id || item.merchantId || 'unknown';
-              acc[mid] = (acc[mid] || 0) + ((item.price || 0) * (item.quantity || 1));
-              return acc;
-            }, {}),
-          }}
-          themeColor={theme.primary}
-        />
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -615,13 +632,17 @@ export default function CheckoutScreen() {
       {/* Sticky Bottom */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
         <View>
-          <Text style={styles.bottomTotal}>₹{totalPayableNow}</Text>
+          <Text style={styles.bottomTotal}>₹{finalPayable}</Text>
           <Text style={styles.bottomSub}>{isTB ? 'Upfront Fee Only' : 'Total Amount'}</Text>
         </View>
         <TouchableOpacity
-          style={[styles.placeOrderBtn, { backgroundColor: placing ? '#94A3B8' : theme.primary }]}
+          style={[
+            styles.placeOrderBtn,
+            { backgroundColor: theme.primary },
+            (placing || !chosenAddress || (isTB && tbAvailable === false)) && { backgroundColor: '#CBD5E1' }
+          ]}
           onPress={handlePlaceOrder}
-          disabled={placing || !chosenAddress}
+          disabled={placing || !chosenAddress || (isTB && tbAvailable === false)}
           activeOpacity={0.8}
         >
           {placing ? (
@@ -629,17 +650,23 @@ export default function CheckoutScreen() {
           ) : (
             <>
               <Text style={styles.placeOrderText}>
-                {isTB ? 'Place Try & Buy Order' : 'Place Courier Order'}
+                {isTB
+                  ? tbAvailable === false
+                    ? 'Try & Buy Unavailable'
+                    : 'Place Try & Buy Order'
+                  : 'Place Courier Order'}
               </Text>
-              <Ionicons name="arrow-forward" size={18} color="#fff" />
+              {!(isTB && tbAvailable === false) && (
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              )}
             </>
           )}
         </TouchableOpacity>
       </View>
 
-      <AddressSelectorModal 
-        visible={modalVisible} 
-        onClose={() => setModalVisible(false)} 
+      <AddressSelectorModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
       />
 
       <RazorpayWebView

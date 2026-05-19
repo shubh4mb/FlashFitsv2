@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useGender } from '@/context/GenderContext';
+import { useAddress } from '@/context/AddressContext';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,

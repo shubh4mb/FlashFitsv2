@@ -15,8 +15,8 @@ interface ApiResponse<T = any> {
 
 // Extract base URL from Expo Constants
 const getBaseURL = (): string => {
-  const url = Constants.expoConfig?.extra?.BACKEND_URL;
-  return url ? `${url}/api/` : '/api/';
+  const url = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.0.102:5000';
+  return `${url}/api/`;
 };
 
 // Create the axios instance
