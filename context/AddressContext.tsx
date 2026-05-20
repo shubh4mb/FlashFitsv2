@@ -127,29 +127,15 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             if (bestMatch) {
                 console.log(`Proximity Match Found: ${(bestMatch as any).addressType} (${Math.round(minFoundDist)}m)`);
                 setSelectedAddress(bestMatch);
-                
-                // Still check availability for the matched address context to get TB status
-                try {
-                    const availability = await checkDeliveryAvailability(lat, lng);
-                    setDeliveryAvailable(availability?.serviceable || false);
-                    setTbAvailable(availability?.tbAvailable || false);
-                    setTbOffline(availability?.allOffline || false);
-                } catch (e) {
-                    console.log('Availability check failed for match, defaulting to false');
-                    setDeliveryAvailable(false);
-                }
-                
                 setLocationLoading(false);
                 return;
             }
 
             // 5. Fallback: Check Availability and Reverse Geocode
             try {
-                const availability = await checkDeliveryAvailability(lat, lng);
-                setDeliveryAvailable(availability?.serviceable || false);
-                setTbAvailable(availability?.tbAvailable || false);
-                setTbOffline(availability?.allOffline || false);
-
+                // The useEffect will handle syncing availability, but we do the initial fetch here 
+                // so we can use the same check to avoid race conditions. Actually, let's just let
+                // the useEffect handle the availability, but we need to do reverse geocoding here.
                 const resp = await fetch(
                     `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
                     { headers: { "User-Agent": "FlashFitsApp/1.0 (contact@flashfits.com)" } }
@@ -164,12 +150,15 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 const postcode = addressObj.postcode || '';
                 setLocationAddress(postcode ? `${shortAddress}, ${postcode}` : shortAddress);
             } catch (err) {
-                console.error('Reverse geocode / availability failed:', err);
+                console.error('Reverse geocode failed:', err);
                 setLocationAddress("Location found");
             }
 
         } catch (error) {
             console.error('Location detection error:', error);
+            setDeliveryAvailable(false);
+            setTbAvailable(false);
+            setTbOffline(false);
         } finally {
             setLocationLoading(false);
         }
@@ -214,8 +203,12 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
     // ── Sync Availability When Address/Location Changes ──
     useEffect(() => {
         const updateAvailability = async () => {
-            const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-            const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+            const lat = selectedAddress?.location?.coordinates?.[1] ?? 
+                        (selectedAddress as any)?.latitude ?? 
+                        userLocation?.latitude;
+            const lng = selectedAddress?.location?.coordinates?.[0] ?? 
+                        (selectedAddress as any)?.longitude ?? 
+                        userLocation?.longitude;
 
             if (lat !== undefined && lng !== undefined) {
                 try {

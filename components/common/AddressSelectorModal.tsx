@@ -72,22 +72,10 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
   };
 
   const handleSaveCurrentLocation = () => {
-    if (userLocation && locationAddress) {
-      onClose();
-      setTimeout(() => {
-        router.push({
-          pathname: '/(app)/add-address' as any,
-          params: {
-            lat: userLocation.latitude,
-            lng: userLocation.longitude,
-            address: JSON.stringify({ display_name: locationAddress }), // Simple mock for add-address parser
-          },
-        });
-      }, 300);
-    } else {
-      // Fallback: just use GPS if they can't save for some reason, or alert
-      handleSelectCurrentLocation();
-    }
+    onClose();
+    setTimeout(() => {
+      router.push('/(app)/select-location' as any);
+    }, 300);
   };
 
   const handleSelectCurrentLocation = async () => {

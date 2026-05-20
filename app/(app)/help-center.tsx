@@ -38,29 +38,74 @@ const SUPPORT_CATEGORIES = [
 
 const FAQ_DATA = [
   {
-    question: 'What is the refund policy?',
-    answer:
-      'If you return all items during a Try & Buy order, a full refund of the deposit is initiated within 3-5 business days to your original payment method. If you keep some items, the deposit is adjusted against the kept items and any remaining balance is refunded. For cancelled orders before dispatch, refunds are instant.',
-  },
-  {
     question: 'How does Try & Buy work?',
     answer:
-      'Try & Buy lets you order clothes, try them at home for up to 30 minutes, and only pay for what you keep. A refundable deposit is charged upfront. Our delivery partner will wait while you try the items. Select what you want to keep, return the rest, and you will only be charged for items you keep.',
+      'Try & Buy allows customers to order fashion products and try them at the time of delivery before confirming the purchase. A Delivery charge  may be collected during checkout. Customers can keep the products they like and return the remaining items immediately to the delivery partner during the same visit. Final billing will be adjusted based on the items retained by the customer.',
   },
   {
-    question: 'What is the return window?',
+    question: 'What is the refund policy?',
     answer:
-      'For Try & Buy orders, returns happen on the spot — our delivery partner collects returned items during the same visit. There is no separate return window. For standard courier orders, please check the specific product return policy, generally items can be returned within 7 days of delivery if unused and in original packaging.',
+      'For Try & Buy orders, products once selected and confirmed by the customer during the trial session are considered final and are not eligible for return or refund, except in cases of damaged or incorrect items. This policy is implemented to prevent misuse and fraudulent activities. For courier-based orders, eligible returns can be requested as per the retailer’s return policy, and approved refunds will be credited to the original payment method after successful verification.'
+  },
+  {
+    question: 'What is the return policy?',
+    answer:
+      'For Try & Buy orders, unwanted items must be returned immediately during the delivery trial session. Once the delivery process is completed and accepted by the customer, returns may not be applicable unless the item received is damaged, defective, or incorrect. For courier-based retailer orders, return eligibility depends on the individual retailer’s policy.',
   },
   {
     question: 'How does delivery work?',
     answer:
-      'For Try & Buy orders: A delivery rider picks up your order from the nearby merchant, delivers it to your doorstep, and waits while you try items. The entire process typically takes 20-40 minutes from order placement. For standard courier orders, delivery takes 3-7 business days depending on your location.',
+      'FlashFits supports both instant Try & Buy delivery and courier-based retailer shipping. For nearby Try & Buy orders, delivery partners collect products from local stores and deliver them directly to customers for trial at doorstep. For distant retailer orders, products are packed and shipped directly by the respective retailer through courier services. Delivery timelines may vary based on seller location and courier availability.',
   },
   {
-    question: 'How are merchants verified?',
+    question: 'Who manages courier-based orders?',
     answer:
-      'All merchants on FlashFits go through a rigorous verification process including GST verification, business license validation, product quality checks, and on-ground store inspections. We only onboard trusted local retailers and boutiques to ensure you receive authentic products every time.',
+      'Courier-based orders placed from distant retailers are directly managed and fulfilled by the respective retail store. The retailer is responsible for product availability, packaging, dispatch, shipping updates, and applicable return handling. FlashFits acts as a platform connecting customers with partnered retailers.',
+  },
+  {
+    question: 'How are retailers verified on FlashFits?',
+    answer:
+      'Retailers partnered with FlashFits undergo a verification process that may include business validation, identity verification, store checks, and compliance review before onboarding. FlashFits aims to work with trusted retail partners to provide customers with a reliable shopping experience.',
+  },
+  {
+    question: 'Is Try & Buy available for all products?',
+    answer:
+      'No, Try & Buy is only available for products offered by local retailers located within our serviceable trial zones. Products dispatched from distant retail partners are shipped via standard courier services and are not eligible for instant doorstep trial.',
+  },
+  {
+    question: 'How long do I get to try the products?',
+    answer:
+      'For Try & Buy orders, our delivery partner will wait at your doorstep for up to 30 minutes. This gives you ample time to try the products on and decide which ones to keep and which ones to return immediately.',
+  },
+  {
+    question: 'Can I place orders from multiple retailers together?',
+    answer:
+      'Yes, you can add items from multiple retailers to your cart. For Try & Buy, because orders are delivered instantly from local stores, you will check out each retailer’s cart individually. For standard courier orders, you can check out all items from different retailers together in a single transaction.',
+  },
+  {
+    question: 'How do I know if a retailer is local or distant?',
+    answer:
+      'The app automatically identifies retailers as local (eligible for Try & Buy) or distant (eligible only for courier delivery) based on your location. You will see an “Instant Delivery” or “Try & Buy Available” label for local retailers and a “Standard Delivery” label for distant ones.',
+  },
+  {
+    question: 'What payment methods are supported?',
+    answer:
+      'We support a wide range of secure payment options, including major Credit/Debit Cards, UPI (Google Pay, PhonePe, Paytm, etc.), Net Banking, and popular digital wallets. Payment details are processed securely through our payment gateway.',
+  },
+  {
+    question: 'Will delivery charges be refunded?',
+    answer:
+      'Generally, delivery charges are non-refundable once a delivery attempt has been made. However, for Try & Buy orders, if you decide to keep all ordered items (resulting in no returned items), a partial refund of the delivery charge will be deducted from the total amount of the order. For standard courier-based orders, delivery charges are completely non-refundable once the shipment is processed.',
+  },  
+  {
+    question: 'Is FlashFits responsible for courier delays?',
+    answer:
+      'Distant courier-based orders are shipped and managed directly by the respective retail store. While FlashFits facilitates communication and monitors delivery timelines, the specific transit times and potential logistics delays are the responsibility of the designated courier partner.',
+  },
+  {
+    question: 'How can I track my order?',
+    answer:
+      'For Try & Buy orders, you can track your delivery partner in real-time within the app once they are dispatched. For courier orders, you will receive tracking updates and a shipment tracking link as soon as the retail partner dispatches the parcel.',
   },
 ];
 
@@ -83,7 +128,7 @@ export default function HelpCenterScreen() {
         category: category.key,
         phone: phone || 'N/A',
         message: `User initiated support for: ${category.label}`,
-      }).catch(() => {}); // fire and forget
+      }).catch(() => { }); // fire and forget
 
       const message = encodeURIComponent(
         `Hi FlashFits Support! 👋\n\nI need help with: *${category.label}*\n\nPlease assist me.`
@@ -109,7 +154,7 @@ export default function HelpCenterScreen() {
         category: 'other',
         phone: phone || 'N/A',
         message: 'User contacted general support',
-      }).catch(() => {});
+      }).catch(() => { });
 
       const message = encodeURIComponent('Hi FlashFits Support! 👋\n\nI need assistance.');
       const url = `whatsapp://send?phone=${WHATSAPP_NUMBER}&text=${message}`;

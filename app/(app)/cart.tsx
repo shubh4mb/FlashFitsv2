@@ -40,7 +40,7 @@ export default function CartScreen() {
   const showToast = useToast();
   const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart, applyOfferCourier, removeOfferCourier } = useCourierCart();
   const { selectedGender } = useGender();
-  const { selectedAddress, tbAvailable } = useAddress();
+  const { selectedAddress, tbAvailable, deliveryAvailable } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { tab } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
@@ -671,45 +671,59 @@ export default function CartScreen() {
           <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} style={styles.pinnedGradient} />
 
           <View style={styles.pinnedInner}>
-            <View>
-              <Text style={styles.pinnedPrice}>
-                ₹{activeTab === 'instant'
-                  ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
-                  : Math.round(courierTotal)}
-              </Text>
-              <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
-            </View>
+            {deliveryAvailable === false ? (
+              <TouchableOpacity
+                style={[
+                  styles.checkoutBtn,
+                  { backgroundColor: theme.primary, flex: 1, justifyContent: 'center' }
+                ]}
+                onPress={() => setModalVisible(true)}
+              >
+                <Text style={[styles.checkoutBtnText, { textAlign: 'center' }]}>
+                  Outside Service Area • Change Address
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <View>
+                  <Text style={styles.pinnedPrice}>
+                    ₹{activeTab === 'instant'
+                      ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
+                      : Math.round(courierTotal)}
+                  </Text>
+                  <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
+                </View>
 
-            <TouchableOpacity
-              style={[
-                styles.checkoutBtn,
-                { backgroundColor: theme.primary },
-                activeTab === 'instant' && (
-                  currentMerchantCart?.merchantDetails?.isOnline === false || 
-                  currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ||
-                  tbAvailable === false
-                ) && { backgroundColor: '#CBD5E1' }
-              ]}
-              disabled={activeTab === 'instant' && (
-                currentMerchantCart?.merchantDetails?.isOnline === false || 
-                currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ||
-                tbAvailable === false
-              )}
-              onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
-            >
-              <Text style={styles.checkoutBtnText}>
-                {activeTab === 'instant'
-                  ? currentMerchantCart?.merchantDetails?.isOnline === false
-                    ? "Sorry, Shop Closed Now"
-                    : tbAvailable === false
-                      ? "Try & Buy Unavailable"
-                      : 'Proceed to Try & Buy'
-                  : 'Checkout Now'}
-              </Text>
-              {!(activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || tbAvailable === false)) && (
-                <Feather name="arrow-right" size={20} color="#fff" />
-              )}
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.checkoutBtn,
+                    { backgroundColor: theme.primary },
+                    activeTab === 'instant' && (
+                      currentMerchantCart?.merchantDetails?.isOnline === false || 
+                      currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                    ) && { backgroundColor: '#CBD5E1' }
+                  ]}
+                  disabled={activeTab === 'instant' && (
+                    currentMerchantCart?.merchantDetails?.isOnline === false || 
+                    currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                  )}
+                  onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
+                >
+                  <Text style={styles.checkoutBtnText}>
+                    {activeTab === 'instant'
+                      ? currentMerchantCart?.merchantDetails?.isOnline === false
+                        ? "Sorry, Shop Closed Now"
+                        : currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                          ? "Too Far From Store"
+                          : 'Proceed to Try & Buy'
+                      : 'Checkout Now'}
+                  </Text>
+                  {!(activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false)) && (
+                    <Feather name="arrow-right" size={20} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       )}
@@ -823,7 +837,7 @@ const styles = StyleSheet.create({
   pinnedPrice: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
   pinnedSub: { fontSize: 12, color: '#64748B', fontWeight: '700' },
   checkoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 20 },
-  checkoutBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  checkoutBtnText: { color: '#fff', fontSize: 14, fontWeight: '900' },
 
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingBottom: 100 },
   emptyIconContainer: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
