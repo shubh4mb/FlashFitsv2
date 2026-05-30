@@ -7,7 +7,7 @@ import { useCart } from '@/context/CartContext';
 import { useGender } from '@/context/GenderContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { addToRecentlyViewed } from '@/utils/recentlyViewed';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -46,19 +46,37 @@ const ProductDetailPage = () => {
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
   const [cartModalVisible, setCartModalVisible] = useState(false);
+  const [limitErrorModalVisible, setLimitErrorModalVisible] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { userLocation, selectedAddress } = useAddress();
+  const showToast = useToast();
 
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { cart, addToCart: addItemToCart } = useCart();
   const { courierCart, addToCourierCart: addItemToCourierCart } = useCourierCart();
   const instantCartCount = cart?.merchantCarts?.length || 0;
   const courierCartCount = courierCart?.items?.length || 0;
-  const totalCartCount = instantCartCount + courierCartCount;
-  const showToast = useToast();
 
   const [product, setProduct] = useState<any>(null);
+  
+  // Robust context calculation mimicking cart.tsx structure
+  const currentMerchantCount = useMemo(() => {
+    if (!product || !cart?.merchantCarts) return 0;
+    
+    const targetMid = String(product?.merchantId?._id || product?.merchantId);
+    
+    const mCart = cart.merchantCarts.find((mc: any) => {
+      const mcId = String(mc.merchantDetails?._id || mc.merchantId);
+      return mcId === targetMid;
+    });
+
+    if (mCart && mCart.items) {
+      return mCart.items.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
+    }
+    return 0;
+  }, [product, cart?.merchantCarts]);
+
   const [loading, setLoading] = useState(true);
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
@@ -83,6 +101,7 @@ const ProductDetailPage = () => {
       const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
       const data = await productDetailPage(id as string, lat, lng);
       setProduct(data);
+
       if (data?._id) {
         const relData = await fetchRelatedProducts(data._id, lat, lng);
         setRelatedProducts(relData || []);
@@ -252,9 +271,14 @@ const ProductDetailPage = () => {
 
       setCartModalVisible(false);
       router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
-    } catch (error) {
-      console.error('Failed to add to cart:', error);
-      showToast({ message: 'Failed to add item to bag. Please try again.', type: 'error' });
+    } catch (error: any) {
+      if (error?.response?.status === 400) {
+        setCartModalVisible(false);
+        setLimitErrorModalVisible(true);
+      } else {
+        console.error('Failed to add to cart:', error);
+        showToast({ message: error?.response?.data?.message || 'Failed to add item to bag. Please try again.', type: 'error' });
+      }
     } finally {
       setIsAdding(false);
     }
@@ -753,18 +777,38 @@ const ProductDetailPage = () => {
 
             {/* Instant Delivery Option */}
             <TouchableOpacity
-              style={[styles.deliveryOptionBtn, !isNearby && styles.deliveryOptionBtnDisabled]}
-              onPress={isNearby ? handleConfirmAddToCartInstant : undefined}
+              style={[styles.deliveryOptionBtn, (!isNearby || currentMerchantCount >= 6) && styles.deliveryOptionBtnDisabled]}
+              onPress={
+                !isNearby 
+                  ? undefined 
+                  : currentMerchantCount >= 6 
+                    ? () => {
+                        setCartModalVisible(false);
+                        setLimitErrorModalVisible(true);
+                      }
+                    : handleConfirmAddToCartInstant
+              }
               activeOpacity={0.7}
             >
               <View style={styles.deliveryOptionIcon}>
-                <Ionicons name="flash" size={24} color={isNearby ? "#22C55E" : "#94A3B8"} />
+                <Ionicons name="flash" size={24} color={(isNearby && currentMerchantCount < 6) ? "#22C55E" : "#94A3B8"} />
               </View>
               <View style={styles.deliveryOptionTexts}>
-                <Text style={[styles.deliveryOptionTitle, !isNearby && { color: "#94A3B8" }]}>Instant Delivery</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={[styles.deliveryOptionTitle, (!isNearby || currentMerchantCount >= 6) && { color: "#94A3B8" }]}>
+                    Instant Delivery
+                  </Text>
+                  <Text style={[styles.deliveryOptionTitle, { fontSize: 13, color: currentMerchantCount >= 6 ? '#EF4444' : '#64748B' }]}>
+                    {currentMerchantCount}/6
+                  </Text>
+                </View>
                 <Text style={styles.deliveryOptionSub}>20 - 40 Mins</Text>
                 {!isNearby ? (
                   <Text style={styles.deliveryOptionReason}>Out of range for instant delivery</Text>
+                ) : currentMerchantCount >= 6 ? (
+                  <Text style={[styles.deliveryOptionReason, { color: '#EF4444' }]}>
+                    Limit reached. Checkout your Try & Buy cart first.
+                  </Text>
                 ) : !isOnline ? (
                   <Text style={[styles.deliveryOptionReason, { color: '#D97706' }]}>
                     Merchant is offline. Item will be added to {product.merchantId?.shopName}'s instant cart.
@@ -775,7 +819,7 @@ const ProductDetailPage = () => {
                   </Text>
                 )}
               </View>
-              {isNearby && <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />}
+              {(isNearby && currentMerchantCount < 6) && <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />}
             </TouchableOpacity>
 
             {/* Standard Delivery Option */}
@@ -796,6 +840,35 @@ const ProductDetailPage = () => {
 
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Limit Error Modal */}
+      <Modal
+        visible={limitErrorModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setLimitErrorModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', padding: 24, borderRadius: 16, width: '100%', maxWidth: 340, alignItems: 'center' }}>
+            <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+              <Ionicons name="warning-outline" size={32} color="#EF4444" />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' }}>Cart Limit Reached</Text>
+            <Text style={{ fontSize: 14, color: '#64748B', textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
+              You can only have a maximum of 6 Try & Buy items per merchant. Please checkout your existing cart first to add more.
+            </Text>
+            <TouchableOpacity 
+              style={{ backgroundColor: theme.primary, width: '100%', paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
+              onPress={() => {
+                setLimitErrorModalVisible(false);
+                router.push({ pathname: '/cart', params: { tab: 'instant' } } as any);
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Go to Cart</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </View>
   );

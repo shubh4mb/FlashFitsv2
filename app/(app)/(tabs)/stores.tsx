@@ -59,7 +59,7 @@ export default function StoresScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
-  const [instantTry, setInstantTry] = useState(false);
+  const [instantTry, setInstantTry] = useState(true);
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
   const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {

@@ -50,6 +50,18 @@ export const getCartCount = async () => {
 };
 
 /**
+ * Fetches the count of items in the Try & Buy cart for a specific merchant.
+ */
+export const getMerchantCartCount = async (merchantId: string) => {
+  try {
+    const res = await api.get(`user/cart/merchant-count/${merchantId}`);
+    return res.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
  * Updates the quantity of a specific item in the cart.
  * cartId is the _id of the item in the items array.
  */

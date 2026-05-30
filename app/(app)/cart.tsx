@@ -18,7 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState, useMemo, useEffect } from 'react';
 import {
   Animated,
   Dimensions,
@@ -42,7 +42,7 @@ export default function CartScreen() {
   const { selectedGender } = useGender();
   const { selectedAddress, tbAvailable, deliveryAvailable } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
-  const { tab } = useLocalSearchParams();
+  const { tab, merchantId: targetMerchantId } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<CartTab>((tab === 'courier' ? 'standard' : 'instant'));
@@ -52,9 +52,26 @@ export default function CartScreen() {
   // Carousel state
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-
   const merchantCarts = cart?.merchantCarts || [];
+  
+  // Calculate initial index based on passed merchantId
+  const initialIndex = useMemo(() => {
+    if (targetMerchantId && merchantCarts.length > 0) {
+      const idx = merchantCarts.findIndex((mc: any) => mc.merchantId === targetMerchantId);
+      return idx !== -1 ? idx : 0;
+    }
+    return 0;
+  }, [targetMerchantId, merchantCarts.length]);
+
+  const [activeIndex, setActiveIndex] = useState(initialIndex);
+  
+  // Keep activeIndex synced if initialIndex changes upon loading
+  useEffect(() => {
+    if (initialIndex > 0) {
+      setActiveIndex(initialIndex);
+    }
+  }, [initialIndex]);
+
   const tbItems = cart?.items || [];
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -249,6 +266,8 @@ export default function CartScreen() {
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               keyExtractor={(item) => item.merchantId}
+              initialScrollIndex={initialIndex}
+              getItemLayout={(data, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
               scrollEventThrottle={16}
               onScroll={(e) => {
                 const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
@@ -281,7 +300,7 @@ export default function CartScreen() {
                           onPress={() => router.push(`/merchant/${mc.merchantId}` as any)}
                         >
                           <View style={styles.brandingInfo}>
-                            <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName}</Text>
+                            <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName} ({mc.items.reduce((sum: number, i: any) => sum + i.quantity, 0)}/6)</Text>
                             <View style={styles.brandingStatusRow}>
                               {isOffline ? (
                                 <View style={{ gap: 4, alignItems: 'flex-start' }}>

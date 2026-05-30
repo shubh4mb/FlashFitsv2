@@ -18,6 +18,8 @@ import {
   View,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Linking,
+  Alert,
 } from "react-native";
 import CustomRefreshControl from "@/components/common/CustomRefreshControl";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -100,6 +102,24 @@ const OrdersScreen = () => {
       rejected: "#F44336",
     };
     return statusColors[status?.toLowerCase()] || "#666";
+  };
+
+  const openWhatsAppSupport = async (orderId: string, orderStatus: string) => {
+    try {
+      const message = encodeURIComponent(
+        `Hi FlashFits Support! 👋\n\nI need help regarding my order: #FF_${orderId.slice(-5).toUpperCase()}\nOrder Status: ${orderStatus?.toUpperCase()}\n\nMy concern is: `
+      );
+      const url = `whatsapp://send?phone=918383823813&text=${message}`;
+      const canOpen = await Linking.canOpenURL(url);
+
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        await Linking.openURL(`https://wa.me/918383823813?text=${message}`);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Could not open WhatsApp.');
+    }
   };
 
   const renderEmptyState = () => (
@@ -244,10 +264,21 @@ const OrdersScreen = () => {
                       </Text>
                     </View>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.orderStatus) + '15' }]}>
-                    <Text style={[styles.statusText, { color: getStatusColor(order.orderStatus) }]}>
-                      {order.orderStatus?.toUpperCase()}
-                    </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity 
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        openWhatsAppSupport(order._id, order.orderStatus);
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="headset-outline" size={20} color="#64748B" />
+                    </TouchableOpacity>
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.orderStatus) + '15' }]}>
+                      <Text style={[styles.statusText, { color: getStatusColor(order.orderStatus) }]}>
+                        {order.orderStatus?.toUpperCase()}
+                      </Text>
+                    </View>
                   </View>
                 </View>
 

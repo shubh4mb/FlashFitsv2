@@ -124,8 +124,12 @@ export default function CouponInput({ cartContext, themeColor = '#0F172A', order
   // Convert to array
   const combinedOffers = Array.from(allOffersMap.values());
 
-  // 4. Filter out any offers that are already applied
+  // 4. Filter out any offers that are already applied or fully used up
   const applicableOffers = combinedOffers.filter(offer => {
+    if (offer.reason === 'You have already used this offer') {
+      return false;
+    }
+
     const isApplied = appliedOffersData?.appliedOffers?.some(
       (o: any) => (o._id?.toString() || o.offerId?.toString()) === offer._id.toString()
     );

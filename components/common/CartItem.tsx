@@ -13,6 +13,7 @@ import { useCourierCart } from '@/context/CourierCartContext';
 import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { useRouter } from 'expo-router';
+import { useToast, useAlert } from '@/context/AlertContext';
 
 interface CartItemProps {
   item: any;
@@ -20,8 +21,10 @@ interface CartItemProps {
 }
 
 const CartItem = ({ item, isCourier = false }: CartItemProps) => {
-  const { updateQuantity: updateTBQuantity, removeItem: removeTBItem } = useCart();
+  const { updateQuantity: updateTBQuantity, removeItem: removeTBItem, cart } = useCart();
   const { updateQuantity: updateCourierQuantity, removeItem: removeCourierItem } = useCourierCart();
+  const showToast = useToast();
+  const showAlert = useAlert();
   
   const updateQuantity = isCourier ? updateCourierQuantity : updateTBQuantity;
   const removeItem = isCourier ? removeCourierItem : removeTBItem;
@@ -45,6 +48,21 @@ const CartItem = ({ item, isCourier = false }: CartItemProps) => {
   };
 
   const handleIncrement = () => {
+    if (!isCourier) {
+      const targetMid = String(item.merchantId?._id || item.merchantId);
+      const merchantCart = cart?.merchantCarts?.find((mc: any) => String(mc.merchantId) === targetMid);
+      const totalMerchantQty = merchantCart ? merchantCart.items.reduce((acc: any, i: any) => acc + i.quantity, 0) : 0;
+      if (totalMerchantQty >= 6) {
+        showAlert({ 
+          title: "Cart Limit Reached",
+          message: "You can only have a maximum of 6 Try & Buy items per merchant. Please remove some existing items from this merchant to add more.", 
+          type: 'warning',
+          buttons: [{ text: "Got it", style: "outlined" }]
+        });
+        return;
+      }
+    }
+
     if (item.quantity < (item.stockQuantity || 10)) {
       updateQuantity(item._id, item.quantity + 1);
     }

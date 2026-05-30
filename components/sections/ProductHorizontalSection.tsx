@@ -17,7 +17,7 @@ import ProductCard from '../common/ProductCard';
 import Skeleton from '../common/Skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BANNER_WIDTH = SCREEN_WIDTH - 40; // Align with section padding
+const BANNER_WIDTH = SCREEN_WIDTH; // Full width
 const BANNER_HEIGHT = (BANNER_WIDTH * 7) / 27;
 
 interface ProductHorizontalSectionProps {
@@ -72,7 +72,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
     return <ProductSectionSkeleton />;
   }
 
-  if (!isLoading && products.length === 0 && !banner) {
+  if (!isLoading && (!products || products.length === 0)) {
     return null;
   }
 
@@ -182,9 +182,9 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   bannerContainer: {
-    marginHorizontal: 20,
+    marginHorizontal: 0,
     marginBottom: 16,
-    borderRadius: 16, // Premium rounded corners
+    borderRadius: 0,
     overflow: 'hidden',
     backgroundColor: '#f8fafc',
     height: BANNER_HEIGHT,

@@ -5,7 +5,7 @@ export type AlertType = 'success' | 'error' | 'warning' | 'info';
 export interface AlertButton {
   text: string;
   onPress?: () => void;
-  style?: 'default' | 'cancel' | 'destructive';
+  style?: 'default' | 'cancel' | 'destructive' | 'outlined';
 }
 
 interface AlertOptions {

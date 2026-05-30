@@ -1,38 +1,33 @@
+import { fetchCollectionsHome } from '@/api/collections';
+import { fetchMerchants } from '@/api/merchants';
+import { fetchBanners, fetchRecommendedProductsData, fetchTrendingProductsData, fetchnewArrivalsProductsData } from '@/api/products';
+import logo from '@/assets/images/logo/logo.png';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import Skeleton from '@/components/common/Skeleton';
 import MainHeader from '@/components/layout/MainHeader';
 import MerchantLogosSection from '@/components/sections/MerchantLogosSection';
-import NewArrivalsSection from '@/components/sections/NewArrivalsSection';
-import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
-import SubCategorySection from '@/components/sections/SubCategorySection';
+import OfferBanner from '@/components/sections/OfferBanner';
 import ProductHorizontalSection from '@/components/sections/ProductHorizontalSection';
+import PromotionalCarousel from '@/components/sections/PromotionalCarousel';
+import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
 import TryComingSoonSection from '@/components/sections/TryComingSoonSection';
 import TryOfflineSection from '@/components/sections/TryOfflineSection';
-import OfferBanner from '@/components/sections/OfferBanner';
-import PromotionalCarousel from '@/components/sections/PromotionalCarousel';
-import { fetchMerchants } from '@/api/merchants';
-import { useAuth } from '@/context/AuthContext';
-import { useAddress } from '@/context/AddressContext';
-import { useGender } from '@/context/GenderContext';
-import { fetchCollectionsHome } from '@/api/collections';
-import { fetchBanners, fetchRecommendedProductsData, fetchTrendingProductsData, fetchnewArrivalsProductsData } from '@/api/products';
-import { Product } from '@/utils/recentlyViewed';
 import { Typography } from '@/constants/theme';
+import { useAddress } from '@/context/AddressContext';
+import { useAuth } from '@/context/AuthContext';
+import { useGender } from '@/context/GenderContext';
+import { Product } from '@/utils/recentlyViewed';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Animated,
+  Dimensions,
+  Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   StyleSheet,
   Text,
-  TouchableOpacity,
-  View,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
-  Image,
-  Dimensions,
-  RefreshControl,
+  View
 } from 'react-native';
-import Skeleton from '@/components/common/Skeleton';
-import logo from '@/assets/images/logo/logo.png';
-import CustomRefreshControl from '@/components/common/CustomRefreshControl';
-import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
@@ -69,7 +64,7 @@ export default function HomeScreen() {
         fetchCollectionsHome(apiGender, lat, lng)
       ]);
 
-      
+
 
       setTrendingProducts(Array.isArray(trending) ? trending : (trending?.products || trending?.data || []));
       setRecommendedProducts(Array.isArray(recommended) ? recommended : (recommended?.products || recommended?.data || []));
@@ -120,89 +115,89 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
         >
-        {headerHeight > 0 && <View style={{ height: headerHeight }} />}
-        
-        {tbAvailable === null ? (
-          // ── Loading Availability ──
-          <View style={{ padding: 20 }}>
-            <Skeleton width="100%" height={200} borderRadius={20} style={{ marginBottom: 24 }} />
-            <Skeleton width="60%" height={24} borderRadius={10} style={{ marginBottom: 16 }} />
-            <View style={{ flexDirection: 'row', gap: 16 }}>
-              <Skeleton width={width * 0.4} height={200} borderRadius={16} />
-              <Skeleton width={width * 0.4} height={200} borderRadius={16} />
-            </View>
-          </View>
-        ) : tbAvailable === false ? (
-          // ── Service Not Available or Offline ──
-          <View>
-            {tbOffline ? (
-              <TryOfflineSection refreshKey={refreshKey} />
-            ) : (
-              <TryComingSoonSection refreshKey={refreshKey} />
-            )}
-          </View>
-        ) : (
-          // ── Service Available ──
-          <>
-            <PromotionalCarousel />
-            <MerchantLogosSection refreshKey={refreshKey} initialMerchants={merchants} />
-            <OfferBanner />
-            
-            {/* Render Remote Collections */}
-            {Array.isArray(collections) && collections.map((coll, idx) => (
-              <ProductHorizontalSection
-                key={coll._id || idx}
-                title={coll.name}
-                subtitle={coll.description || 'Special curated list'}
-                products={coll.products || []}
-                isLoading={loading}
-                banner={coll.banner}
-                collectionId={coll._id}
-              />
-            ))}
+          {headerHeight > 0 && <View style={{ height: headerHeight }} />}
 
-            <RecentlyViewedSection refreshKey={refreshKey} />
-
-            <ProductHorizontalSection
-              title="New Arrivals"
-              subtitle="Fresh styles just for you"
-              products={newArrivalsProducts}
-              isLoading={loading}
-              banner={banners['new_arrivals_banner']?.[0]}
-              sortBy="newest"
-            />
-
-            <ProductHorizontalSection
-              title="Trending Now"
-              subtitle="Top picks for you"
-              products={trendingProducts}
-              isLoading={loading}
-              banner={banners['trending_banner']?.[0]}
-              sortBy="trending"
-            />
-
-            <ProductHorizontalSection
-              title="You May Like"
-              subtitle="Curated collection"
-              products={recommendedProducts}
-              isLoading={loading}
-              banner={banners['recommended_banner']?.[0]}
-              sortBy="trending"
-            />
-
+          {tbAvailable === null ? (
+            // ── Loading Availability ──
             <View style={{ padding: 20 }}>
-              <View style={styles.footer}>
-                <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
-                <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-                <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+              <Skeleton width="100%" height={200} borderRadius={20} style={{ marginBottom: 24 }} />
+              <Skeleton width="60%" height={24} borderRadius={10} style={{ marginBottom: 16 }} />
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <Skeleton width={width * 0.4} height={200} borderRadius={16} />
+                <Skeleton width={width * 0.4} height={200} borderRadius={16} />
               </View>
             </View>
-          </>
-        )}
+          ) : tbAvailable === false ? (
+            // ── Service Not Available or Offline ──
+            <View>
+              {tbOffline ? (
+                <TryOfflineSection refreshKey={refreshKey} />
+              ) : (
+                <TryComingSoonSection refreshKey={refreshKey} />
+              )}
+            </View>
+          ) : (
+            // ── Service Available ──
+            <>
+              <PromotionalCarousel />
+              <MerchantLogosSection refreshKey={refreshKey} initialMerchants={merchants} />
+              <OfferBanner />
 
-        <View style={{ height: 100 }} />
-      </Animated.ScrollView>
-    </PremiumRefreshWrapper>
+              {/* Render Remote Collections */}
+              {Array.isArray(collections) && collections.map((coll, idx) => (
+                <ProductHorizontalSection
+                  key={coll._id || idx}
+                  title={coll.name}
+                  subtitle={coll.description || 'Special curated list'}
+                  products={coll.products || []}
+                  isLoading={loading}
+                  banner={coll.banner}
+                  collectionId={coll._id}
+                />
+              ))}
+
+              <RecentlyViewedSection refreshKey={refreshKey} />
+
+              <ProductHorizontalSection
+                title="New Arrivals"
+                subtitle="Fresh styles just for you"
+                products={newArrivalsProducts}
+                isLoading={loading}
+                banner={banners['new_arrivals_banner']?.[0]}
+                sortBy="newest"
+              />
+
+              <ProductHorizontalSection
+                title="Trending Now"
+                subtitle="Top picks for you"
+                products={trendingProducts}
+                isLoading={loading}
+                banner={banners['trending_banner']?.[0]}
+                sortBy="trending"
+              />
+
+              <ProductHorizontalSection
+                title="You May Like"
+                subtitle="Curated collection"
+                products={recommendedProducts}
+                isLoading={loading}
+                banner={banners['recommended_banner']?.[0]}
+                sortBy="trending"
+              />
+
+              <View style={{ padding: 20 }}>
+                <View style={styles.footer}>
+                  <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
+                  <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                  <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                </View>
+              </View>
+            </>
+          )}
+
+          <View style={{ height: 100 }} />
+        </Animated.ScrollView>
+      </PremiumRefreshWrapper>
     </View>
   );
 }

@@ -21,6 +21,7 @@ export interface Product {
   brandId?: string;
   isNearby?: boolean;
   isOnline?: boolean;
+  isInstantBuyable?: boolean;
 }
 
 /**
@@ -45,9 +46,9 @@ export const addToRecentlyViewed = async (product: Product) => {
 /**
  * Retrieves the list of recently viewed products from the backend.
  */
-export const getRecentlyViewed = async (): Promise<Product[]> => {
+export const getRecentlyViewed = async (lat?: number, lng?: number): Promise<Product[]> => {
   try {
-    const response = await getRecentlyViewedApi();
+    const response = await getRecentlyViewedApi(lat, lng);
     // The backend already returns the mapped product format from the controller
     return response || [];
   } catch (e) {

@@ -16,9 +16,11 @@ export const addToRecentlyViewedApi = async (productId: string, variantId: strin
 /**
  * Retrieves the user's recently viewed products from the backend.
  */
-export const getRecentlyViewedApi = async () => {
+export const getRecentlyViewedApi = async (lat?: number, lng?: number) => {
   try {
-    const res = await api.get('user/recently-viewed/my');
+    const res = await api.get('user/recently-viewed/my', {
+      params: { lat, lng }
+    });
     return res.data;
   } catch (error) {
     // Auth errors are ignored gracefully

@@ -1,19 +1,19 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-} from 'react-native';
-import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { useGender } from '@/context/GenderContext';
-import { useAddress } from '@/context/AddressContext';
 import { fetchMerchants } from '@/api/merchants';
 import { ThemedText } from '@/components/common/themed-text';
 import { GenderThemes, Typography } from '@/constants/theme';
+import { useAddress } from '@/context/AddressContext';
+import { useGender } from '@/context/GenderContext';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import Skeleton from '../common/Skeleton';
 
 const MerchantLogosSkeleton = () => (
@@ -45,18 +45,18 @@ interface Merchant {
   isNearby: boolean;
 }
 
-export default function MerchantLogosSection({ 
-  refreshKey = 0, 
-  initialMerchants 
-}: { 
-  refreshKey?: number; 
+export default function MerchantLogosSection({
+  refreshKey = 0,
+  initialMerchants
+}: {
+  refreshKey?: number;
   initialMerchants?: Merchant[];
 }) {
   const router = useRouter();
   const { selectedGender } = useGender();
   const { userLocation, selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
-  
+
   const [merchants, setMerchants] = useState<Merchant[]>(initialMerchants || []);
   const [loading, setLoading] = useState(!initialMerchants);
 
@@ -105,14 +105,14 @@ export default function MerchantLogosSection({
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        horizontal 
+      <ScrollView
+        horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {filteredMerchants.map((merchant) => (
-          <TouchableOpacity 
-            key={merchant._id} 
+          <TouchableOpacity
+            key={merchant._id}
             style={styles.merchantCard}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     width: 80,
   },
   logoContainer: {
-    margin:4,
+    margin: 4,
     width: 72,
     height: 72,
     borderRadius: 6,

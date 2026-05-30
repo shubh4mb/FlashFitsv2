@@ -70,8 +70,8 @@ const GlobalAlert: React.FC = () => {
 
     return (
       <Animated.View 
-        entering={SlideInUp.springify().damping(15)}
-        exiting={SlideOutUp}
+        entering={SlideInDown.springify().damping(15).stiffness(100)}
+        exiting={SlideOutUp.duration(300)}
         style={[styles.toastContainer, { top: 60 }]}
       >
         <BlurView intensity={80} tint="light" style={styles.toastBlur}>
@@ -114,7 +114,8 @@ const GlobalAlert: React.FC = () => {
                       style={[
                         styles.button,
                         index > 0 && styles.buttonBorder,
-                        button.style === 'destructive' && styles.destructiveButton
+                        button.style === 'destructive' && styles.destructiveButton,
+                        button.style === 'outlined' && styles.outlinedButton
                       ]}
                       onPress={() => {
                         hideAlert();
@@ -124,7 +125,8 @@ const GlobalAlert: React.FC = () => {
                       <Text style={[
                         styles.buttonText,
                         button.style === 'destructive' && styles.destructiveText,
-                        button.style === 'cancel' && styles.cancelText
+                        button.style === 'cancel' && styles.cancelText,
+                        button.style === 'outlined' && styles.outlinedText
                       ]}>
                         {button.text}
                       </Text>
@@ -252,6 +254,21 @@ const styles = StyleSheet.create({
   cancelText: {
     color: Palette.secondary,
     fontFamily: Typography.fontFamily.medium,
+  },
+  outlinedButton: {
+    borderWidth: 1,
+    borderColor: Palette.primary,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingVertical: 12,
+    flex: undefined,
+    width: '90%',
+    alignSelf: 'center',
+  },
+  outlinedText: {
+    color: Palette.primary,
+    fontFamily: Typography.fontFamily.semiBold,
   },
 });
 

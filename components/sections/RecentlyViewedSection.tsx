@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { GenderThemes, Typography } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
+import { useAddress } from '../../context/AddressContext';
 import { getRecentlyViewed, Product } from '../../utils/recentlyViewed';
 import ProductCard from '../common/ProductCard';
 import Skeleton from '../common/Skeleton';
@@ -38,6 +39,7 @@ const ProductSectionSkeleton = () => (
 const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
   const router = useRouter();
   const { selectedGender } = useGender();
+  const { userLocation, selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -47,7 +49,11 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     const loadRecentlyViewed = async () => {
       try {
         setLoading(true);
-        const data = await getRecentlyViewed();
+
+        const lat = selectedAddress?.location?.coordinates?.[1] ?? (selectedAddress as any)?.latitude ?? userLocation?.latitude;
+        const lng = selectedAddress?.location?.coordinates?.[0] ?? (selectedAddress as any)?.longitude ?? userLocation?.longitude;
+
+        const data = await getRecentlyViewed(lat, lng);
         setProducts(data);
         console.log(data, "recently viewed");
       } catch (error) {
