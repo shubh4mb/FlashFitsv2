@@ -704,14 +704,19 @@ export default function CartScreen() {
               </TouchableOpacity>
             ) : (
               <>
-                <View>
-                  <Text style={styles.pinnedPrice}>
-                    ₹{activeTab === 'instant'
-                      ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
-                      : Math.round(courierTotal)}
-                  </Text>
-                  <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
-                </View>
+                {!(activeTab === 'instant' && (
+                  currentMerchantCart?.merchantDetails?.isOnline === false ||
+                  currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                )) && (
+                  <View>
+                    <Text style={styles.pinnedPrice}>
+                      ₹{activeTab === 'instant'
+                        ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
+                        : Math.round(courierTotal)}
+                    </Text>
+                    <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
+                  </View>
+                )}
 
                 <TouchableOpacity
                   style={[
@@ -720,7 +725,7 @@ export default function CartScreen() {
                     activeTab === 'instant' && (
                       currentMerchantCart?.merchantDetails?.isOnline === false || 
                       currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                    ) && { backgroundColor: '#CBD5E1' }
+                    ) && { backgroundColor: '#CBD5E1', flex: 1, justifyContent: 'center' }
                   ]}
                   disabled={activeTab === 'instant' && (
                     currentMerchantCart?.merchantDetails?.isOnline === false || 
@@ -728,7 +733,13 @@ export default function CartScreen() {
                   )}
                   onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
                 >
-                  <Text style={styles.checkoutBtnText}>
+                  <Text style={[
+                    styles.checkoutBtnText,
+                    activeTab === 'instant' && (
+                      currentMerchantCart?.merchantDetails?.isOnline === false ||
+                      currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                    ) && { textAlign: 'center' }
+                  ]}>
                     {activeTab === 'instant'
                       ? currentMerchantCart?.merchantDetails?.isOnline === false
                         ? "Sorry, Shop Closed Now"
