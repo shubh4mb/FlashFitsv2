@@ -18,7 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useRef, useState, useMemo, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -53,7 +53,7 @@ export default function CartScreen() {
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList>(null);
   const merchantCarts = cart?.merchantCarts || [];
-  
+
   // Calculate initial index based on passed merchantId
   const initialIndex = useMemo(() => {
     if (targetMerchantId && merchantCarts.length > 0) {
@@ -64,7 +64,7 @@ export default function CartScreen() {
   }, [targetMerchantId, merchantCarts.length]);
 
   const [activeIndex, setActiveIndex] = useState(initialIndex);
-  
+
   // Keep activeIndex synced if initialIndex changes upon loading
   useEffect(() => {
     if (initialIndex > 0) {
@@ -107,13 +107,13 @@ export default function CartScreen() {
       return;
     }
 
-    if (merchantCart.merchantDetails?.isOnline === false) {
-      showToast({ message: "This merchant is currently offline", type: 'error' });
+    if (merchantCart.deliveryDetails?.isEligibleForTryBuy === false) {
+      showToast({ message: "This store is too far for Try & Buy. Move items to courier or remove them.", type: 'warning' });
       return;
     }
 
-    if (merchantCart.deliveryDetails?.isEligibleForTryBuy === false) {
-      showToast({ message: "This store is too far for Try & Buy. Move items to courier or remove them.", type: 'warning' });
+    if (merchantCart.merchantDetails?.isOnline === false) {
+      showToast({ message: "This merchant is currently offline", type: 'error' });
       return;
     }
 
@@ -302,17 +302,17 @@ export default function CartScreen() {
                           <View style={styles.brandingInfo}>
                             <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName} ({mc.items.reduce((sum: number, i: any) => sum + i.quantity, 0)}/6)</Text>
                             <View style={styles.brandingStatusRow}>
-                              {isOffline ? (
+                              {!isEligible ? (
+                                <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
+                              ) : isOffline ? (
                                 <View style={{ gap: 4, alignItems: 'flex-start' }}>
                                   <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#FEE2E2' }]}>Shop Closed</Text>
                                   <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#ffffffff', fontSize: 8 }]}>Reopens tomorrow at 9 AM</Text>
                                 </View>
-                              ) : !isEligible ? (
-                                <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
                               ) : (
                                 <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>Try & Buy</Text>
                               )}
-                              {!isOffline && (
+                              {isEligible && !isOffline && (
                                 <Text style={styles.brandingMins}>Delivery in {mc.deliveryDetails?.estimatedTime || '25-30'} mins</Text>
                               )}
                             </View>
@@ -320,7 +320,7 @@ export default function CartScreen() {
                           <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.brandingLogo} contentFit="contain" />
                         </TouchableOpacity>
 
-                        {!isEligible && !isOffline && (
+                        {!isEligible && (
                           <View style={styles.warningBanner}>
                             <Ionicons name="warning" size={20} color="#B45309" />
                             <View style={{ flex: 1 }}>
@@ -708,27 +708,27 @@ export default function CartScreen() {
                   currentMerchantCart?.merchantDetails?.isOnline === false ||
                   currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
                 )) && (
-                  <View>
-                    <Text style={styles.pinnedPrice}>
-                      ₹{activeTab === 'instant'
-                        ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
-                        : Math.round(courierTotal)}
-                    </Text>
-                    <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
-                  </View>
-                )}
+                    <View>
+                      <Text style={styles.pinnedPrice}>
+                        ₹{activeTab === 'instant'
+                          ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
+                          : Math.round(courierTotal)}
+                      </Text>
+                      <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
+                    </View>
+                  )}
 
                 <TouchableOpacity
                   style={[
                     styles.checkoutBtn,
                     { backgroundColor: theme.primary },
                     activeTab === 'instant' && (
-                      currentMerchantCart?.merchantDetails?.isOnline === false || 
+                      currentMerchantCart?.merchantDetails?.isOnline === false ||
                       currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
                     ) && { backgroundColor: '#CBD5E1', flex: 1, justifyContent: 'center' }
                   ]}
                   disabled={activeTab === 'instant' && (
-                    currentMerchantCart?.merchantDetails?.isOnline === false || 
+                    currentMerchantCart?.merchantDetails?.isOnline === false ||
                     currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
                   )}
                   onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
@@ -741,10 +741,10 @@ export default function CartScreen() {
                     ) && { textAlign: 'center' }
                   ]}>
                     {activeTab === 'instant'
-                      ? currentMerchantCart?.merchantDetails?.isOnline === false
-                        ? "Sorry, Shop Closed Now"
-                        : currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                          ? "Too Far From Store"
+                      ? currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                        ? "Too Far From Store"
+                        : currentMerchantCart?.merchantDetails?.isOnline === false
+                          ? "Sorry, Shop Closed Now"
                           : 'Proceed to Try & Buy'
                       : 'Checkout Now'}
                   </Text>
