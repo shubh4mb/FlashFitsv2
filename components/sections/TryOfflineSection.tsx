@@ -37,10 +37,10 @@ const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
                     </Text>
                 </View>
 
-                <View style={styles.badge}>
+                {/* <View style={styles.badge}>
                     <Ionicons name="flash" size={14} color={theme.primary} />
                     <Text style={[styles.badgeText, { color: theme.primary }]}>FASHION IN A FLASH</Text>
-                </View>
+                </View> */}
 
                 <TouchableOpacity 
                     style={[styles.exploreButton, { backgroundColor: theme.primary }]}
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     },
     messageContainer: {
         alignItems: 'center',
-        marginBottom: 40,
+        // marginBottom: 40,
     },
     message: {
         fontSize: 16,

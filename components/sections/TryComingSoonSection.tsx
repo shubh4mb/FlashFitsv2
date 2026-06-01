@@ -45,11 +45,6 @@ const TryComingSoonSection = () => {
                     <Text style={styles.exploreButtonText}>Explore Products</Text>
                     <Ionicons name="arrow-forward" size={18} color="#FFF" />
                 </TouchableOpacity>
-
-                <View style={styles.badge}>
-                    <Ionicons name="flash" size={14} color={theme.primary} />
-                    <Text style={[styles.badgeText, { color: theme.primary }]}>FASHION IN A FLASH</Text>
-                </View>
             </View>
         </View>
     );
@@ -127,7 +122,6 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
         borderRadius: 16,
         gap: 10,
-        marginBottom: 40,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
