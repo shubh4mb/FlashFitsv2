@@ -22,6 +22,14 @@ export const joinOrderRoom = async (orderId: string) => {
     socket.emit('joinOrderRoom', orderId);
 };
 
+export const leaveOrderRoom = async (orderId: string) => {
+    const socket = getSocket();
+    if (socket) {
+        socket.emit('leaveOrderRoom', orderId);
+    }
+    activeOrders = activeOrders.filter((id) => id !== orderId);
+};
+
 export const listenOrderUpdates = async (callback: (data: any) => void) => {
     const socket = await initSocket();
     socket.off('orderUpdate');

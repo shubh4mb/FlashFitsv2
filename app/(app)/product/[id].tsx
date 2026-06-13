@@ -77,6 +77,17 @@ const ProductDetailPage = () => {
     return 0;
   }, [product, cart?.merchantCarts]);
 
+  const otherMerchantCart = useMemo(() => {
+    if (!product || !cart?.merchantCarts) return null;
+    
+    const targetMid = String(product?.merchantId?._id || product?.merchantId);
+    
+    return cart.merchantCarts.find((mc: any) => {
+      const mcId = String(mc.merchantDetails?._id || mc.merchantId);
+      return mcId !== targetMid;
+    });
+  }, [product, cart?.merchantCarts]);
+
   const [loading, setLoading] = useState(true);
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
@@ -270,7 +281,8 @@ const ProductDetailPage = () => {
       });
 
       setCartModalVisible(false);
-      router.push({ pathname: '/cart', params: { tab: 'trybuy' } } as any);
+      showFeedback();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
       if (error?.response?.status === 400) {
         setCartModalVisible(false);
@@ -817,6 +829,14 @@ const ProductDetailPage = () => {
                   <Text style={[styles.deliveryOptionReason, { color: '#64748B' }]}>
                     Item will be added to {product.merchantId?.shopName}'s instant cart.
                   </Text>
+                )}
+                {otherMerchantCart && isNearby && currentMerchantCount < 6 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 8, gap: 4, backgroundColor: '#FFFBEB', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                    <Ionicons name="information-circle" size={14} color="#D97706" style={{ marginTop: 1 }} />
+                    <Text style={{ fontSize: 10, fontFamily: Typography.fontFamily.medium, color: '#B45309', flex: 1, lineHeight: 14 }}>
+                      You have items from "{otherMerchantCart.merchantDetails?.shopName || 'another store'}" in your Try & Buy cart. This item will go into a separate order for "{product.merchantId?.shopName}".
+                    </Text>
+                  </View>
                 )}
               </View>
               {(isNearby && currentMerchantCount < 6) && <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />}

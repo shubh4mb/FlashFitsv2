@@ -1,4 +1,5 @@
 import { Address, getAddresses } from '@/api/address';
+import { getUserProfile, updateUserProfilePhone } from '@/api/auth';
 import { createRazorpayOrder, initiateCourierOrder, initiateCourierCheckout, verifyCourierOrderPayment, verifyPayment } from '@/api/orders';
 import AddressSelectorModal from '@/components/common/AddressSelectorModal';
 import RazorpayWebView from '@/components/common/RazorpayWebView';
@@ -12,13 +13,16 @@ import { useOffers } from '@/context/OffersContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as Notifications from 'expo-notifications';
+import * as SecureStore from 'expo-secure-store';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
@@ -45,6 +49,31 @@ export default function CheckoutScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const { appliedOffers, computeBestOffers, couponCode, clearAppliedOffers } = useOffers();
+
+  // Phone verification states
+  const [userPhone, setUserPhone] = useState<string | null>(null);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneSubmitting, setPhoneSubmitting] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+
+  // Check user profile for phone number
+  useEffect(() => {
+    const checkProfile = async () => {
+      try {
+        const res = await getUserProfile();
+        if (res?.success && res?.user) {
+          setUserPhone(res.user.phoneNumber || null);
+          if (res.user.phoneNumber) {
+            await SecureStore.setItemAsync('phoneNumber', res.user.phoneNumber);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user profile at checkout:', err);
+      }
+    };
+    checkProfile();
+  }, []);
 
   // Razorpay WebView State
   const [razorpayOptions, setRazorpayOptions] = useState<any>(null);
@@ -190,6 +219,14 @@ export default function CheckoutScreen() {
   })();
 
   const handlePlaceOrder = async () => {
+    // Logic check: prompt for phone number if missing from profile
+    if (!userPhone) {
+      setPhoneInput('');
+      setPhoneError('');
+      setShowPhoneModal(true);
+      return;
+    }
+
     if (!chosenAddress) {
       showToast({ message: 'Please select a delivery address.', type: 'warning' });
       return;
@@ -676,6 +713,95 @@ export default function CheckoutScreen() {
         onError={handleRazorpayError}
         onClose={handleRazorpayClose}
       />
+
+      {/* Phone Number Modal Prompt */}
+      <Modal
+        visible={showPhoneModal}
+        transparent={true}
+        animationType="slide"
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowPhoneModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.phoneModalContainer}>
+            <Text style={styles.phoneModalTitle}>Phone Number Required</Text>
+            <Text style={styles.phoneModalSubtitle}>
+              Please enter your phone number to receive delivery updates and confirm your order.
+            </Text>
+
+            <View style={styles.phoneInputRow}>
+              <View style={styles.phonePrefixBox}>
+                <Text style={styles.phonePrefixText}>+91</Text>
+              </View>
+              <TextInput
+                style={styles.phoneModalInput}
+                placeholder="10-digit Mobile Number"
+                placeholderTextColor="#94A3B8"
+                keyboardType="phone-pad"
+                maxLength={10}
+                value={phoneInput}
+                onChangeText={(t) => {
+                  const clean = t.replace(/[^0-9]/g, "");
+                  setPhoneInput(clean);
+                  if (clean.length === 10) setPhoneError('');
+                }}
+              />
+            </View>
+
+            {phoneError ? <Text style={styles.phoneModalError}>{phoneError}</Text> : null}
+
+            <View style={styles.phoneModalActions}>
+              <TouchableOpacity
+                style={styles.phoneCancelBtn}
+                onPress={() => setShowPhoneModal(false)}
+                disabled={phoneSubmitting}
+              >
+                <Text style={styles.phoneCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.phoneSubmitBtn,
+                  { backgroundColor: theme.primary },
+                  phoneInput.length !== 10 && { backgroundColor: '#CBD5E1' }
+                ]}
+                onPress={async () => {
+                  if (phoneInput.length !== 10) {
+                    setPhoneError('Please enter a valid 10-digit phone number.');
+                    return;
+                  }
+                  try {
+                    setPhoneSubmitting(true);
+                    setPhoneError('');
+                    const res = await updateUserProfilePhone(phoneInput);
+                    if (res?.success) {
+                      await SecureStore.setItemAsync('phoneNumber', phoneInput);
+                      setUserPhone(phoneInput);
+                      setShowPhoneModal(false);
+                      showToast({ message: 'Phone number saved! Placing order...', type: 'success' });
+                      setTimeout(() => {
+                        handlePlaceOrder();
+                      }, 500);
+                    } else {
+                      setPhoneError(res?.message || 'Failed to update phone number.');
+                    }
+                  } catch (err: any) {
+                    setPhoneError(err.response?.data?.message || err.message || 'Something went wrong.');
+                  } finally {
+                    setPhoneSubmitting(false);
+                  }
+                }}
+                disabled={phoneInput.length !== 10 || phoneSubmitting}
+              >
+                {phoneSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.phoneSubmitText}>Submit & Place Order</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -827,5 +953,96 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  phoneModalContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  phoneModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 8,
+  },
+  phoneModalSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  phonePrefixBox: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 16,
+    height: 52,
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: '#E2E8F0',
+  },
+  phonePrefixText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  phoneModalInput: {
+    flex: 1,
+    height: 52,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  phoneModalError: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 8,
+    marginLeft: 4,
+  },
+  phoneModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  phoneCancelBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  phoneCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  phoneSubmitBtn: {
+    flex: 2,
+    height: 50,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phoneSubmitText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
   },
 });

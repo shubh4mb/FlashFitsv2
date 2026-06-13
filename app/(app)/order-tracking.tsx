@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { getOrderById, finalpaymentInitiate, finalPaymentVerify } from '@/api/orders';
-import { joinOrderRoom, listenOrderUpdates, removeOrderListeners } from '@/sockets/order.socket';
+import { joinOrderRoom, listenOrderUpdates, removeOrderListeners, leaveOrderRoom } from '@/sockets/order.socket';
 import { getSocket } from '@/config/socket';
 import { calculateFinalBilling } from '@/utils/ItemSelectionCalculation';
 import RazorpayWebView from '@/components/common/RazorpayWebView';
@@ -204,11 +204,11 @@ export default function OrderTrackingScreen() {
 
   // ── Fetch order ──
   const fetchOrder = useCallback(async () => {
-    if (!orderId) return;
+    if (!orderId) return null;
     try {
       const res = await getOrderById(orderId);
       const data: OrderData = res?.order || res;
-      if (!data) return;
+      if (!data) return null;
 
       // Handle completed try phase -> redirect to return page
       if (data.orderStatus === 'selection_made') {
@@ -221,7 +221,7 @@ export default function OrderTrackingScreen() {
             orderData: JSON.stringify(data),
           },
         });
-        return;
+        return data.orderStatus;
       }
 
       setOrder(data);
@@ -241,8 +241,10 @@ export default function OrderTrackingScreen() {
         setTrialStart(data.trialPhaseStart);
         setTrialDuration(data.trialPhaseDuration);
       }
+      return data.orderStatus;
     } catch (err) {
       console.error('Failed to fetch order:', err);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -251,10 +253,13 @@ export default function OrderTrackingScreen() {
   // ── Connect socket ──
   useEffect(() => {
     if (!orderId) return;
-    fetchOrder();
+
+    let socketJoined = false;
 
     const setupSocket = async () => {
       await joinOrderRoom(orderId);
+      socketJoined = true;
+
       listenOrderUpdates((update: any) => {
         console.log('📦 Order update:', update);
 
@@ -323,11 +328,21 @@ export default function OrderTrackingScreen() {
       }
     };
 
-    setupSocket();
+    fetchOrder().then((status) => {
+      // Only join room if order is active
+      const activeStates = ['placed', 'accepted', 'packed', 'in_transit', 'try_phase', 'selection_made'];
+      if (status && activeStates.includes(status)) {
+        setupSocket();
+      }
+    });
+
     return () => {
       const socket = getSocket();
       if (socket) socket.off('trialPhaseStart');
       removeOrderListeners();
+      if (socketJoined) {
+        leaveOrderRoom(orderId);
+      }
     };
   }, [orderId]);
 

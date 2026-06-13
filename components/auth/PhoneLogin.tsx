@@ -15,17 +15,28 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { sendOtp } from "../../api/auth";
+import { sendOtp, googleLogin } from "../../api/auth";
 import logo from "../../assets/images/logo/logo.png";
+import { useAuth } from "../../context/AuthContext";
+import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 
 const { width, height } = Dimensions.get("window");
 
 export default function PhoneLogin() {
   const router = useRouter();
+  const { signIn } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Google Sign-In setup
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com",
+      offlineAccess: false,
+    });
+  }, []);
 
   // ── Animations ─────────────────────────────────────────────────────
   const logoScale = useRef(new Animated.Value(0)).current;
@@ -74,6 +85,49 @@ export default function PhoneLogin() {
   }, [phoneNumber]);
 
   // ── Handlers ───────────────────────────────────────────────────────
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      let idToken;
+      const clientId = "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com";
+      if (clientId === "" || clientId.includes("PLACEHOLDER")) {
+        console.warn("Using mock token because GOOGLE_WEB_CLIENT_ID is a placeholder.");
+        idToken = `mock-google-token-${Date.now()}-mockgoogleid-testuser@example.com`;
+      } else {
+        await GoogleSignin.hasPlayServices();
+        const userInfo = await GoogleSignin.signIn();
+        idToken = userInfo.data?.idToken || (userInfo as any).idToken;
+      }
+
+      if (!idToken) {
+        throw new Error("No ID Token received from Google");
+      }
+
+      const res = await googleLogin(idToken);
+      if (res.success && res.data) {
+        const { token, refreshToken, userId, isNewUser } = res.data;
+        await signIn(token, userId, refreshToken, isNewUser);
+      } else {
+        setErrorMessage("Google Sign-in failed. Please try again.");
+      }
+    } catch (error: any) {
+      console.error("Google Sign-In failed:", error);
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        setErrorMessage("Sign-in cancelled by user.");
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        setErrorMessage("Sign-in already in progress.");
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setErrorMessage("Google Play Services not available.");
+      } else {
+        setErrorMessage(error?.response?.data?.message || error.message || "Google Authentication failed.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSendOTP = async () => {
     try {
       setIsLoading(true);
@@ -169,10 +223,37 @@ export default function PhoneLogin() {
               ]}
             >
               <View style={styles.card}>
-                {/* Label */}
+                {/* Welcome header for Google Sign-In */}
+                <Text style={styles.welcomeTitle}>Welcome Back</Text>
+                <Text style={styles.welcomeSubtitle}>Sign in to continue to FlashFits</Text>
+
+                {/* Google Sign-In Button */}
+                <Animated.View style={{ transform: [{ scale: buttonScale }], marginVertical: 12 }}>
+                  <TouchableOpacity
+                    style={styles.googleBtn}
+                    disabled={isLoading}
+                    onPress={handleGoogleSignIn}
+                    activeOpacity={0.85}
+                  >
+                    <AntDesign name="google" size={20} color="#000000" />
+                    <Text style={styles.googleBtnText}>
+                      {isLoading ? "Signing in..." : "Continue with Google"}
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
+
+                {/* Error Message */}
+                {errorMessage ? (
+                  <Animated.View style={[styles.errorBox, { opacity: errorOpacity }]}>
+                    <AntDesign name="exclamationcircleo" size={14} color="#EF4444" />
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  </Animated.View>
+                ) : null}
+
+                {/* Phone Login Code preserved for future use when OTP service is ready */}
+                {/* 
                 <Text style={styles.label}>Phone Number</Text>
 
-                {/* Input */}
                 <Animated.View
                   style={[
                     styles.inputBox,
@@ -218,15 +299,6 @@ export default function PhoneLogin() {
                   />
                 </Animated.View>
 
-                {/* Error Message */}
-                {errorMessage ? (
-                  <Animated.View style={[styles.errorBox, { opacity: errorOpacity }]}>
-                    <AntDesign name="exclamationcircleo" size={14} color="#EF4444" />
-                    <Text style={styles.errorText}>{errorMessage}</Text>
-                  </Animated.View>
-                ) : null}
-
-                {/* Progress */}
                 <View style={styles.progressBox}>
                   <View style={styles.progressHeader}>
                     <Text style={styles.progressTxt}>Progress</Text>
@@ -237,7 +309,6 @@ export default function PhoneLogin() {
                   </View>
                 </View>
 
-                {/* Continue button */}
                 <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
                   <TouchableOpacity
                     style={[
@@ -272,6 +343,7 @@ export default function PhoneLogin() {
                     </LinearGradient>
                   </TouchableOpacity>
                 </Animated.View>
+                */}
               </View>
             </Animated.View>
 
@@ -388,6 +460,45 @@ const styles = StyleSheet.create({
   continueTxt: { fontSize: 18, fontWeight: "700", fontFamily: "Manrope-Bold" },
   txtActive: { color: "#ffffff" },
   txtDisabled: { color: "#888" },
+
+  /* ── GOOGLE SIGN-IN ── */
+  welcomeTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0F0F0F",
+    textAlign: "center",
+    marginBottom: 6,
+    fontFamily: "Manrope-Bold",
+  },
+  welcomeSubtitle: {
+    fontSize: 14,
+    color: "#64748b",
+    textAlign: "center",
+    marginBottom: 20,
+    fontFamily: "Manrope-Medium",
+  },
+  googleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    borderRadius: 20,
+    paddingVertical: 18,
+    gap: 12,
+    backgroundColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  googleBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0F0F0F",
+    fontFamily: "Manrope-Bold",
+  },
 
   /* ── TERMS ── */
   termsBox: { alignItems: "center", paddingHorizontal: 16 },

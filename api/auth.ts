@@ -26,3 +26,29 @@ export const checkDeliveryAvailability = async (lat: number, lng: number) => {
     console.log(response.data, "response.data");
     return response.data;
 }
+
+/**
+ * Authenticate user using Google ID Token
+ * Returns { token, refreshToken, userId, isNewUser } on success
+ */
+export const googleLogin = async (idToken: string) => {
+    const response = await api.post('/auth/google-login', { idToken });
+    return response.data;
+};
+
+/**
+ * Get current user profile details
+ */
+export const getUserProfile = async () => {
+    const response = await api.get('/user/profile');
+    return response.data;
+};
+
+/**
+ * Update user phone number
+ */
+export const updateUserProfilePhone = async (phoneNumber: string) => {
+    const response = await api.put('/user/profile/phone', { phoneNumber });
+    return response.data;
+};
+

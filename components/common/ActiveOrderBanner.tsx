@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform, LayoutAnimation, UIManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllOrders } from '@/api/orders';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes } from '@/constants/theme';
@@ -19,6 +20,7 @@ export default function ActiveOrderBanner() {
   const router = useRouter();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const insets = useSafeAreaInsets();
 
   const fetchOrders = async () => {
     try {
@@ -46,39 +48,43 @@ export default function ActiveOrderBanner() {
 
   if (activeOrders.length === 0) return null;
 
+  const dynamicBottom = (Platform.OS === 'ios' ? 85 : 90) + insets.bottom + 16;
+
   // Single active order: Render original style
   if (activeOrders.length === 1) {
     const singleOrder = activeOrders[0];
     return (
-      <TouchableOpacity
-        activeOpacity={0.9}
-        style={[styles.container, { backgroundColor: theme.primary }]}
-        onPress={() => router.push({ pathname: '/order-tracking' as any, params: { orderId: singleOrder._id } })}
-      >
-        <View style={styles.leftContent}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="cube" size={24} color={theme.primary} />
+      <View style={[styles.stackWrapper, { bottom: dynamicBottom }]}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={[styles.container, { backgroundColor: theme.primary }]}
+          onPress={() => router.push({ pathname: '/order-tracking' as any, params: { orderId: singleOrder._id } })}
+        >
+          <View style={styles.leftContent}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="cube" size={18} color={theme.primary} />
+            </View>
+            <View style={styles.textContainer}>
+              <Text style={styles.title}>Track Order</Text>
+              <Text style={styles.subtitle}>
+                #{singleOrder._id.slice(-5).toUpperCase()} • {singleOrder.orderStatus?.toUpperCase().replace('_', ' ')}
+              </Text>
+            </View>
           </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.title}>Track Order</Text>
-            <Text style={styles.subtitle}>
-              #{singleOrder._id.slice(-5).toUpperCase()} • {singleOrder.orderStatus?.toUpperCase().replace('_', ' ')}
-            </Text>
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={24} color="#fff" />
-      </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </TouchableOpacity>
+      </View>
     );
   }
 
   // Multiple active orders: Stacked deck / expandable list
   return (
-    <View style={styles.stackWrapper}>
+    <View style={[styles.stackWrapper, { bottom: dynamicBottom }]}>
       {/* Background card stack effects when collapsed */}
       {!isExpanded && (
         <>
-          <View style={[styles.stackBackCard, { backgroundColor: theme.primary, opacity: 0.3, zIndex: -2, transform: [{ translateY: 8 }, { scaleX: 0.92 }] }]} />
-          <View style={[styles.stackBackCard, { backgroundColor: theme.primary, opacity: 0.6, zIndex: -1, transform: [{ translateY: 4 }, { scaleX: 0.96 }] }]} />
+          <View style={[styles.stackBackCard, { backgroundColor: theme.primary, opacity: 0.3, zIndex: -2, transform: [{ translateY: 6 }, { scaleX: 0.92 }] }]} />
+          <View style={[styles.stackBackCard, { backgroundColor: theme.primary, opacity: 0.6, zIndex: -1, transform: [{ translateY: 3 }, { scaleX: 0.96 }] }]} />
         </>
       )}
 
@@ -92,11 +98,11 @@ export default function ActiveOrderBanner() {
           >
             <View style={styles.leftContent}>
               <View style={styles.iconContainer}>
-                <Ionicons name="layers" size={20} color={theme.primary} />
+                <Ionicons name="layers" size={16} color={theme.primary} />
               </View>
               <Text style={styles.expandedTitle}>{activeOrders.length} Active Orders</Text>
             </View>
-            <Ionicons name="chevron-down" size={24} color="#fff" />
+            <Ionicons name="chevron-down" size={18} color="#fff" />
           </TouchableOpacity>
 
           {/* Divider */}
@@ -116,7 +122,7 @@ export default function ActiveOrderBanner() {
               }}
             >
               <View style={styles.orderItemLeft}>
-                <Ionicons name="cube-outline" size={18} color="#fff" style={{ opacity: 0.8 }} />
+                <Ionicons name="cube-outline" size={16} color="#fff" style={{ opacity: 0.8 }} />
                 <View>
                   <Text style={styles.orderItemTitle}>
                     Order #{order._id.slice(-5).toUpperCase()}
@@ -126,7 +132,7 @@ export default function ActiveOrderBanner() {
                   </Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
             </TouchableOpacity>
           ))}
         </View>
@@ -138,14 +144,14 @@ export default function ActiveOrderBanner() {
         >
           <View style={styles.leftContent}>
             <View style={styles.iconContainer}>
-              <Ionicons name="layers" size={24} color={theme.primary} />
+              <Ionicons name="layers" size={18} color={theme.primary} />
             </View>
             <View style={styles.textContainer}>
               <Text style={styles.title}>{activeOrders.length} Active Orders</Text>
-              <Text style={styles.subtitle}>Tap to view and track individually</Text>
+              <Text style={styles.subtitle}>Tap to track</Text>
             </View>
           </View>
-          <Ionicons name="chevron-up" size={24} color="#fff" />
+          <Ionicons name="chevron-up" size={18} color="#fff" />
         </TouchableOpacity>
       )}
     </View>
@@ -155,9 +161,8 @@ export default function ActiveOrderBanner() {
 const styles = StyleSheet.create({
   stackWrapper: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 105 : 95, // Positioned just above tabs
-    left: 16,
-    right: 16,
+    alignSelf: 'center',
+    width: 230,
     zIndex: 1000,
   },
   stackBackCard: {
@@ -165,8 +170,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 64,
-    borderRadius: 20,
+    height: 52,
+    borderRadius: 16,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -174,8 +179,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   container: {
-    borderRadius: 20,
-    padding: 12,
+    borderRadius: 16,
+    padding: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -188,12 +193,12 @@ const styles = StyleSheet.create({
   leftContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   iconContainer: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 8,
+    borderRadius: 10,
+    padding: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -202,18 +207,18 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   subtitle: {
     color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    marginTop: 2,
+    marginTop: 1,
   },
   expandedContainer: {
-    borderRadius: 24,
-    padding: 16,
+    borderRadius: 20,
+    padding: 12,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -227,36 +232,36 @@ const styles = StyleSheet.create({
   },
   expandedTitle: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   expandedDivider: {
     height: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    marginVertical: 12,
+    marginVertical: 8,
   },
   orderItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   orderItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   orderItemTitle: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
   },
   orderItemSub: {
     color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    marginTop: 2,
+    marginTop: 1,
   },
 });

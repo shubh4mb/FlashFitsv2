@@ -1,4 +1,4 @@
-import { cancelCourierOrder, getCourierOrderById } from '@/api/orders';
+import { cancelCourierOrder, getCourierOrderById, requestCourierOrderReturn, getCourierOrderReturnCharge } from '@/api/orders';
 import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAlert, useToast } from '@/context/AlertContext';
@@ -73,6 +75,77 @@ export default function CourierTrackingScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  // Return request states
+  const [returnModalVisible, setReturnModalVisible] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [selectedReturnItems, setSelectedReturnItems] = useState<Record<string, { quantity: number; selected: boolean }>>({});
+  const [faultType, setFaultType] = useState<'customer_choice' | 'merchant_fault'>('customer_choice');
+  const [calculatedReturnCharge, setCalculatedReturnCharge] = useState<number | null>(null);
+  const [submittingReturn, setSubmittingReturn] = useState(false);
+  const [loadingReturnCharge, setLoadingReturnCharge] = useState(false);
+
+  const handleOpenReturnModal = async () => {
+    if (!order || !order.items) return;
+    
+    // Initialize selected items (default to unselected, qty 1)
+    const initialSelection: Record<string, { quantity: number; selected: boolean }> = {};
+    order.items.forEach((item) => {
+      const key = `${item.productId}_${item.variantId}`;
+      initialSelection[key] = { quantity: 1, selected: false };
+    });
+    setSelectedReturnItems(initialSelection);
+    setReturnReason('');
+    setFaultType('customer_choice');
+    setReturnModalVisible(true);
+
+    // Fetch calculated return charge
+    setLoadingReturnCharge(true);
+    try {
+      const res = await getCourierOrderReturnCharge(orderId!);
+      if (res && res.success) {
+        setCalculatedReturnCharge(res.returnCharge);
+      }
+    } catch (err) {
+      console.error('Failed to get return charge:', err);
+    } finally {
+      setLoadingReturnCharge(false);
+    }
+  };
+
+  const handleSubmitReturn = async () => {
+    const itemsToReturn = Object.entries(selectedReturnItems)
+      .filter(([_, value]) => value.selected)
+      .map(([key, value]) => {
+        const [productId, variantId] = key.split('_');
+        return { productId, variantId, quantity: value.quantity };
+      });
+
+    if (itemsToReturn.length === 0) {
+      Alert.alert('Error', 'Please select at least one item to return.');
+      return;
+    }
+    if (!returnReason.trim()) {
+      Alert.alert('Error', 'Please enter a reason for the return.');
+      return;
+    }
+
+    setSubmittingReturn(true);
+    try {
+      await requestCourierOrderReturn(orderId!, itemsToReturn, returnReason, faultType);
+      setReturnModalVisible(false);
+      showAlert({
+        title: 'Return Requested',
+        message: 'Your return request has been submitted successfully.',
+        type: 'success',
+        buttons: [{ text: 'OK', onPress: () => fetchOrder() }]
+      });
+    } catch (err: any) {
+      showToast({ message: err.response?.data?.message || 'Failed to submit return request.', type: 'error' });
+    } finally {
+      setSubmittingReturn(false);
+    }
+  };
 
   const fetchOrder = useCallback(async () => {
     if (!orderId) return;
@@ -136,10 +209,12 @@ export default function CourierTrackingScreen() {
   const canCancel = ['placed', 'confirmed'].includes(status);
   const isDelivered = status === 'delivered';
   const isCancelled = status === 'cancelled';
+  const isReturned = status === 'returned';
 
   const getStatusColor = () => {
     if (isDelivered) return '#10B981';
     if (isCancelled) return '#EF4444';
+    if (isReturned) return '#8B5CF6';
     return theme.primary;
   };
 
@@ -191,7 +266,7 @@ export default function CourierTrackingScreen() {
         </View>
 
         {/* Progress Timeline */}
-        {!isCancelled && (
+        {!isCancelled && !isReturned && (
           <View style={styles.timelineCard}>
             <Text style={styles.cardTitle}>Order Progress</Text>
             <View style={styles.timeline}>
@@ -226,6 +301,102 @@ export default function CourierTrackingScreen() {
                 </View>
               ))}
             </View>
+          </View>
+        )}
+
+        {/* Return request tracking card */}
+        {order?.returnRequest && order.returnRequest.status !== 'none' && (
+          <View style={styles.returnCard}>
+            <View style={styles.returnHeaderRow}>
+              <View style={[styles.returnStatusBadge, { backgroundColor: getReturnStatusColor(order.returnRequest.status) + '15' }]}>
+                <Text style={[styles.returnStatusText, { color: getReturnStatusColor(order.returnRequest.status) }]}>
+                  RETURN: {order.returnRequest.status.toUpperCase()}
+                </Text>
+              </View>
+              {order.returnRequest.processedAt && (
+                <Text style={styles.returnProcessedDate}>
+                  Processed on {new Date(order.returnRequest.processedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.returnDetailsBox}>
+              <Text style={styles.returnReasonText}>
+                <Text style={{ fontWeight: '700' }}>Reason: </Text>
+                {order.returnRequest.reason}
+              </Text>
+              <Text style={styles.returnTypeText}>
+                <Text style={{ fontWeight: '700' }}>Type: </Text>
+                {order.returnRequest.faultType === 'merchant_fault' ? 'Merchant Fault (Free return)' : 'Customer Preference (Charge deducted)'}
+              </Text>
+              {order.returnRequest.status === 'received' ? (
+                <Text style={styles.returnRefundInfoText}>
+                  Refund Processed: Return charge was {order.returnRequest.faultType === 'merchant_fault' ? '₹0 (Merchant fault)' : `₹${order.returnRequest.returnCharge}`}. Refund amount credited to your wallet.
+                </Text>
+              ) : (
+                <Text style={styles.returnRefundInfoText}>
+                  Return Charge: {order.returnRequest.faultType === 'merchant_fault' ? 'FREE' : `₹${order.returnRequest.returnCharge} (deducted from refund)`}
+                </Text>
+              )}
+            </View>
+
+            {/* Return Step Timeline (if not rejected) */}
+            {order.returnRequest.status !== 'rejected' && (
+              <View style={styles.returnTimeline}>
+                {['pending', 'picked', 'shipped', 'received'].map((step, idx) => {
+                  const currentIdx = ['pending', 'picked', 'shipped', 'received'].indexOf(order.returnRequest.status);
+                  const isCompleted = currentIdx >= idx;
+                  const isLast = idx === 3;
+                  const stepLabels: Record<string, string> = {
+                    pending: 'Requested',
+                    picked: 'Picked Up',
+                    shipped: 'Shipped',
+                    received: 'Completed'
+                  };
+
+                  return (
+                    <View key={step} style={styles.returnTimelineStep}>
+                      <View style={styles.returnTimelineLeft}>
+                        <View style={[
+                          styles.returnTimelineCircle,
+                          isCompleted
+                            ? { backgroundColor: getReturnStatusColor(order.returnRequest.status), borderColor: getReturnStatusColor(order.returnRequest.status) }
+                            : { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' },
+                        ]}>
+                          {isCompleted ? (
+                            <Ionicons name="checkmark" size={10} color="#fff" />
+                          ) : (
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#94A3B8' }} />
+                          )}
+                        </View>
+                        {!isLast && (
+                          <View style={[
+                            styles.returnTimelineLine,
+                            isCompleted ? { backgroundColor: getReturnStatusColor(order.returnRequest.status) } : { backgroundColor: '#E2E8F0' },
+                          ]} />
+                        )}
+                      </View>
+                      <Text style={[
+                        styles.returnTimelineLabel,
+                        isCompleted ? { color: '#0F172A', fontWeight: '750' } : { color: '#94A3B8' }
+                      ]}>
+                        {stepLabels[step]}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Rejected State message */}
+            {order.returnRequest.status === 'rejected' && (
+              <View style={styles.rejectedMessageContainer}>
+                <Ionicons name="alert-circle" size={20} color="#EF4444" />
+                <Text style={styles.rejectedMessageText}>
+                  This return request has been rejected by the merchant. Please contact support if you have any questions.
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -380,6 +551,17 @@ export default function CourierTrackingScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Return Button */}
+        {isDelivered && (!order?.returnRequest || order.returnRequest.status === 'none') && (
+          <TouchableOpacity
+            style={styles.returnBtn}
+            onPress={handleOpenReturnModal}
+          >
+            <Ionicons name="refresh-outline" size={18} color={theme.primary} />
+            <Text style={[styles.returnBtnText, { color: theme.primary }]}>Return Items</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Continue Shopping */}
         {isDelivered && (
           <TouchableOpacity
@@ -392,7 +574,177 @@ export default function CourierTrackingScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+
+      {/* Return Modal */}
+      <Modal
+        visible={returnModalVisible}
+        animationType="slide"
+        onRequestClose={() => setReturnModalVisible(false)}
+      >
+        <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setReturnModalVisible(false)} style={styles.modalCloseBtn}>
+              <Ionicons name="close" size={24} color="#0F172A" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Request Return</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalSubtitle}>Order #{orderId?.slice(-5).toUpperCase()}</Text>
+
+            <Text style={styles.sectionTitle}>Select items to return</Text>
+            {order?.items?.map((item) => {
+              const key = `${item.productId}_${item.variantId}`;
+              const selection = selectedReturnItems[key] || { quantity: 1, selected: false };
+
+              return (
+                <View key={key} style={styles.modalItemRow}>
+                  <TouchableOpacity
+                    style={styles.checkboxContainer}
+                    onPress={() => {
+                      setSelectedReturnItems(prev => ({
+                        ...prev,
+                        [key]: { ...prev[key], selected: !prev[key].selected }
+                      }));
+                    }}
+                  >
+                    <Ionicons
+                      name={selection.selected ? "checkbox" : "square-outline"}
+                      size={24}
+                      color={selection.selected ? theme.primary : "#94A3B8"}
+                    />
+                  </TouchableOpacity>
+
+                  {item.image ? (
+                    <Image source={{ uri: item.image }} style={styles.modalItemImage} />
+                  ) : (
+                    <View style={[styles.modalItemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
+                      <Ionicons name="shirt-outline" size={18} color="#CBD5E1" />
+                    </View>
+                  )}
+
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.itemMeta}>Size: {item.size} • Price: ₹{item.price}</Text>
+
+                    {/* Quantity Selector if selected */}
+                    {selection.selected && (
+                      <View style={styles.qtySelectorRow}>
+                        <TouchableOpacity
+                          style={styles.qtyBtn}
+                          onPress={() => {
+                            if (selection.quantity > 1) {
+                              setSelectedReturnItems(prev => ({
+                                ...prev,
+                                [key]: { ...prev[key], quantity: prev[key].quantity - 1 }
+                              }));
+                            }
+                          }}
+                        >
+                          <Ionicons name="remove" size={16} color="#0F172A" />
+                        </TouchableOpacity>
+                        <Text style={styles.qtyVal}>{selection.quantity}</Text>
+                        <TouchableOpacity
+                          style={styles.qtyBtn}
+                          onPress={() => {
+                            if (selection.quantity < item.quantity) {
+                              setSelectedReturnItems(prev => ({
+                                ...prev,
+                                [key]: { ...prev[key], quantity: prev[key].quantity + 1 }
+                              }));
+                            }
+                          }}
+                        >
+                          <Ionicons name="add" size={16} color="#0F172A" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+
+            <Text style={styles.sectionTitle}>Why are you returning?</Text>
+            
+            {/* Quick Reason Pills */}
+            <View style={styles.reasonsGrid}>
+              {[
+                { label: "Size doesn't fit", fault: 'customer_choice' },
+                { label: "Didn't match expectation", fault: 'customer_choice' },
+                { label: "Damaged product", fault: 'merchant_fault' },
+                { label: "Incorrect item received", fault: 'merchant_fault' },
+              ].map((r) => {
+                const isSelected = returnReason === r.label && faultType === r.fault;
+                return (
+                  <TouchableOpacity
+                    key={r.label}
+                    style={[
+                      styles.reasonPill,
+                      isSelected ? { backgroundColor: theme.primary, borderColor: theme.primary } : { borderColor: '#E2E8F0' }
+                    ]}
+                    onPress={() => {
+                      setReturnReason(r.label);
+                      setFaultType(r.fault as any);
+                    }}
+                  >
+                    <Text style={[styles.reasonPillText, isSelected ? { color: '#fff' } : { color: '#475569' }]}>
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.sectionTitle}>Additional details</Text>
+            <TextInput
+              style={styles.reasonInput}
+              placeholder="Please describe the issue in detail..."
+              multiline
+              numberOfLines={4}
+              value={returnReason}
+              onChangeText={setReturnReason}
+            />
+
+            {/* Estimated Return Charge */}
+            <View style={styles.chargePreviewCard}>
+              <Text style={styles.chargePreviewTitle}>Estimated Refund Calculation</Text>
+              
+              {loadingReturnCharge ? (
+                <ActivityIndicator size="small" color={theme.primary} style={{ marginVertical: 10 }} />
+              ) : (
+                <View style={{ marginTop: 8 }}>
+                  <View style={styles.chargePreviewRow}>
+                    <Text style={styles.chargePreviewLabel}>Return Shipping Charge</Text>
+                    <Text style={styles.chargePreviewValue}>
+                      {faultType === 'merchant_fault' ? '₹0 (FREE)' : `₹${calculatedReturnCharge || 120}`}
+                    </Text>
+                  </View>
+                  <Text style={styles.chargePreviewSub}>
+                    {faultType === 'merchant_fault'
+                      ? 'The merchant will cover the return shipping fee because the item was damaged or incorrect.'
+                      : `A return fee of ₹${calculatedReturnCharge || 120} will be deducted from your total refund amount.`}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity
+              style={[styles.modalSubmitBtn, { backgroundColor: theme.primary }]}
+              onPress={handleSubmitReturn}
+              disabled={submittingReturn}
+            >
+              {submittingReturn ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.modalSubmitBtnText}>Submit Return Request</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
   );
 }
 
@@ -510,4 +862,274 @@ const styles = StyleSheet.create({
     paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginBottom: 16,
   },
   continueBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  // Return button
+  returnBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    backgroundColor: '#fff',
+    marginBottom: 12,
+  },
+  returnBtnText: { fontSize: 15, fontWeight: '800' },
+
+  // Return Card & Details
+  returnCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  returnHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  returnStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  returnStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  returnProcessedDate: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  returnDetailsBox: {
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 12,
+    gap: 6,
+    marginBottom: 16,
+  },
+  returnReasonText: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  returnTypeText: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  returnRefundInfoText: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 6,
+    marginTop: 4,
+  },
+  
+  // Return Timeline
+  returnTimeline: {
+    marginTop: 10,
+    gap: 12,
+  },
+  returnTimelineStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  returnTimelineLeft: {
+    alignItems: 'center',
+    marginRight: 12,
+    width: 20,
+  },
+  returnTimelineCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  returnTimelineLine: {
+    width: 1.5,
+    height: 16,
+    position: 'absolute',
+    top: 20,
+  },
+  returnTimelineLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  rejectedMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  rejectedMessageText: {
+    fontSize: 12,
+    color: '#991B1B',
+    flex: 1,
+    lineHeight: 16,
+  },
+
+  // Modal styling
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  modalCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalScrollContent: {
+    padding: 20,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  modalItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  checkboxContainer: {
+    padding: 4,
+    marginRight: 8,
+  },
+  modalItemImage: {
+    width: 48,
+    height: 60,
+    borderRadius: 8,
+  },
+  qtySelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  qtyBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyVal: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  reasonsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 10,
+  },
+  reasonPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    backgroundColor: '#fff',
+  },
+  reasonPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reasonInput: {
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    textAlignVertical: 'top',
+    minHeight: 80,
+  },
+  chargePreviewCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    marginTop: 24,
+  },
+  chargePreviewTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  chargePreviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  chargePreviewLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  chargePreviewValue: {
+    fontSize: 14,
+    fontWeight: '850',
+    color: '#0F172A',
+  },
+  chargePreviewSub: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 15,
+    marginTop: 4,
+  },
+  modalSubmitBtn: {
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 32,
+    marginBottom: 40,
+  },
+  modalSubmitBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
 });

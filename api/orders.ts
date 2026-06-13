@@ -196,3 +196,29 @@ export const cancelCourierOrder = async (orderId: string) => {
         throw error;
     }
 };
+
+/**
+ * Initiate a return for a courier order
+ */
+export const requestCourierOrderReturn = async (orderId: string, items: any[], reason: string, faultType: string) => {
+    try {
+        const res = await api.post(`/courier/orders/${orderId}/return`, { items, reason, faultType });
+        return res.data;
+    } catch (error: any) {
+        console.error('Request courier order return error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+/**
+ * Get return charge preview for a courier order
+ */
+export const getCourierOrderReturnCharge = async (orderId: string) => {
+    try {
+        const res = await api.get(`/courier/orders/${orderId}/return-charge`);
+        return res.data;
+    } catch (error: any) {
+        console.error('Get courier order return charge error:', error.response?.data || error.message);
+        throw error;
+    }
+};
