@@ -87,6 +87,15 @@ export default function CourierTrackingScreen() {
   const [loadingReturnCharge, setLoadingReturnCharge] = useState(false);
   const [returnImages, setReturnImages] = useState<string[]>([]);
 
+  const isWithinReturnWindow = () => {
+    if (!order) return false;
+    const deliveryDate = order.deliveredAt || order.updatedAt;
+    if (!deliveryDate) return true; // fallback
+    const diffTime = Math.abs(new Date().getTime() - new Date(deliveryDate).getTime());
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+    return diffDays <= 3;
+  };
+
   const handlePickImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestImageLibraryPermissionsAsync();
@@ -604,7 +613,7 @@ export default function CourierTrackingScreen() {
         )}
 
         {/* Return Button */}
-        {isDelivered && (!order?.returnRequest || order.returnRequest.status === 'none') && (
+        {isDelivered && (!order?.returnRequest || order.returnRequest.status === 'none') && isWithinReturnWindow() && (
           <TouchableOpacity
             style={styles.returnBtn}
             onPress={handleOpenReturnModal}
