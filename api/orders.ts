@@ -197,13 +197,41 @@ export const cancelCourierOrder = async (orderId: string) => {
     }
 };
 
-/**
- * Initiate a return for a courier order
- */
-export const requestCourierOrderReturn = async (orderId: string, items: any[], reason: string, faultType: string) => {
+export const requestCourierOrderReturn = async (
+    orderId: string,
+    items: any[],
+    reason: string,
+    faultType: string,
+    imageUris?: string[]
+) => {
     try {
-        const res = await api.post(`/courier/orders/${orderId}/return`, { items, reason, faultType });
-        return res.data;
+        if (imageUris && imageUris.length > 0) {
+            const formData = new FormData();
+            formData.append('items', JSON.stringify(items));
+            formData.append('reason', reason);
+            formData.append('faultType', faultType);
+            
+            imageUris.forEach((uri, index) => {
+                const filename = uri.split('/').pop() || `image_${index}.jpg`;
+                const match = /\.(\w+)$/.exec(filename);
+                const type = match ? `image/${match[1]}` : `image/jpeg`;
+                formData.append('images', {
+                    uri,
+                    name: filename,
+                    type,
+                } as any);
+            });
+
+            const res = await api.post(`/courier/orders/${orderId}/return`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+            return res.data;
+        } else {
+            const res = await api.post(`/courier/orders/${orderId}/return`, { items, reason, faultType });
+            return res.data;
+        }
     } catch (error: any) {
         console.error('Request courier order return error:', error.response?.data || error.message);
         throw error;

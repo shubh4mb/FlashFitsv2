@@ -4,6 +4,7 @@ import { useGender } from '@/context/GenderContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
   Alert,
@@ -84,6 +85,56 @@ export default function CourierTrackingScreen() {
   const [calculatedReturnCharge, setCalculatedReturnCharge] = useState<number | null>(null);
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [loadingReturnCharge, setLoadingReturnCharge] = useState(false);
+  const [returnImages, setReturnImages] = useState<string[]>([]);
+
+  const handlePickImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestImageLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Denied', 'Permission to access gallery is required.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        selectionLimit: 5 - returnImages.length,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets) {
+        const newUris = result.assets.map(asset => asset.uri);
+        setReturnImages(prev => [...prev, ...newUris].slice(0, 5));
+      }
+    } catch (err) {
+      console.error('Pick image error:', err);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Denied', 'Permission to access camera is required.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const newUri = result.assets[0].uri;
+        setReturnImages(prev => [...prev, newUri].slice(0, 5));
+      }
+    } catch (err) {
+      console.error('Take photo error:', err);
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setReturnImages(prev => prev.filter((_, idx) => idx !== index));
+  };
 
   const handleOpenReturnModal = async () => {
     if (!order || !order.items) return;
@@ -97,6 +148,7 @@ export default function CourierTrackingScreen() {
     setSelectedReturnItems(initialSelection);
     setReturnReason('');
     setFaultType('customer_choice');
+    setReturnImages([]);
     setReturnModalVisible(true);
 
     // Fetch calculated return charge
@@ -132,7 +184,7 @@ export default function CourierTrackingScreen() {
 
     setSubmittingReturn(true);
     try {
-      await requestCourierOrderReturn(orderId!, itemsToReturn, returnReason, faultType);
+      await requestCourierOrderReturn(orderId!, itemsToReturn, returnReason, faultType, returnImages);
       setReturnModalVisible(false);
       showAlert({
         title: 'Return Requested',
@@ -707,6 +759,34 @@ export default function CourierTrackingScreen() {
               onChangeText={setReturnReason}
             />
 
+            <Text style={styles.sectionTitle}>Evidence Photos (Optional)</Text>
+            <Text style={styles.sectionSubtitle}>Please upload up to 5 photos showing the condition of the items.</Text>
+            
+            <View style={styles.imageUploadContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imagePreviewScroll}>
+                {returnImages.map((uri, index) => (
+                  <View key={uri} style={styles.imagePreviewWrapper}>
+                    <Image source={{ uri }} style={styles.imagePreview} />
+                    <TouchableOpacity style={styles.removeImageBtn} onPress={() => handleRemoveImage(index)}>
+                      <Ionicons name="close-circle" size={20} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {returnImages.length < 5 && (
+                  <View style={styles.uploadButtonsRow}>
+                    <TouchableOpacity style={styles.uploadBox} onPress={handlePickImage}>
+                      <Ionicons name="images-outline" size={24} color={theme.primary} />
+                      <Text style={[styles.uploadBoxText, { color: theme.primary }]}>Gallery</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.uploadBox} onPress={handleTakePhoto}>
+                      <Ionicons name="camera-outline" size={24} color={theme.primary} />
+                      <Text style={[styles.uploadBoxText, { color: theme.primary }]}>Camera</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+
             {/* Estimated Return Charge */}
             <View style={styles.chargePreviewCard}>
               <Text style={styles.chargePreviewTitle}>Estimated Refund Calculation</Text>
@@ -1131,5 +1211,59 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '800',
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: -8,
+    marginBottom: 12,
+    fontWeight: '500',
+  },
+  imageUploadContainer: {
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  imagePreviewScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  imagePreviewWrapper: {
+    position: 'relative',
+    marginRight: 4,
+  },
+  imagePreview: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+  },
+  uploadButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  uploadBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#CBD5E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  uploadBoxText: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 4,
   },
 });
