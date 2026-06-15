@@ -107,6 +107,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await SecureStore.deleteItemAsync('userId');
             await SecureStore.deleteItemAsync('refreshToken');
             
+            // Clean up Google session if active
+            try {
+                const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+                GoogleSignin.configure({
+                    webClientId: "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com",
+                    offlineAccess: false,
+                });
+                if (await GoogleSignin.isSignedIn()) {
+                    await GoogleSignin.signOut();
+                }
+            } catch (err) {
+                console.log('Google Sign-In signOut error:', err);
+            }
+
             updateAuthToken(null);
             setIsAuthenticated(false);
 

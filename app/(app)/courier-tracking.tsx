@@ -62,6 +62,23 @@ const statusToSteps = (status?: string): OrderStep[] => {
   return steps;
 };
 
+const getReturnStatusColor = (status?: string) => {
+  switch (status?.toLowerCase()) {
+    case 'pending':
+      return '#F59E0B';
+    case 'picked':
+      return '#3B82F6';
+    case 'shipped':
+      return '#8B5CF6';
+    case 'received':
+      return '#10B981';
+    case 'rejected':
+      return '#EF4444';
+    default:
+      return '#64748B';
+  }
+};
+
 export default function CourierTrackingScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const router = useRouter();
@@ -98,7 +115,7 @@ export default function CourierTrackingScreen() {
 
   const handlePickImage = async () => {
     try {
-      const permissionResult = await ImagePicker.requestImageLibraryPermissionsAsync();
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert('Permission Denied', 'Permission to access gallery is required.');
         return;
@@ -439,7 +456,7 @@ export default function CourierTrackingScreen() {
                       </View>
                       <Text style={[
                         styles.returnTimelineLabel,
-                        isCompleted ? { color: '#0F172A', fontWeight: '750' } : { color: '#94A3B8' }
+                        isCompleted ? { color: '#0F172A', fontWeight: '700' } : { color: '#94A3B8' }
                       ]}>
                         {stepLabels[step]}
                       </Text>
@@ -834,6 +851,7 @@ export default function CourierTrackingScreen() {
           </ScrollView>
         </View>
       </Modal>
+    </View>
   );
 }
 
@@ -1200,7 +1218,7 @@ const styles = StyleSheet.create({
   },
   chargePreviewValue: {
     fontSize: 14,
-    fontWeight: '850',
+    fontWeight: '800',
     color: '#0F172A',
   },
   chargePreviewSub: {

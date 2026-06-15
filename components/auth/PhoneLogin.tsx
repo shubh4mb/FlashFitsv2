@@ -97,6 +97,11 @@ export default function PhoneLogin() {
         idToken = `mock-google-token-${Date.now()}-mockgoogleid-testuser@example.com`;
       } else {
         await GoogleSignin.hasPlayServices();
+        try {
+          await GoogleSignin.signOut();
+        } catch (e) {
+          // Ignore if user is not signed in
+        }
         const userInfo = await GoogleSignin.signIn();
         idToken = userInfo.data?.idToken || (userInfo as any).idToken;
       }
@@ -106,8 +111,8 @@ export default function PhoneLogin() {
       }
 
       const res = await googleLogin(idToken);
-      if (res.success && res.data) {
-        const { token, refreshToken, userId, isNewUser } = res.data;
+      if (res && res.token) {
+        const { token, refreshToken, userId, isNewUser } = res;
         await signIn(token, userId, refreshToken, isNewUser);
       } else {
         setErrorMessage("Google Sign-in failed. Please try again.");

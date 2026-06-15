@@ -934,12 +934,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  cartBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 14,
-    letterSpacing: 0.5,
-  },
   feedbackIndicator: {
     position: 'absolute',
     left: 20,

@@ -29,6 +29,17 @@ export default function OffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refreshOffers(), refreshFlashSales()]);
+    } catch (err) {
+      console.error('Failed to refresh offers:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
       onRefresh();
