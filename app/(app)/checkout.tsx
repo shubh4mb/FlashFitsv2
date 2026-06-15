@@ -46,6 +46,7 @@ export default function CheckoutScreen() {
   const [chosenAddress, setChosenAddress] = useState<Address | null>(selectedAddress);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
   const [modalVisible, setModalVisible] = useState(false);
   const { appliedOffers, computeBestOffers, couponCode, clearAppliedOffers } = useOffers();
@@ -247,7 +248,7 @@ export default function CheckoutScreen() {
         }
 
         // === REAL RAZORPAY FLOW: Try & Buy ===
-        const result = await createRazorpayOrder(chosenAddress._id, deliveryTip, couponCode || undefined, checkoutMerchantId);
+        const result = await createRazorpayOrder(chosenAddress._id, deliveryTip, couponCode || undefined, checkoutMerchantId, paymentMethod);
 
         if (result.isFreeOrder) {
           // Free order — already placed, no payment needed
@@ -403,7 +404,15 @@ export default function CheckoutScreen() {
         return;
       }
       const msg = error.response?.data?.message || error.message || 'Something went wrong';
-      showToast({ message: msg, type: 'error' });
+      if (msg.toLowerCase().includes('high traffic') || msg.toLowerCase().includes('partners are currently busy') || msg.toLowerCase().includes('riders are currently busy')) {
+        showAlert({
+          title: 'Riders Busy 🛵',
+          message: 'All our delivery partners are currently busy in your zone. Please try placing your order again after some time.',
+          type: 'warning'
+        });
+      } else {
+        showToast({ message: msg, type: 'error' });
+      }
     } finally {
       setPlacing(false);
     }
@@ -551,7 +560,52 @@ export default function CheckoutScreen() {
           )}
         </View>
 
+        {/* Final Payment Preference Selection */}
+        {isTB && (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Final Payment Method</Text>
+            <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+              Select how you'd like to pay for the items you decide to keep after trying. (Upfront fees are paid online now).
+            </Text>
+            
+            <View style={styles.paymentSelectorContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.paymentOptionBtn,
+                  paymentMethod === 'online' && { borderColor: theme.primary, backgroundColor: theme.primary + '08' }
+                ]}
+                onPress={() => setPaymentMethod('online')}
+              >
+                <Ionicons name="card" size={20} color={paymentMethod === 'online' ? theme.primary : '#64748B'} />
+                <Text style={[styles.paymentOptionText, paymentMethod === 'online' && { color: theme.primary, fontWeight: '700' }]}>
+                  Pay Online
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.paymentOptionBtn,
+                  paymentMethod === 'cod' && { borderColor: theme.primary, backgroundColor: theme.primary + '08' }
+                ]}
+                onPress={() => setPaymentMethod('cod')}
+              >
+                <Ionicons name="cash" size={20} color={paymentMethod === 'cod' ? theme.primary : '#64748B'} />
+                <Text style={[styles.paymentOptionText, paymentMethod === 'cod' && { color: theme.primary, fontWeight: '700' }]}>
+                  Cash on Delivery (COD)
+                </Text>
+              </TouchableOpacity>
+            </View>
 
+            {paymentMethod === 'cod' && (
+              <View style={styles.paymentInfoNote}>
+                <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+                <Text style={styles.paymentInfoNoteText}>
+                  COD is only available for final purchases up to ₹1000. If your kept items exceed ₹1000, you will be required to pay online after trying.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Bill Breakdown */}
         <View style={styles.sectionCard}>
@@ -1044,5 +1098,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#fff',
+  },
+  paymentSelectorContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  paymentOptionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  paymentOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  paymentInfoNote: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  paymentInfoNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#B45309',
+    lineHeight: 16,
+    fontWeight: '500',
   },
 });

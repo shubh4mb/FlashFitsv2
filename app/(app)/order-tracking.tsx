@@ -19,7 +19,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
-import { getOrderById, finalpaymentInitiate, finalPaymentVerify } from '@/api/orders';
+import { getOrderById, finalpaymentInitiate, finalPaymentVerify, confirmCodSelection } from '@/api/orders';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners, leaveOrderRoom } from '@/sockets/order.socket';
 import { getSocket } from '@/config/socket';
 import { calculateFinalBilling } from '@/utils/ItemSelectionCalculation';
@@ -153,6 +153,7 @@ export default function OrderTrackingScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [packageOpen, setPackageOpen] = useState(false);
+  const [finalPaymentMethod, setFinalPaymentMethod] = useState<'online' | 'cod'>('cod');
   const [billingSummary, setBillingSummary] = useState({
     baseAmount: 0,
     gst: 0,
@@ -363,6 +364,16 @@ export default function OrderTrackingScreen() {
     }
   }, [items, order?.returnCharge]);
 
+  useEffect(() => {
+    if (order?.paymentMethod === 'cod') {
+      if (billingSummary.totalPayable > 1000) {
+        setFinalPaymentMethod('online');
+      } else {
+        setFinalPaymentMethod('cod');
+      }
+    }
+  }, [billingSummary.totalPayable, order?.paymentMethod]);
+
   // ── Item keep/return ──
   const handleItemUpdate = (index: number, tryStatus: 'keep' | 'returned', reason: string | null) => {
     const updated = [...items];
@@ -390,7 +401,44 @@ export default function OrderTrackingScreen() {
           tryStatus: i.tryStatus,
           returnReason: i.returnReason || null,
         })),
+        finalPaymentMethod: order?.paymentMethod === 'cod' ? finalPaymentMethod : 'online',
       };
+
+      // If customer chose COD and prefers COD payment for kept items, bypass Razorpay final payment
+      if (order?.paymentMethod === 'cod' && finalPaymentMethod === 'cod' && !isAllReturned) {
+        const verifyResult = await confirmCodSelection({
+          orderId: orderId!,
+          items: items.map(i => ({
+            itemId: i._id,
+            tryStatus: i.tryStatus,
+            returnReason: i.returnReason || null,
+          })),
+          finalPaymentMethod: 'cod'
+        });
+
+        if (verifyResult.success) {
+          if (hasReturns) {
+            router.replace({
+              pathname: '/return-items' as any,
+              params: {
+                orderId: orderId!,
+                otp,
+                items: JSON.stringify(items.filter(i => i.tryStatus === 'returned')),
+                orderData: JSON.stringify(order),
+              },
+            });
+          } else {
+            showAlert({
+              title: '✅ Selection Confirmed!',
+              message: `Your selections have been recorded.\nPlease hand over ₹${billingSummary.totalPayable} cash to the delivery rider.`,
+              type: 'success',
+              buttons: [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
+            });
+          }
+        }
+        setSubmitting(false);
+        return;
+      }
 
       // initiate final payment order (this creates Razorpay order on backend)
       const res = await finalpaymentInitiate(payload);
@@ -697,6 +745,75 @@ export default function OrderTrackingScreen() {
               </View>
             </View>
 
+            {/* COD Options / Warnings */}
+            {order?.paymentMethod === 'cod' && !isAllReturned && (
+              <View style={{ marginTop: 16, marginBottom: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>
+                  Final Payment Method
+                </Text>
+                
+                {billingSummary.totalPayable > 1000 ? (
+                  <View style={{
+                    flexDirection: 'row',
+                    backgroundColor: '#FEF2F2',
+                    borderColor: '#FCA5A5',
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    padding: 12,
+                    alignItems: 'flex-start',
+                    gap: 8,
+                  }}>
+                    <Ionicons name="warning-outline" size={16} color="#EF4444" style={{ marginTop: 1 }} />
+                    <Text style={{ flex: 1, fontSize: 12, color: '#991B1B', lineHeight: 16, fontWeight: '500' }}>
+                      Liquid cash payment is not available for final purchases exceeding ₹1000. You are required to pay online to confirm selection.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <TouchableOpacity
+                      style={[{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        borderWidth: 1.5,
+                        borderColor: '#E2E8F0',
+                        borderRadius: 12,
+                        paddingVertical: 10,
+                      }, finalPaymentMethod === 'cod' && { borderColor: theme.primary, backgroundColor: theme.primary + '08' }]}
+                      onPress={() => setFinalPaymentMethod('cod')}
+                    >
+                      <Ionicons name="cash-outline" size={16} color={finalPaymentMethod === 'cod' ? theme.primary : '#64748B'} />
+                      <Text style={[{ fontSize: 13, fontWeight: '600', color: '#64748B' }, finalPaymentMethod === 'cod' && { color: theme.primary, fontWeight: '700' }]}>
+                        Cash to Rider
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        borderWidth: 1.5,
+                        borderColor: '#E2E8F0',
+                        borderRadius: 12,
+                        paddingVertical: 10,
+                      }, finalPaymentMethod === 'online' && { borderColor: theme.primary, backgroundColor: theme.primary + '08' }]}
+                      onPress={() => setFinalPaymentMethod('online')}
+                    >
+                      <Ionicons name="card-outline" size={16} color={finalPaymentMethod === 'online' ? theme.primary : '#64748B'} />
+                      <Text style={[{ fontSize: 13, fontWeight: '600', color: '#64748B' }, finalPaymentMethod === 'online' && { color: theme.primary, fontWeight: '700' }]}>
+                        Pay Online
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Submit Button */}
             <TouchableOpacity
               style={[
@@ -710,13 +827,15 @@ export default function OrderTrackingScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name={hasReturns ? 'arrow-undo' : 'card'} size={20} color="#fff" />
+                  <Ionicons name={hasReturns ? 'arrow-undo' : finalPaymentMethod === 'cod' ? 'cash' : 'card'} size={20} color="#fff" />
                   <Text style={styles.submitText}>
                     {isAllReturned
                       ? 'Return All Items'
-                      : hasReturns
-                        ? 'Pay & Submit Returns'
-                        : `Pay ₹${billingSummary.totalPayable}`}
+                      : finalPaymentMethod === 'cod'
+                        ? 'Confirm Selection (Pay Cash)'
+                        : hasReturns
+                          ? 'Pay & Submit Returns'
+                          : `Pay ₹${billingSummary.totalPayable}`}
                   </Text>
                 </View>
               )}

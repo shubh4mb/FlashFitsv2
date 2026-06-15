@@ -21,12 +21,25 @@ export const getOrderById = async (orderId: string) => {
  * Create Razorpay order for T&B checkout
  * Returns razorpayOrderId, key_id, amount, orderId etc.
  */
-export const createRazorpayOrder = async (addressId: string, deliveryTip: number = 0, couponCode?: string, merchantId?: string) => {
+export const createRazorpayOrder = async (addressId: string, deliveryTip: number = 0, couponCode?: string, merchantId?: string, paymentMethod: string = 'online') => {
     try {
-        const res = await api.post('/user/order/create', { addressId, deliveryTip, couponCode, merchantId });
+        const res = await api.post('/user/order/create', { addressId, deliveryTip, couponCode, merchantId, paymentMethod });
         return res.data;
     } catch (error: any) {
         console.error('Create Razorpay order error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+/**
+ * Confirm cloth selection via COD (Cash to Rider)
+ */
+export const confirmCodSelection = async (payload: { orderId: string; items: any[]; finalPaymentMethod: string }) => {
+    try {
+        const res = await api.post(`/user/order/verifyFinalPaymentCod`, payload);
+        return res.data;
+    } catch (error: any) {
+        console.error('Confirm COD selection error:', error.response?.data || error.message);
         throw error;
     }
 };
