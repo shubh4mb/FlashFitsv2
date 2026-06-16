@@ -474,29 +474,35 @@ export default function CartScreen() {
                             <Text style={styles.payLaterText}>Keep what you love, pay only for those after trying, return the rest (Max: ₹{Math.max(0, (mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)})</Text>
                           </View>
 
-                          <Text style={styles.upfrontTitle}>Payable Now</Text>
-                          <View style={styles.billRow}>
-                            <Text style={styles.billLabel}>Delivery Charge (Partial refundable)</Text>
-                            <Text style={[styles.billValue, mOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
-                              {mOffers?.freeDelivery ? 'FREE' : `₹${mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge}`}
-                            </Text>
-                          </View>
-                          {mOffers?.freeDelivery ? (
-                            <Text style={[styles.billSubText, { color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }]}>
-                              Free Delivery applied via Offer!
-                            </Text>
-                          ) : (
-                            mTotals?.totalReturnCharge > 0 && (
-                              <Text style={styles.billSubText}>₹{mTotals.totalReturnCharge} will be deducted from total, if nothing is returned</Text>
-                            )
-                          )}
-                          <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{Math.round(mTotals?.serviceGST || 0)}</Text></View>
-                          {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
+                          {isEligible && (
+                            <>
+                              <Text style={styles.upfrontTitle}>Payable Now</Text>
+                              <View style={styles.billRow}>
+                                <Text style={styles.billLabel}>Delivery Charge (Partial refundable)</Text>
+                                <Text style={[styles.billValue, mOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
+                                  {mOffers?.freeDelivery ? 'FREE' : `₹${mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge}`}
+                                </Text>
+                              </View>
+                              {mOffers?.freeDelivery ? (
+                                <Text style={[styles.billSubText, { color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }]}>
+                                  Free Delivery applied via Offer!
+                                </Text>
+                              ) : (
+                                mTotals?.totalReturnCharge > 0 && (
+                                  <Text style={styles.billSubText}>₹{mTotals.totalReturnCharge} will be deducted from total, if nothing is returned</Text>
+                                )
+                              )}
+                              {mTotals?.serviceGST > 0 && (
+                                <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{Math.round(mTotals?.serviceGST || 0)}</Text></View>
+                              )}
+                              {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
 
-                          <View style={[styles.billRow, { marginTop: 12 }]}>
-                            <Text style={styles.grandTotalLabel}>Total Payable Now</Text>
-                            <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Math.max(0, Math.round(mTotals?.totalUpfrontPayable || 0))}</Text>
-                          </View>
+                              <View style={[styles.billRow, { marginTop: 12 }]}>
+                                <Text style={styles.grandTotalLabel}>Total Payable Now</Text>
+                                <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Math.max(0, Math.round(mTotals?.totalUpfrontPayable || 0))}</Text>
+                              </View>
+                            </>
+                          )}
                         </View>
 
                         <View style={styles.footer}>
@@ -690,7 +696,7 @@ export default function CartScreen() {
           <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} style={styles.pinnedGradient} />
 
           <View style={styles.pinnedInner}>
-            {deliveryAvailable === false ? (
+            {activeTab === 'instant' && deliveryAvailable === false ? (
               <TouchableOpacity
                 style={[
                   styles.checkoutBtn,

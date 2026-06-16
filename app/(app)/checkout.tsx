@@ -122,6 +122,7 @@ export default function CheckoutScreen() {
   const merchantCart = isTB && checkoutMerchantId
     ? cart?.merchantCarts?.find(mc => mc.merchantId === checkoutMerchantId)
     : null;
+  const isEligible = merchantCart?.deliveryDetails?.isEligibleForTryBuy !== false;
 
   const items = isTB
     ? (merchantCart?.items || [])
@@ -634,46 +635,52 @@ export default function CheckoutScreen() {
                   <Text style={[styles.billValue, { fontSize: 13, color: '#64748B' }]}>₹{payLaterAmount - tbOfferDiscount}</Text>
                 </View>
 
-                {/* --- DELIVERY TOTAL (PAY NOW) --- */}
-                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 8, marginTop: 8 }}>Pay Upfront Now</Text>
+                 {isEligible && (
+                  <>
+                    {/* --- DELIVERY TOTAL (PAY NOW) --- */}
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 8, marginTop: 8 }}>Pay Upfront Now</Text>
 
-                {merchantOffers?.freeDelivery ? (
-                  <>
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Delivery Fee</Text>
-                      <Text style={[styles.billValue, { color: '#10B981', fontWeight: '700' }]}>FREE</Text>
-                    </View>
-                    <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }}>
-                      Free Delivery applied via Offer!
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Delivery Fee</Text>
-                      <Text style={styles.billValue}>₹{deliveryCharge}</Text>
-                    </View>
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Return Handling (Refundable)</Text>
-                      <Text style={styles.billValue}>₹{returnCharge}</Text>
+                    {merchantOffers?.freeDelivery ? (
+                      <>
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Delivery Fee</Text>
+                          <Text style={[styles.billValue, { color: '#10B981', fontWeight: '700' }]}>FREE</Text>
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }}>
+                          Free Delivery applied via Offer!
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Delivery Fee</Text>
+                          <Text style={styles.billValue}>₹{deliveryCharge}</Text>
+                        </View>
+                        <View style={styles.billRow}>
+                          <Text style={styles.billLabel}>Return Handling (Refundable)</Text>
+                          <Text style={styles.billValue}>₹{returnCharge}</Text>
+                        </View>
+                      </>
+                    )}
+                    {deliveryTip > 0 && (
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Delivery Tip</Text>
+                        <Text style={styles.billValue}>₹{deliveryTip}</Text>
+                      </View>
+                    )}
+                    {serviceGST > 0 && (
+                      <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Service GST (18%)</Text>
+                        <Text style={styles.billValue}>₹{serviceGST}</Text>
+                      </View>
+                    )}
+                    <View style={styles.divider} />
+                    <View style={[styles.billRow, { marginBottom: 4 }]}>
+                      <Text style={[styles.totalLabel, { color: theme.primary }]}>Total Upfront Payable</Text>
+                      <Text style={[styles.totalValue, { color: theme.primary }]}>₹{upfrontPayable}</Text>
                     </View>
                   </>
                 )}
-                {deliveryTip > 0 && (
-                  <View style={styles.billRow}>
-                    <Text style={styles.billLabel}>Delivery Tip</Text>
-                    <Text style={styles.billValue}>₹{deliveryTip}</Text>
-                  </View>
-                )}
-                <View style={styles.billRow}>
-                  <Text style={styles.billLabel}>Service GST (18%)</Text>
-                  <Text style={styles.billValue}>₹{serviceGST}</Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={[styles.billRow, { marginBottom: 4 }]}>
-                  <Text style={[styles.totalLabel, { color: theme.primary }]}>Total Upfront Payable</Text>
-                  <Text style={[styles.totalValue, { color: theme.primary }]}>₹{upfrontPayable}</Text>
-                </View>
               </>
             )}
 
