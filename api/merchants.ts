@@ -17,10 +17,12 @@ export const fetchMerchants = async (lat?: number, lng?: number, gender?: string
     }
 };
 
-export const fetchMerchantById = async (id: string) => {
+export const fetchMerchantById = async (id: string, lat?: number, lng?: number) => {
     try {
         // Backend route in admin.routes.js is /getMerchant/:id
-        const res = await api.get(`admin/getMerchant/${id}`);
+        const res = await api.get(`admin/getMerchant/${id}`, {
+            params: { lat, lng }
+        });
         return res.data;
     } catch (error) {
         console.error(`Axios error in fetchMerchantById (${id}):`, error);

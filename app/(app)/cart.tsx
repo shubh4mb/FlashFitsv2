@@ -322,12 +322,29 @@ export default function CartScreen() {
 
                         {!isEligible && (
                           <View style={styles.warningBanner}>
-                            <Ionicons name="warning" size={20} color="#B45309" />
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.warningText}>This store is too far for Try & Buy. Move items to standard cart to continue.</Text>
-                              <TouchableOpacity style={styles.warningAction} onPress={() => handleMoveToCourier(mc.merchantId)}>
-                                <Text style={styles.warningActionText}>Move to Standard Cart</Text>
-                                <Feather name="arrow-right" size={14} color="#0F172A" />
+                            <View style={styles.warningHeaderRow}>
+                              <Ionicons name="location-outline" size={24} color="#D97706" />
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.warningTitle, { fontFamily: Typography.fontFamily.bold }]}>You're a bit far from this store</Text>
+                                <Text style={[styles.warningText, { fontFamily: Typography.fontFamily.medium }]}>
+                                  This store is too far for Try & Buy delivery at your current location. To proceed, please select a closer address or move these items to the standard cart.
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.warningActionsContainer}>
+                              <TouchableOpacity
+                                style={[styles.warningActionButton, styles.changeAddressButton]}
+                                onPress={() => setModalVisible(true)}
+                              >
+                                <Ionicons name="map-outline" size={16} color="#0F172A" />
+                                <Text style={[styles.warningActionButtonText, { fontFamily: Typography.fontFamily.bold }]}>Change Address</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.warningActionButton, styles.moveToCourierButton, { backgroundColor: theme.primary }]}
+                                onPress={() => handleMoveToCourier(mc.merchantId)}
+                              >
+                                <Ionicons name="swap-horizontal-outline" size={16} color="#fff" />
+                                <Text style={[styles.warningActionButtonText, { color: '#fff', fontFamily: Typography.fontFamily.bold }]}>Move to Courier</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -696,7 +713,7 @@ export default function CartScreen() {
           <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} style={styles.pinnedGradient} />
 
           <View style={styles.pinnedInner}>
-            {activeTab === 'instant' && deliveryAvailable === false ? (
+            {activeTab === 'instant' && (deliveryAvailable === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false) ? (
               <TouchableOpacity
                 style={[
                   styles.checkoutBtn,
@@ -704,16 +721,15 @@ export default function CartScreen() {
                 ]}
                 onPress={() => setModalVisible(true)}
               >
-                <Text style={[styles.checkoutBtnText, { textAlign: 'center' }]}>
-                  Outside Service Area • Change Address
+                <Text style={[styles.checkoutBtnText, { textAlign: 'center', fontFamily: Typography.fontFamily.bold }]}>
+                  {currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                    ? "Too Far From Store • Change Address"
+                    : "Outside Service Area • Change Address"}
                 </Text>
               </TouchableOpacity>
             ) : (
               <>
-                {!(activeTab === 'instant' && (
-                  currentMerchantCart?.merchantDetails?.isOnline === false ||
-                  currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                )) && (
+                {!(activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false) && (
                     <View>
                       <Text style={styles.pinnedPrice}>
                         ₹{activeTab === 'instant'
@@ -728,33 +744,22 @@ export default function CartScreen() {
                   style={[
                     styles.checkoutBtn,
                     { backgroundColor: theme.primary },
-                    activeTab === 'instant' && (
-                      currentMerchantCart?.merchantDetails?.isOnline === false ||
-                      currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                    ) && { backgroundColor: '#CBD5E1', flex: 1, justifyContent: 'center' }
+                    activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false && { backgroundColor: '#CBD5E1', flex: 1, justifyContent: 'center' }
                   ]}
-                  disabled={activeTab === 'instant' && (
-                    currentMerchantCart?.merchantDetails?.isOnline === false ||
-                    currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                  )}
+                  disabled={activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false}
                   onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
                 >
                   <Text style={[
                     styles.checkoutBtnText,
-                    activeTab === 'instant' && (
-                      currentMerchantCart?.merchantDetails?.isOnline === false ||
-                      currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                    ) && { textAlign: 'center' }
+                    activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false && { textAlign: 'center' }
                   ]}>
                     {activeTab === 'instant'
-                      ? currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                        ? "Too Far From Store"
-                        : currentMerchantCart?.merchantDetails?.isOnline === false
-                          ? "Sorry, Shop Closed Now"
-                          : 'Proceed to Try & Buy'
+                      ? currentMerchantCart?.merchantDetails?.isOnline === false
+                        ? "Sorry, Shop Closed Now"
+                        : 'Proceed to Try & Buy'
                       : 'Checkout Now'}
                   </Text>
-                  {!(activeTab === 'instant' && (currentMerchantCart?.merchantDetails?.isOnline === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false)) && (
+                  {!(activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false) && (
                     <Feather name="arrow-right" size={20} color="#fff" />
                   )}
                 </TouchableOpacity>
@@ -814,10 +819,55 @@ const styles = StyleSheet.create({
   brandingMins: { fontSize: 12, color: '#64748B', fontWeight: '600' },
   brandingLogo: { width: 60, height: 60, borderRadius: 12 },
 
-  warningBanner: { flexDirection: 'row', backgroundColor: '#FFFBEB', padding: 14, borderRadius: 16, gap: 12, marginBottom: 20, borderWidth: 1, borderColor: '#FEF3C7' },
-  warningText: { fontSize: 13, color: '#92400E', fontWeight: '500', lineHeight: 18 },
-  warningAction: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  warningActionText: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+  warningBanner: {
+    backgroundColor: '#FFFBEB',
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+    marginBottom: 20,
+  },
+  warningHeaderRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  warningTitle: {
+    fontSize: 15,
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  warningText: {
+    fontSize: 13,
+    color: '#B45309',
+    lineHeight: 18,
+  },
+  warningActionsContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  warningActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  changeAddressButton: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+  },
+  moveToCourierButton: {
+    // background dynamically styled
+  },
+  warningActionButtonText: {
+    fontSize: 13,
+    color: '#0F172A',
+  },
 
   itemsContainer: { gap: 12, marginBottom: 24 },
 

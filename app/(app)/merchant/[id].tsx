@@ -7,7 +7,6 @@ import MerchantCollectionBanners from '@/components/sections/MerchantCollectionB
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
-import { calculateDistanceKm } from '@/utils/locationHelper';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -27,6 +26,7 @@ import {
   RefreshControl,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Linking,
 } from 'react-native';
 import Loader from '@/components/common/Loader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -69,7 +69,7 @@ export default function MerchantDetailScreen() {
       const lat = selectedAddress?.location?.coordinates?.[1] || userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] || userLocation?.longitude;
       const [mRes, pRes, oRes] = await Promise.all([
-        fetchMerchantById(id as string),
+        fetchMerchantById(id as string, lat, lng),
         fetchProductsByMerchant(id as string, lat, lng),
         getMerchantOffers(id as string)
       ]);
@@ -98,29 +98,21 @@ export default function MerchantDetailScreen() {
   };
 
   const distanceInfo = useMemo(() => {
-    if (!merchant || !selectedAddress?.location?.coordinates) {
-      return { km: '2.4', mins: '25-30' };
+    if (!merchant || merchant.distanceKm === undefined) {
+      return { km: '--', mins: '--', isNearby: false };
     }
-    const merchantCoords = merchant.address?.location?.coordinates;
-    const userCoords = selectedAddress.location.coordinates;
 
-    if (!merchantCoords || !userCoords) return { km: '2.4', mins: '25-30' };
-
-    const distKm = calculateDistanceKm(
-      userCoords[1], userCoords[0],
-      merchantCoords[1], merchantCoords[0]
-    );
-    const estMins = Math.round(distKm * 3 + 10);
     return {
-      km: distKm.toFixed(1),
-      mins: `${estMins}-${estMins + 10}`
+      km: merchant.distanceKm.toFixed(1),
+      mins: merchant.durationMins ? String(merchant.durationMins) : '25-30',
+      isNearby: !!merchant.isNearby
     };
-  }, [merchant, selectedAddress]);
+  }, [merchant]);
 
   useEffect(() => {
     if (!id) return;
     fetchData();
-  }, [id]);
+  }, [id, selectedAddress, userLocation]);
 
   const availableGenders = useMemo(() => {
     if (!merchant?.genderCategory) return [];
@@ -166,6 +158,14 @@ export default function MerchantDetailScreen() {
   const handleBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
+  };
+
+  const handleOpenMaps = () => {
+    const coords = merchant?.address?.location?.coordinates;
+    if (!coords || coords.length < 2) return;
+    const [lng, lat] = coords;
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    Linking.openURL(url).catch(err => console.error("An error occurred opening maps", err));
   };
 
   const handleViewAll = (subCatId: string, subCatName: string, catId?: string) => {
@@ -293,12 +293,16 @@ export default function MerchantDetailScreen() {
                   <Text style={styles.liveText}>LIVE</Text>
                 </View>
               )}
-              <View style={styles.locationChip}>
+              <TouchableOpacity 
+                style={styles.locationChip}
+                onPress={handleOpenMaps}
+                activeOpacity={0.7}
+              >
                 <Ionicons name="location" size={12} color={theme.primary} />
                 <Text style={styles.locationText}>
                   {distanceInfo.km} km • {merchant.address?.city || merchant.address || 'Location'}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
             <View style={[styles.ratingPill, { backgroundColor: theme.primary }]}>
               <Ionicons name="star" size={13} color="#fff" />
@@ -318,8 +322,8 @@ export default function MerchantDetailScreen() {
             </View>
             <View style={styles.metaDivider} />
             <View style={styles.metaItem}>
-              <Ionicons name="cube-outline" size={14} color="#64748B" />
-              <Text style={styles.metaText}>Try & Buy</Text>
+              <Ionicons name={distanceInfo.isNearby ? "cube-outline" : "cart-outline"} size={14} color="#64748B" />
+              <Text style={styles.metaText}>{distanceInfo.isNearby ? "Try & Buy" : "Courier Only"}</Text>
             </View>
           </View>
 
