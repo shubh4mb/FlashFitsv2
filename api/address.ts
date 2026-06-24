@@ -2,6 +2,8 @@ import api from './axiosConfig';
 
 export interface Address {
     _id: string;
+    name: string;
+    phone: string;
     addressType: string;
     addressLine1: string;
     addressLine2?: string;
