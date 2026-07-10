@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
-  FlatList,
   ActivityIndicator,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -73,6 +73,24 @@ export default function AvailableBrandsSection({
     }
   };
 
+  const renderItem = useCallback(({ item }: { item: Merchant }) => (
+    <TouchableOpacity 
+      style={styles.merchantItem}
+      activeOpacity={0.7}
+      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id } } as any)}
+    >
+      <View style={styles.merchantLogoContainer}>
+        <Image 
+          source={{ uri: item.logo?.url }} 
+          style={styles.merchantLogo} 
+          contentFit="contain"
+          transition={200}
+        />
+      </View>
+      <Text style={styles.merchantName} numberOfLines={1}>{item.shopName}</Text>
+    </TouchableOpacity>
+  ), [router]);
+
   if (loading && !initialMerchants) {
     return (
       <View style={styles.loaderContainer}>
@@ -98,29 +116,14 @@ export default function AvailableBrandsSection({
           <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
         )}
       </TouchableOpacity>
-      <FlatList
+      <FlashList
         data={merchants}
         horizontal
+        estimatedItemSize={92}
         showsHorizontalScrollIndicator={false}
-        keyExtractor={(item) => item._id}
+        keyExtractor={(item: any) => item._id}
         contentContainerStyle={styles.merchantsList}
-        renderItem={({ item }) => (
-          <TouchableOpacity 
-            style={styles.merchantItem}
-            activeOpacity={0.7}
-            onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id } } as any)}
-          >
-            <View style={styles.merchantLogoContainer}>
-              <Image 
-                source={{ uri: item.logo?.url }} 
-                style={styles.merchantLogo} 
-                contentFit="contain"
-                transition={200}
-              />
-            </View>
-            <Text style={styles.merchantName} numberOfLines={1}>{item.shopName}</Text>
-          </TouchableOpacity>
-        )}
+        renderItem={renderItem as any}
       />
     </View>
   );

@@ -1,14 +1,14 @@
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   Dimensions,
   FlatList,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   ScrollView,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { GenderThemes, Typography } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
@@ -68,14 +68,6 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
-  if (isLoading) {
-    return <ProductSectionSkeleton />;
-  }
-
-  if (!isLoading && (!products || products.length === 0)) {
-    return null;
-  }
-
   const handleNavigation = () => {
     if (collectionId) {
       router.push({
@@ -90,10 +82,12 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
     }
   };
 
-  const renderItem = ({ item }: { item: Product }) => (
+  const renderItem = useCallback(({ item }: { item: Product }) => (
     <ProductCard
       product={item}
       width={155}
+      isNearby={item.isInstantBuyable || item.isNearby}
+      isOnline={item.isOnline !== false}
       onPress={() => {
         router.push({
           pathname: `/(app)/product/${item._id || item.id}` as any,
@@ -101,7 +95,15 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
         });
       }}
     />
-  );
+  ), [router]);
+
+  if (isLoading) {
+    return <ProductSectionSkeleton />;
+  }
+
+  if (!isLoading && (!products || products.length === 0)) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
@@ -137,11 +139,12 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
         </TouchableOpacity>
       )}
 
-      <FlatList
+      <FlashList
         data={products}
         renderItem={renderItem}
-        keyExtractor={(item) => item._id || item.id || Math.random().toString()}
+        keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
         horizontal
+        estimatedItemSize={171}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"

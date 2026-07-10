@@ -29,6 +29,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -49,9 +50,8 @@ export default function CartScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const { computeBestOffers, couponCode, appliedOffers } = useOffers();
 
-  // Carousel state
   const scrollX = useRef(new Animated.Value(0)).current;
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlashList<any>>(null);
   const merchantCarts = cart?.merchantCarts || [];
 
   // Calculate initial index based on passed merchantId
@@ -259,15 +259,15 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <FlatList
+            <FlashList
               ref={flatListRef}
               data={merchantCarts}
               horizontal
               pagingEnabled
+              estimatedItemSize={SCREEN_WIDTH}
               showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.merchantId}
+              keyExtractor={(item: any) => item.merchantId}
               initialScrollIndex={initialIndex}
-              getItemLayout={(data, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
               scrollEventThrottle={16}
               onScroll={(e) => {
                 const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);

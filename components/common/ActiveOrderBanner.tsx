@@ -26,7 +26,11 @@ export default function ActiveOrderBanner() {
     try {
       const ordersRes = await getAllOrders();
       const orders = Array.isArray(ordersRes) ? ordersRes : ordersRes?.orders || [];
-      const activeList = orders.filter((o: any) => ACTIVE_STATUSES.includes(o.orderStatus?.toLowerCase()));
+      const activeList = orders.filter((o: any) => {
+        // Exclude courier orders (which do not have deliveryRiderStatus in schema)
+        const isCourier = o.deliveryRiderStatus === undefined || o.trackingDetails !== undefined || o.isCourier || o.deliveryMode === 'courier';
+        return !isCourier && ACTIVE_STATUSES.includes(o.orderStatus?.toLowerCase());
+      });
       setActiveOrders(activeList);
     } catch (err) {
       console.log('Error fetching active orders for banner', err);

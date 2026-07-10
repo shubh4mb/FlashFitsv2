@@ -150,14 +150,7 @@ const ProductCard = ({
           )}
         </View>
 
-        <View style={styles.ratingRow}>
-          <View style={[styles.ratingBadge, { backgroundColor: theme.primary }]}>
-            <Ionicons name="star" size={10} color="#FFFFFF" />
-            <Text style={styles.ratingText}>{product.ratings || '4.2'}</Text>
-          </View>
-
-          <Text style={styles.reviewsText}>(120)</Text>
-        </View>
+        {/* Rating removed per request */}
       </View>
     </TouchableOpacity>
   );
@@ -320,4 +313,29 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ProductCard;
+const MemoizedProductCard = React.memo(ProductCard, (prevProps, nextProps) => {
+  if (prevProps.width !== nextProps.width) return false;
+  if (prevProps.fromExplore !== nextProps.fromExplore) return false;
+  if (prevProps.isNearby !== nextProps.isNearby) return false;
+  if (prevProps.isOnline !== nextProps.isOnline) return false;
+
+  const p1 = prevProps.product;
+  const p2 = nextProps.product;
+
+  if (p1 === p2) return true;
+  if (!p1 || !p2) return false;
+
+  return (
+    (p1._id || p1.id) === (p2._id || p2.id) &&
+    p1.variantId === p2.variantId &&
+    p1.name === p2.name &&
+    p1.price === p2.price &&
+    p1.mrp === p2.mrp &&
+    p1.isTriable === p2.isTriable &&
+    p1.isInstantBuyable === p2.isInstantBuyable &&
+    p1.isNearby === p2.isNearby &&
+    p1.images?.[0]?.url === p2.images?.[0]?.url
+  );
+});
+
+export default MemoizedProductCard;

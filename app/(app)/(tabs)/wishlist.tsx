@@ -122,6 +122,8 @@ export default function WishlistScreen() {
                   product={product}
                   width={COLUMN_WIDTH}
                   fromExplore={true}
+                  isNearby={product.isInstantBuyable || product.isNearby}
+                  isOnline={product.isOnline !== false}
                 />
               </View>
             ))}

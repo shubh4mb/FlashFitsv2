@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Dimensions,
-  FlatList,
   Image,
   StyleSheet,
   Text,
@@ -9,6 +8,7 @@ import {
   View,
   ScrollView,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { fetchCategories } from '../../api/categories';
 import { GenderThemes, Typography } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
@@ -71,7 +71,7 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
     );
   }, [selectedGender, categories]);
 
-  const renderItem = ({ item }: { item: any }) => {
+  const renderItem = useCallback(({ item }: { item: any }) => {
     const normalizedGender = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
     const logoUrl = item.logos?.[normalizedGender]?.url || item.logo?.url || item.image?.url;
 
@@ -101,7 +101,7 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
         </Text>
       </TouchableOpacity>
     );
-  };
+  }, [selectedGender, theme]);
 
   if (loading) {
     return <SubCategorySkeleton />;
@@ -123,11 +123,12 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
         </TouchableOpacity>
       </View>
 
-      <FlatList
+      <FlashList
         data={filteredSubCategories}
         renderItem={renderItem}
-        keyExtractor={(item) => item._id || Math.random().toString()}
+        keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
         horizontal
+        estimatedItemSize={100}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         snapToInterval={ITEM_SIZE + 16}
