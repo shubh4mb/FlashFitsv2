@@ -137,11 +137,12 @@ export default function ProfileScreen() {
                         <Text style={styles.walletAmount}>₹0.00</Text>
                     </View>
                     <TouchableOpacity
-                        style={[styles.addMoneyBtn, { backgroundColor: theme.primary }]}
-                        activeOpacity={0.8}
+                        style={[styles.addMoneyBtn, { backgroundColor: '#cbd5e1' }]}
+                        disabled={true}
+                        activeOpacity={1}
                     >
-                        <Ionicons name="wallet-outline" size={15} color="#fff" />
-                        <Text style={styles.addMoneyText}>ADD MONEY</Text>
+                        <Ionicons name="wallet-outline" size={15} color="#94a3b8" />
+                        <Text style={[styles.addMoneyText, { color: '#94a3b8' }]}>ADD MONEY</Text>
                     </TouchableOpacity>
                 </View>
             </View>

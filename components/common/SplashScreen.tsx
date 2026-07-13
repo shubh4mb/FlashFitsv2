@@ -2,7 +2,7 @@ import { Typography } from '@/constants/theme';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect } from 'react';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, View, Platform } from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
@@ -12,6 +12,16 @@ import Animated, {
   withRepeat,
   withTiming
 } from 'react-native-reanimated';
+
+// Safe import of expo-device — native module may not be available in Expo Go or Web
+let Device: { isDevice: boolean; totalMemory?: number } = { isDevice: Platform.OS !== 'web' };
+try {
+  Device = require('expo-device');
+} catch (e) {
+  console.warn('expo-device native module not available, using fallback');
+}
+
+const isLowSpec = !Device.isDevice || (Device.totalMemory ? Device.totalMemory < 3 * 1024 * 1024 * 1024 : false);
 
 const { width, height } = Dimensions.get('window');
 
@@ -33,7 +43,7 @@ const SPLASH_ASSETS = [
   require('@/assets/splashScreenAssests/34.png'),
 ];
 
-const FloatingAsset = ({ source, index }: { source: any; index: number }) => {
+const FloatingAsset = ({ source, index, isLowSpec }: { source: any; index: number; isLowSpec: boolean }) => {
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const scale = useSharedValue(0);
@@ -41,7 +51,8 @@ const FloatingAsset = ({ source, index }: { source: any; index: number }) => {
   const rotation = useSharedValue(0);
 
   // Avoid overlap using sector-based distribution and alternating radius levels
-  const sectorAngle = (Math.PI * 2) / SPLASH_ASSETS.length;
+  const totalAssetsCount = isLowSpec ? 6 : SPLASH_ASSETS.length;
+  const sectorAngle = (Math.PI * 2) / totalAssetsCount;
   const angle = (index * sectorAngle) + (Math.random() - 0.5) * (sectorAngle * 0.5);
 
   const radiusLevel = index % 2 === 0 ? 0.45 : 0.75; // Alternate between inner and outer zones
@@ -64,12 +75,14 @@ const FloatingAsset = ({ source, index }: { source: any; index: number }) => {
     opacity.value = withDelay(delay, withTiming(0.8, { duration: 150 }));
     rotation.value = withDelay(delay, withTiming(targetRotation, { duration: 250 }));
 
-    // Rapid floating oscillation after the burst
-    const floatDuration = 1500 + Math.random() * 1000;
-    const floatDelay = delay + 250;
+    // Rapid floating oscillation after the burst (only on high-spec devices)
+    if (!isLowSpec) {
+      const floatDuration = 1500 + Math.random() * 1000;
+      const floatDelay = delay + 250;
 
-    x.value = withDelay(floatDelay, withRepeat(withTiming(targetX + (Math.random() - 0.5) * 50, { duration: floatDuration }), -1, true));
-    y.value = withDelay(floatDelay, withRepeat(withTiming(targetY + (Math.random() - 0.5) * 50, { duration: floatDuration }), -1, true));
+      x.value = withDelay(floatDelay, withRepeat(withTiming(targetX + (Math.random() - 0.5) * 50, { duration: floatDuration }), -1, true));
+      y.value = withDelay(floatDelay, withRepeat(withTiming(targetY + (Math.random() - 0.5) * 50, { duration: floatDuration }), -1, true));
+    }
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -192,8 +205,8 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
           {/* Logo Reveal Section */}
           <View style={styles.logoSection}>
             {/* Floating Background Assets */}
-            {SPLASH_ASSETS.map((asset, index) => (
-              <FloatingAsset key={index} source={asset} index={index} />
+            {(isLowSpec ? SPLASH_ASSETS.slice(0, 6) : SPLASH_ASSETS).map((asset, index) => (
+              <FloatingAsset key={index} source={asset} index={index} isLowSpec={isLowSpec} />
             ))}
 
             <Animated.View style={[styles.logoWrapper, logoStyle]}>

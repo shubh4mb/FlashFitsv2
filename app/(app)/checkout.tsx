@@ -24,7 +24,9 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -783,85 +785,90 @@ export default function CheckoutScreen() {
         statusBarTranslucent={true}
         onRequestClose={() => setShowPhoneModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.phoneModalContainer}>
-            <Text style={styles.phoneModalTitle}>Phone Number Required</Text>
-            <Text style={styles.phoneModalSubtitle}>
-              Please enter your phone number to receive delivery updates and confirm your order.
-            </Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.phoneModalContainer}>
+              <Text style={styles.phoneModalTitle}>Phone Number Required</Text>
+              <Text style={styles.phoneModalSubtitle}>
+                Please enter your phone number to receive delivery updates and confirm your order.
+              </Text>
 
-            <View style={styles.phoneInputRow}>
-              <View style={styles.phonePrefixBox}>
-                <Text style={styles.phonePrefixText}>+91</Text>
+              <View style={styles.phoneInputRow}>
+                <View style={styles.phonePrefixBox}>
+                  <Text style={styles.phonePrefixText}>+91</Text>
+                </View>
+                <TextInput
+                  style={styles.phoneModalInput}
+                  placeholder="10-digit Mobile Number"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={phoneInput}
+                  onChangeText={(t) => {
+                    const clean = t.replace(/[^0-9]/g, "");
+                    setPhoneInput(clean);
+                    if (clean.length === 10) setPhoneError('');
+                  }}
+                />
               </View>
-              <TextInput
-                style={styles.phoneModalInput}
-                placeholder="10-digit Mobile Number"
-                placeholderTextColor="#94A3B8"
-                keyboardType="phone-pad"
-                maxLength={10}
-                value={phoneInput}
-                onChangeText={(t) => {
-                  const clean = t.replace(/[^0-9]/g, "");
-                  setPhoneInput(clean);
-                  if (clean.length === 10) setPhoneError('');
-                }}
-              />
-            </View>
 
-            {phoneError ? <Text style={styles.phoneModalError}>{phoneError}</Text> : null}
+              {phoneError ? <Text style={styles.phoneModalError}>{phoneError}</Text> : null}
 
-            <View style={styles.phoneModalActions}>
-              <TouchableOpacity
-                style={styles.phoneCancelBtn}
-                onPress={() => setShowPhoneModal(false)}
-                disabled={phoneSubmitting}
-              >
-                <Text style={styles.phoneCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.phoneSubmitBtn,
-                  { backgroundColor: theme.primary },
-                  phoneInput.length !== 10 && { backgroundColor: '#CBD5E1' }
-                ]}
-                onPress={async () => {
-                  if (phoneInput.length !== 10) {
-                    setPhoneError('Please enter a valid 10-digit phone number.');
-                    return;
-                  }
-                  try {
-                    setPhoneSubmitting(true);
-                    setPhoneError('');
-                    const res = await updateUserProfilePhone(phoneInput);
-                    if (res?.success) {
-                      await SecureStore.setItemAsync('phoneNumber', phoneInput);
-                      setUserPhone(phoneInput);
-                      setShowPhoneModal(false);
-                      showToast({ message: 'Phone number saved! Placing order...', type: 'success' });
-                      setTimeout(() => {
-                        handlePlaceOrder();
-                      }, 500);
-                    } else {
-                      setPhoneError(res?.message || 'Failed to update phone number.');
+              <View style={styles.phoneModalActions}>
+                <TouchableOpacity
+                  style={styles.phoneCancelBtn}
+                  onPress={() => setShowPhoneModal(false)}
+                  disabled={phoneSubmitting}
+                >
+                  <Text style={styles.phoneCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.phoneSubmitBtn,
+                    { backgroundColor: theme.primary },
+                    phoneInput.length !== 10 && { backgroundColor: '#CBD5E1' }
+                  ]}
+                  onPress={async () => {
+                    if (phoneInput.length !== 10) {
+                      setPhoneError('Please enter a valid 10-digit phone number.');
+                      return;
                     }
-                  } catch (err: any) {
-                    setPhoneError(err.response?.data?.message || err.message || 'Something went wrong.');
-                  } finally {
-                    setPhoneSubmitting(false);
-                  }
-                }}
-                disabled={phoneInput.length !== 10 || phoneSubmitting}
-              >
-                {phoneSubmitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.phoneSubmitText}>Submit & Place Order</Text>
-                )}
-              </TouchableOpacity>
+                    try {
+                      setPhoneSubmitting(true);
+                      setPhoneError('');
+                      const res = await updateUserProfilePhone(phoneInput);
+                      if (res?.success) {
+                        await SecureStore.setItemAsync('phoneNumber', phoneInput);
+                        setUserPhone(phoneInput);
+                        setShowPhoneModal(false);
+                        showToast({ message: 'Phone number saved! Placing order...', type: 'success' });
+                        setTimeout(() => {
+                          handlePlaceOrder();
+                        }, 500);
+                      } else {
+                        setPhoneError(res?.message || 'Failed to update phone number.');
+                      }
+                    } catch (err: any) {
+                      setPhoneError(err.response?.data?.message || err.message || 'Something went wrong.');
+                    } finally {
+                      setPhoneSubmitting(false);
+                    }
+                  }}
+                  disabled={phoneInput.length !== 10 || phoneSubmitting}
+                >
+                  {phoneSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.phoneSubmitText}>Submit & Place Order</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

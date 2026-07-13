@@ -147,8 +147,8 @@ export default function HomeScreen() {
               {Array.isArray(collections) && collections.map((coll, idx) => (
                 <ProductHorizontalSection
                   key={coll._id || idx}
-                  title={coll.name}
-                  subtitle={coll.description || 'Special curated list'}
+                  title={coll.name ? coll.name.charAt(0).toUpperCase() + coll.name.slice(1) : ''}
+                  subtitle={coll.description ? coll.description.charAt(0).toUpperCase() + coll.description.slice(1) : 'Special curated list'}
                   products={coll.products || []}
                   isLoading={loading}
                   banner={coll.banner}
