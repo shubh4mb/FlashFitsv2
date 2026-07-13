@@ -23,6 +23,9 @@ import {
   View,
   RefreshControl,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = (SCREEN_WIDTH - 34) / 2; // 2-column grid with reduced padding (12 left + 12 right + 10 gap)
@@ -106,18 +109,36 @@ export default function ExploreScreen() {
     }
   };
 
-  const renderProduct = ({ item }: { item: Product }) => (
-    <View style={styles.cardWrapper}>
+  const renderProduct = useCallback(({ item, index }: { item: Product; index: number }) => (
+    <View style={[styles.cardWrapper, { marginBottom: 16, marginRight: index % 2 === 0 ? 10 : 0 }]}>
       <ProductCard
         product={item}
         width={CARD_WIDTH}
-        containerStyle={{ marginRight: 0 }}
+        containerStyle={styles.productCardExplore}
         fromExplore={true}
         isNearby={item.isNearby}
         isOnline={item.isOnline}
       />
     </View>
-  );
+  ), [CARD_WIDTH]);
+
+  const renderMerchant = useCallback(({ item }: { item: Merchant }) => (
+    <TouchableOpacity
+      style={styles.merchantItem}
+      activeOpacity={0.7}
+      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true' } } as any)}
+    >
+      <View style={styles.merchantLogoContainer}>
+        <Image
+          source={{ uri: item.logo?.url }}
+          style={styles.merchantLogo}
+          contentFit="contain"
+          transition={200}
+        />
+      </View>
+      <Text style={styles.merchantName} numberOfLines={1}>{item.shopName}</Text>
+    </TouchableOpacity>
+  ), [router]);
 
   return (
     <View style={styles.container}>
@@ -128,14 +149,14 @@ export default function ExploreScreen() {
         refreshing={refreshing}
         onRefresh={onRefresh}
       >
-        <Animated.FlatList
+        <AnimatedFlashList
           data={products}
           renderItem={renderProduct}
-          keyExtractor={(item) => item._id || String(Math.random())}
+          estimatedItemSize={250}
+          keyExtractor={(item: any, index: number) => item._id || String(index)}
           numColumns={2}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.listContent, { paddingTop: headerHeight || 0 }]}
-          columnWrapperStyle={styles.columnWrapper}
           scrollEventThrottle={16}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
@@ -163,29 +184,14 @@ export default function ExploreScreen() {
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
                 </View>
-                <FlatList
+                <FlashList
                   data={merchants}
                   horizontal
+                  estimatedItemSize={100}
                   showsHorizontalScrollIndicator={false}
-                  keyExtractor={(item) => item._id}
+                  keyExtractor={(item: any) => item._id}
                   contentContainerStyle={styles.merchantsList}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.merchantItem}
-                      activeOpacity={0.7}
-                      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true' } } as any)}
-                    >
-                      <View style={styles.merchantLogoContainer}>
-                        <Image
-                          source={{ uri: item.logo?.url }}
-                          style={styles.merchantLogo}
-                          contentFit="contain"
-                          transition={200}
-                        />
-                      </View>
-                      <Text style={styles.merchantName} numberOfLines={1}>{item.shopName}</Text>
-                    </TouchableOpacity>
-                  )}
+                  renderItem={renderMerchant as any}
                 />
               </View>
             )}
@@ -402,5 +408,8 @@ const styles = StyleSheet.create({
     color: '#475569',
     textAlign: 'center',
     width: '100%',
+  },
+  productCardExplore: {
+    marginRight: 0,
   },
 });

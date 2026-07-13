@@ -33,6 +33,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
@@ -663,18 +664,21 @@ const ProductDetailPage = () => {
             </View>
 
             {filteredRelated.length > 0 ? (
-              <FlatList
+              <FlashList
                 data={filteredRelated}
                 horizontal
+                estimatedItemSize={176}
                 showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item._id}
+                keyExtractor={(item: any) => item._id}
                 contentContainerStyle={styles.relatedList}
-                renderItem={({ item }) => (
+                renderItem={({ item }: { item: any }) => (
                   <ProductCard
                     product={item}
                     width={160}
                     containerStyle={styles.relatedCard}
                     fromExplore={isExplore}
+                    isNearby={showOnlyNearby || item.isInstantBuyable || item.isNearby}
+                    isOnline={item.isOnline !== false}
                   />
                 )}
               />

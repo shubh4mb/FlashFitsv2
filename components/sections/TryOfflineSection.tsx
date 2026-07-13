@@ -12,18 +12,19 @@ const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     const { selectedGender } = useGender();
     const router = useRouter();
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+    const primaryColor = '#000000';
 
     return (
         <View style={styles.container}>
             <View style={styles.content}>
-                <View style={[styles.iconContainer, { borderColor: theme.primary.slice(0, 7) + '20' }]}>
+                <View style={[styles.iconContainer, { borderColor: primaryColor + '20' }]}>
                     <LinearGradient
-                        colors={[theme.primary.slice(0, 7) + '10', 'rgba(0,0,0,0)']}
+                        colors={[primaryColor + '10', 'rgba(0,0,0,0)']}
                         style={styles.iconGradient}
                     >
-                        <Ionicons name="time-outline" size={48} color={theme.primary} />
+                        <Ionicons name="time-outline" size={48} color={primaryColor} />
                     </LinearGradient>
-                    <View style={[styles.pulseCircle, { backgroundColor: theme.primary.slice(0, 7) + '10' }]} />
+                    <View style={[styles.pulseCircle, { backgroundColor: primaryColor + '10' }]} />
                 </View>
 
                 <Text style={styles.title}>All Offline</Text>
@@ -43,7 +44,7 @@ const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
                 </View> */}
 
                 <TouchableOpacity 
-                    style={[styles.exploreButton, { backgroundColor: theme.primary }]}
+                    style={[styles.exploreButton, { backgroundColor: primaryColor }]}
                     onPress={() => router.push('/explore')}
                     activeOpacity={0.8}
                 >

@@ -120,8 +120,8 @@ function TabsContainer() {
               />
             );
           },
-          tabBarActiveTintColor: theme.primary,
-          tabBarInactiveTintColor: theme.primary,
+          tabBarActiveTintColor: '#000000',
+          tabBarInactiveTintColor: '#64748B',
           tabBarIcon: ({ color, focused }) => {
             let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'flash-outline';
             let label = '⚡ Try';

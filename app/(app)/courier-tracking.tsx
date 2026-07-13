@@ -1,4 +1,5 @@
 import { cancelCourierOrder, getCourierOrderById, requestCourierOrderReturn, getCourierOrderReturnCharge } from '@/api/orders';
+import { getMyReviews } from '@/api/reviews';
 import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,6 +94,7 @@ export default function CourierTrackingScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
 
   // Return request states
   const [returnModalVisible, setReturnModalVisible] = useState(false);
@@ -233,6 +235,15 @@ export default function CourierTrackingScreen() {
       if (!data) return;
       setOrder(data);
       setSteps(statusToSteps(data.orderStatus));
+
+      if (['delivered', 'returned'].includes(data.orderStatus?.toLowerCase() || '')) {
+        try {
+          const revRes = await getMyReviews(orderId);
+          setReviews(revRes.reviews || []);
+        } catch (e) {
+          console.error('Failed to fetch reviews:', e);
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch courier order:', err);
     } finally {
@@ -637,6 +648,49 @@ export default function CourierTrackingScreen() {
           >
             <Ionicons name="refresh-outline" size={18} color={theme.primary} />
             <Text style={[styles.returnBtnText, { color: theme.primary }]}>Return Items</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Existing Ratings */}
+        {isDelivered && reviews.length > 0 && (
+          <View style={{ paddingHorizontal: 16, marginTop: 4 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 12 }}>Your Ratings</Text>
+            {reviews.map((rev, idx) => (
+              <View key={idx} style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', textTransform: 'capitalize' }}>
+                    {rev.targetType}
+                  </Text>
+                  <View style={{ flexDirection: 'row' }}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons key={star} name={star <= rev.rating ? "star" : "star-outline"} size={14} color="#F59E0B" />
+                    ))}
+                  </View>
+                </View>
+                {rev.title && <Text style={{ fontSize: 13, fontWeight: '600', marginTop: 6, color: '#334155' }}>{rev.title}</Text>}
+                {rev.comment && <Text style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>{rev.comment}</Text>}
+                {rev.images && rev.images.length > 0 && (
+                  <View style={{ flexDirection: 'row', marginTop: 8, gap: 8 }}>
+                    {rev.images.map((img: string, i: number) => (
+                      <Image key={i} source={{ uri: img }} style={{ width: 40, height: 40, borderRadius: 8 }} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Rate Button */}
+        {isDelivered && reviews.length === 0 && (
+          <TouchableOpacity
+            style={[styles.continueBtn, { backgroundColor: '#F59E0B', marginBottom: 12 }]}
+            onPress={() => router.push({ pathname: '/rate-order', params: { orderId: order?._id } } as any)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Ionicons name="star" size={20} color="#fff" />
+              <Text style={styles.continueBtnText}>Rate Your Experience</Text>
+            </View>
           </TouchableOpacity>
         )}
 

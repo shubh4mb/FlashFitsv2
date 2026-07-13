@@ -12,7 +12,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const ACTIVE_STATUSES = ['placed', 'accepted', 'packed', 'in_transit', 'try_phase', 'selection_made', 'return_in_progress'];
+const ACTIVE_STATUSES = ['placed', 'accepted', 'packed', 'in_transit', 'try_phase', 'selection_made'];
 
 export default function ActiveOrderBanner() {
   const [activeOrders, setActiveOrders] = useState<any[]>([]);
@@ -26,7 +26,11 @@ export default function ActiveOrderBanner() {
     try {
       const ordersRes = await getAllOrders();
       const orders = Array.isArray(ordersRes) ? ordersRes : ordersRes?.orders || [];
-      const activeList = orders.filter((o: any) => ACTIVE_STATUSES.includes(o.orderStatus?.toLowerCase()));
+      const activeList = orders.filter((o: any) => {
+        // Exclude courier orders (which have deliveryMode === 'courier' or isCourier flag)
+        const isCourier = o.isCourier || o.deliveryMode === 'courier';
+        return !isCourier && ACTIVE_STATUSES.includes(o.orderStatus?.toLowerCase());
+      });
       setActiveOrders(activeList);
     } catch (err) {
       console.log('Error fetching active orders for banner', err);

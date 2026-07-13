@@ -393,17 +393,17 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                             StyleSheet.absoluteFill,
                                             {
                                                 backgroundColor: '#FFFFFF',
-                                                borderRadius: 16,
+                                                borderRadius: 10,
                                                 opacity: activeOpacities[i],
                                                 ...Platform.select({
                                                     ios: {
                                                         shadowColor: gTheme.primary,
-                                                        shadowOffset: { width: 0, height: 4 },
-                                                        shadowOpacity: 0.2,
-                                                        shadowRadius: 8,
+                                                        shadowOffset: { width: 0, height: 2 },
+                                                        shadowOpacity: 0.15,
+                                                        shadowRadius: 4,
                                                     },
                                                     android: {
-                                                        elevation: 4,
+                                                        elevation: 2,
                                                     },
                                                 }),
                                             }
@@ -458,7 +458,12 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     <Skeleton width={CATEGORY_ITEM_WIDTH * 0.7} height={10} />
                                 </View>
                             ))
-                            : categories.map((cat) => {
+                            : categories
+                                .filter((cat) => {
+                                    const genderKey = selectedGender.toUpperCase();
+                                    return cat.allowedGenders ? cat.allowedGenders.includes(genderKey) : true;
+                                })
+                                .map((cat) => {
                                 const isActive = selectedCategoryId === cat._id;
                                 const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
                                 const logoUrl = cat.logos?.[genderKey]?.url || cat.logo?.url || cat.image?.url;
@@ -682,30 +687,29 @@ const styles = StyleSheet.create({
     genderContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.13)',
-        padding: 5,
-        borderRadius: 20,
-        marginTop: 10,
-        gap: 4,
+        backgroundColor: 'rgba(0,0,0,0.06)',
+        padding: 4,
+        borderRadius: 14,
+        marginTop: 12,
+        gap: 2,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
-        
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     genderButtonWrapper: {
         flex: 1,
     },
     genderButton: {
-        paddingVertical: 10,
-        borderRadius: 16,
+        paddingVertical: 6,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
     },
 
     genderText: {
-        fontSize: 13,
+        fontSize: 11.5,
         textTransform: 'uppercase',
-        letterSpacing: 0.8,
+        letterSpacing: 0.5,
     },
     categoriesContainer: {
         paddingRight: 16,

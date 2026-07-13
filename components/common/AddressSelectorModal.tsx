@@ -111,6 +111,7 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
         </View>
         <View style={styles.addressInfo}>
           <Text style={styles.addressType}>{capitalize(item.addressType)}</Text>
+          <Text style={styles.contactDetails}>{item.name} • {item.phone}</Text>
           <Text style={styles.addressLine} numberOfLines={1}>
             {item.addressLine1}
             {item.addressLine2 ? `, ${item.addressLine2}` : ''}
@@ -349,6 +350,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: Typography.fontFamily.bold,
     color: '#1E293B',
+    marginBottom: 2,
+  },
+  contactDetails: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
     marginBottom: 2,
   },
   addressLine: {

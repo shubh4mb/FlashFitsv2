@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { getOrderById, finalpaymentInitiate, finalPaymentVerify, confirmCodSelection } from '@/api/orders';
+import { getMyReviews } from '@/api/reviews';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners, leaveOrderRoom } from '@/sockets/order.socket';
 import { getSocket } from '@/config/socket';
 import { calculateFinalBilling } from '@/utils/ItemSelectionCalculation';
@@ -69,7 +70,7 @@ const formatTime = (seconds: number) => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-const statusToSteps = (status?: string): OrderStep[] => {
+const statusToSteps = (status?: string, deliveryRiderStatus?: string): OrderStep[] => {
   const steps: OrderStep[] = [
     { id: 'picked', label: 'Picked', completed: false },
     { id: 'in-transit', label: 'In Transit', completed: false },
@@ -82,10 +83,14 @@ const statusToSteps = (status?: string): OrderStep[] => {
     case 'in_transit':
       steps[0].completed = true;
       steps[1].completed = true;
+      if (deliveryRiderStatus === 'at_delivery') {
+        steps[2].completed = true;
+      }
       break;
     case 'try_phase':
     case 'selection_made':
     case 'return_in_progress':
+    case 'completed':
       steps[0].completed = true;
       steps[1].completed = true;
       steps[2].completed = true;
@@ -96,34 +101,46 @@ const statusToSteps = (status?: string): OrderStep[] => {
 
 // ── Trial Timer Component ──
 const TrialTimer = ({ start, duration }: { start: string | number | null; duration: number }) => {
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [minutesLeft, setMinutesLeft] = useState(duration);
+  const [startTimeFormatted, setStartTimeFormatted] = useState('');
 
   useEffect(() => {
     if (!start) return;
-    const startTime = new Date(start as string).getTime();
-    const endTime = startTime + duration * 60 * 1000;
-    const tick = () => setTimeLeft(Math.max(0, Math.floor((endTime - Date.now()) / 1000)));
-    tick();
-    const id = setInterval(tick, 1000);
+    const startTime = new Date(start as string);
+    
+    // Format start time e.g., 2:30 PM
+    const formatted = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setStartTimeFormatted(formatted);
+
+    const updateCalculations = () => {
+      const elapsedMs = Date.now() - startTime.getTime();
+      const elapsedMins = Math.floor(elapsedMs / 60000);
+      setMinutesLeft(Math.max(0, duration - elapsedMins));
+    };
+
+    updateCalculations();
+    const id = setInterval(updateCalculations, 60000); // update every minute
     return () => clearInterval(id);
   }, [start, duration]);
 
-  if (timeLeft <= 0) return null;
+  if (minutesLeft <= 0) return null;
 
-  const progress = duration > 0 ? timeLeft / (duration * 60) : 0;
-  const isUrgent = timeLeft < 120;
+  const progress = duration > 0 ? (duration - minutesLeft) / duration : 0;
+  const isUrgent = minutesLeft < 5;
 
   return (
     <View style={[styles.timerCard, isUrgent && { borderColor: '#EF4444' }]}>
       <View style={styles.timerHeader}>
-        <Ionicons name="timer-outline" size={20} color={isUrgent ? '#EF4444' : '#F59E0B'} />
-        <Text style={[styles.timerLabel, isUrgent && { color: '#EF4444' }]}>Trial Time Remaining</Text>
+        <Ionicons name="time-outline" size={20} color={isUrgent ? '#EF4444' : '#F59E0B'} />
+        <Text style={[styles.timerLabel, isUrgent && { color: '#EF4444' }]}>Trial Period Active</Text>
       </View>
-      <Text style={[styles.timerValue, isUrgent && { color: '#EF4444' }]}>{formatTime(timeLeft)}</Text>
+      <Text style={[styles.timerValue, { fontSize: 18, marginVertical: 4 }, isUrgent && { color: '#EF4444' }]}>
+        Started at: {startTimeFormatted}
+      </Text>
       <View style={styles.timerBar}>
         <View style={[styles.timerBarFill, { width: `${progress * 100}%`, backgroundColor: isUrgent ? '#EF4444' : '#F59E0B' }]} />
       </View>
-      <Text style={styles.timerHint}>Try your clothes and make your selection below</Text>
+      <Text style={styles.timerHint}>Time remaining: {minutesLeft} mins</Text>
     </View>
   );
 };
@@ -146,6 +163,8 @@ export default function OrderTrackingScreen() {
   const [steps, setSteps] = useState<OrderStep[]>(statusToSteps());
   const [otp, setOtp] = useState('');
   const [rider, setRider] = useState<{ name: string; phone?: string } | null>(null);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const hasNotifiedArrival = useRef(false);
   const [trialActive, setTrialActive] = useState(false);
   const [trialStart, setTrialStart] = useState<string | number | null>(null);
   const [trialDuration, setTrialDuration] = useState(0);
@@ -225,9 +244,13 @@ export default function OrderTrackingScreen() {
         return data.orderStatus;
       }
 
+      if (data.deliveryRiderStatus === 'at_delivery' || data.orderStatus === 'try_phase') {
+        hasNotifiedArrival.current = true;
+      }
+
       setOrder(data);
       setOtp(data.otp || '');
-      setSteps(statusToSteps(data.orderStatus));
+      setSteps(statusToSteps(data.orderStatus, data.deliveryRiderStatus));
 
       if (data.deliveryRiderDetails?.name) {
         setRider({ name: data.deliveryRiderDetails.name, phone: data.deliveryRiderDetails.phone });
@@ -242,6 +265,16 @@ export default function OrderTrackingScreen() {
         setTrialStart(data.trialPhaseStart);
         setTrialDuration(data.trialPhaseDuration);
       }
+
+      if (['completed', 'return_in_progress'].includes(data.orderStatus || '')) {
+        try {
+          const revRes = await getMyReviews(orderId);
+          setReviews(revRes.reviews || []);
+        } catch (e) {
+          console.error('Failed to fetch reviews:', e);
+        }
+      }
+
       return data.orderStatus;
     } catch (err) {
       console.error('Failed to fetch order:', err);
@@ -278,7 +311,8 @@ export default function OrderTrackingScreen() {
           return;
         }
 
-        if (update.orderStatus === 'try_phase') {
+        if ((update.deliveryRiderStatus === 'at_delivery' || update.orderStatus === 'try_phase') && !hasNotifiedArrival.current) {
+          hasNotifiedArrival.current = true;
           Notifications.scheduleNotificationAsync({
             content: {
               title: 'Rider Arrived! 🏠',
@@ -290,15 +324,15 @@ export default function OrderTrackingScreen() {
           showToast({ message: 'Your rider has reached your location!', type: 'info' });
         }
 
-        if (update.orderStatus) {
+        if (update.orderStatus || update.deliveryRiderStatus) {
           setSteps(prev => {
-            const newSteps = statusToSteps(update.orderStatus);
+            const newSteps = statusToSteps(update.orderStatus, update.deliveryRiderStatus);
             return prev.map((step, i) => ({
               ...step,
               completed: step.completed || (newSteps[i]?.completed ?? false),
             }));
           });
-          setOrder(prev => prev ? { ...prev, orderStatus: update.orderStatus } : prev);
+          setOrder(prev => prev ? { ...prev, orderStatus: update.orderStatus || prev.orderStatus, deliveryRiderStatus: update.deliveryRiderStatus || prev.deliveryRiderStatus } : prev);
         }
         if (update.otp) setOtp(update.otp);
         if (update.estimatedTime) {
@@ -573,12 +607,18 @@ export default function OrderTrackingScreen() {
             {isTracking && (
               <>
                 <Text style={[styles.statusLabel, { color: theme.primary }]}>
-                  {status.replace(/_/g, ' ').toUpperCase()}
+                  {order?.deliveryRiderStatus === 'at_delivery' ? 'ARRIVED' : status.replace(/_/g, ' ').toUpperCase()}
                 </Text>
-                {order?.estimatedTime && (
+                {order?.deliveryRiderStatus === 'at_delivery' ? (
                   <Text style={styles.eta}>
-                    {order.estimatedTime === 'Calculating...' ? 'Estimating arrival...' : `Arriving in ${order.estimatedTime} mins`}
+                    Rider has reached your location!
                   </Text>
+                ) : (
+                  order?.estimatedTime && (
+                    <Text style={styles.eta}>
+                      {order.estimatedTime === 'Calculating...' ? 'Estimating arrival...' : `Arriving in ${order.estimatedTime} mins`}
+                    </Text>
+                  )
                 )}
               </>
             )}
@@ -644,10 +684,13 @@ export default function OrderTrackingScreen() {
         )}
 
         {/* ─── OTP Badge ─── */}
-        {otp && isTryPhase && (
+        {otp && (isTryPhase || status === 'in_transit') && (
           <View style={styles.otpCard}>
             <Ionicons name="key-outline" size={18} color="#1A73E8" />
-            <Text style={styles.otpText}>OTP: <Text style={{ fontWeight: '900', letterSpacing: 2 }}>{otp}</Text></Text>
+            <Text style={styles.otpText}>
+              {isTryPhase ? "Return OTP: " : "Handover OTP: "}
+              <Text style={{ fontWeight: '900', letterSpacing: 2 }}>{otp}</Text>
+            </Text>
           </View>
         )}
 
@@ -903,12 +946,83 @@ export default function OrderTrackingScreen() {
               </View>
             </View>
 
+            {/* Existing Ratings */}
+            {reviews.length > 0 && (
+              <View style={{ width: '100%', marginTop: 20 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 12 }}>Your Ratings</Text>
+                {reviews.map((rev, idx) => (
+                  <View key={idx} style={{ backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', textTransform: 'capitalize' }}>
+                        {rev.targetType}
+                      </Text>
+                      <View style={{ flexDirection: 'row' }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Ionicons key={star} name={star <= rev.rating ? "star" : "star-outline"} size={14} color="#F59E0B" />
+                        ))}
+                      </View>
+                    </View>
+                    {rev.title && <Text style={{ fontSize: 13, fontWeight: '600', marginTop: 6, color: '#334155' }}>{rev.title}</Text>}
+                    {rev.comment && <Text style={{ fontSize: 13, color: '#64748B', marginTop: 4 }}>{rev.comment}</Text>}
+                    {rev.images && rev.images.length > 0 && (
+                      <View style={{ flexDirection: 'row', marginTop: 8, gap: 8 }}>
+                        {rev.images.map((img: string, i: number) => (
+                          <Image key={i} source={{ uri: img }} style={{ width: 40, height: 40, borderRadius: 8 }} />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* Actions */}
+            {reviews.length === 0 && (
+              <TouchableOpacity
+                style={{
+                  width: '100%',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#0F172A',
+                  paddingVertical: 16,
+                  paddingHorizontal: 20,
+                  borderRadius: 16,
+                  marginTop: 20,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 8,
+                  elevation: 5,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.1)',
+                }}
+                onPress={() => router.push({ pathname: '/rate-order', params: { orderId: order?._id } } as any)}
+              >
+                <View style={{
+                  backgroundColor: '#F59E0B',
+                  padding: 6,
+                  borderRadius: 10,
+                  marginRight: 12,
+                }}>
+                  <Ionicons name="star" size={18} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 }}>
+                    Rate Your Experience
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 2 }}>
+                    Tell us how we did
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.4)" />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: theme.primary, marginTop: 20 }]}
+              style={[styles.outlineBtn, { borderColor: theme.primary, marginTop: 12 }]}
               onPress={() => router.replace('/(app)/(tabs)' as any)}
             >
-              <Text style={styles.submitText}>Continue Shopping</Text>
+              <Text style={[styles.outlineText, { color: theme.primary }]}>Continue Shopping</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.outlineBtn, { borderColor: theme.primary }]}

@@ -245,12 +245,14 @@ export default function ReturnItemsScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.handoverBtn, { backgroundColor: theme.primary }]}
-          onPress={() => router.replace('/(app)/(tabs)' as any)}
+          style={[styles.handoverBtn, { backgroundColor: theme.primary, opacity: 0.6 }]}
+          onPress={() => {
+            alert("Please share the verification code with the delivery partner to complete the handover.");
+          }}
           activeOpacity={0.8}
         >
-          <Text style={styles.handoverText}>Complete Handover</Text>
-          <Ionicons name="arrow-forward" size={18} color="#fff" />
+          <Text style={styles.handoverText}>Waiting for Delivery Partner...</Text>
+          <Ionicons name="time-outline" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
     </View>

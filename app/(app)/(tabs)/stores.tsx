@@ -19,7 +19,8 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
 import { fetchMerchants } from '@/api/merchants';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, distanceInMeters } from '@/context/AddressContext';
+import { LinearGradient } from 'expo-linear-gradient';
 import MainHeader from '@/components/layout/MainHeader';
 import { GenderThemes, Typography } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
@@ -40,6 +41,18 @@ interface Merchant {
   shipsWithinHours: number;
   isOnline: boolean;
   isNearby: boolean;
+  address?: {
+    location?: {
+      coordinates: number[]; // [lng, lat]
+    };
+  };
+  backgroundImage?: {
+    url: string;
+  };
+  rating?: number;
+  stats?: {
+    totalProducts?: number;
+  };
 }
 
 const MerchantSkeleton = () => (
@@ -109,6 +122,35 @@ export default function StoresScreen() {
     });
   }, [merchants, selectedGender, instantTry]);
 
+  const userLat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+  const userLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+
+  const getDistanceStr = (merchant: Merchant) => {
+    const mCoords = merchant.address?.location?.coordinates;
+    if (!mCoords || !userLat || !userLng) return null;
+    const dist = distanceInMeters(userLat, userLng, mCoords[1], mCoords[0]);
+    if (dist < 1000) {
+      return `${Math.round(dist)}m`;
+    }
+    return `${(dist / 1000).toFixed(1)} km`;
+  };
+
+  const topStores = useMemo(() => {
+    const nearby = merchants.filter(m => {
+      const matchesGender = m.genderCategory && (
+        m.genderCategory.includes(selectedGender) || 
+        m.genderCategory.includes('Unisex') ||
+        m.genderCategory.some(g => g.toUpperCase() === selectedGender.toUpperCase())
+      );
+      return matchesGender && m.isNearby;
+    });
+    return nearby.sort((a, b) => {
+      const ratingA = a.rating && a.rating > 0 ? a.rating : 4.5;
+      const ratingB = b.rating && b.rating > 0 ? b.rating : 4.5;
+      return ratingB - ratingA;
+    });
+  }, [merchants, selectedGender]);
+
   // Only show full-page loader on initial mount if we have absolutely nothing
   const isInitialLoading = loading && merchants.length === 0 && !refreshing;
 
@@ -135,6 +177,119 @@ export default function StoresScreen() {
           scrollEventThrottle={16}
       >
         {headerHeight > 0 && <View style={{ height: headerHeight }} />}
+
+        {/* Top Stores Near You */}
+        {topStores.length > 0 && (
+          <View style={styles.topStoresSection}>
+            <Text style={styles.sectionTitle}>Top Stores Near You</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.topStoresList}
+            >
+              {topStores.map((store) => {
+                const distanceStr = getDistanceStr(store);
+                const ratingVal = store.rating && store.rating > 0 ? store.rating.toFixed(1) : '4.5';
+                return (
+                  <TouchableOpacity
+                    key={store._id}
+                    style={styles.topStoreCard}
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: '/merchant/[id]', params: { id: store._id } } as any);
+                    }}
+                  >
+                    {/* Cover Section */}
+                    <View style={styles.cardCoverContainer}>
+                      {store.backgroundImage?.url ? (
+                        <Image
+                          source={{ uri: store.backgroundImage.url }}
+                          style={styles.cardCover}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      ) : (
+                        <LinearGradient
+                          colors={['#475569', '#1E293B']}
+                          style={styles.cardCover}
+                        />
+                      )}
+
+                      {/* Online Status Badge */}
+                      <View style={[
+                        styles.cardOnlineBadge, 
+                        { backgroundColor: store.isOnline ? 'rgba(34, 197, 94, 0.9)' : 'rgba(100, 116, 139, 0.9)' }
+                      ]}>
+                        <View style={[
+                          styles.cardOnlineDot, 
+                          { backgroundColor: store.isOnline ? '#FFF' : '#E2E8F0' }
+                        ]} />
+                        <Text style={[
+                          styles.cardOnlineText, 
+                          { color: store.isOnline ? '#FFF' : '#E2E8F0' }
+                        ]}>
+                          {store.isOnline ? 'ONLINE' : 'OFFLINE'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Absolute Logo */}
+                    <View style={styles.cardLogoContainer}>
+                      <Image
+                        source={{ uri: store.logo.url }}
+                        style={styles.cardLogo}
+                        contentFit="contain"
+                      />
+                    </View>
+
+                    {/* Details Section */}
+                    <View style={styles.cardDetailsContainer}>
+                      <View style={styles.cardHeaderRow}>
+                        <Text style={styles.cardShopName} numberOfLines={1}>
+                          {store.shopName}
+                        </Text>
+                        <View style={styles.cardRatingBox}>
+                          <Ionicons name="star" size={10} color="#F59E0B" />
+                          <Text style={styles.cardRatingText}>{ratingVal}</Text>
+                        </View>
+                      </View>
+
+                      {/* Info Row: Distance, Products */}
+                      <View style={styles.cardSubInfoRow}>
+                        {distanceStr && (
+                          <View style={styles.cardSubInfoItem}>
+                            <Ionicons name="location" size={12} color="#64748B" />
+                            <Text style={styles.cardSubInfoText}>{distanceStr}</Text>
+                          </View>
+                        )}
+                        
+                        {(store.stats?.totalProducts ?? 0) > 0 && (
+                          <>
+                            <Text style={styles.cardMetricDivider}>•</Text>
+                            <View style={styles.cardSubInfoItem}>
+                              <Ionicons name="cube" size={12} color="#64748B" />
+                              <Text style={styles.cardSubInfoText}>{store.stats?.totalProducts} Products</Text>
+                            </View>
+                          </>
+                        )}
+                      </View>
+
+                      {/* Tags Row: Genders */}
+                      <View style={styles.cardTagsRow}>
+                        {store.genderCategory?.map(gen => (
+                          <View key={gen} style={styles.cardTag}>
+                            <Text style={styles.cardTagText}>{gen}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
         
         {/* Instant Try Toggle Section */}
         <View style={styles.filterSection}>
@@ -162,7 +317,7 @@ export default function StoresScreen() {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.title}>{instantTry ? 'Premium Fast Stores' : 'All Stores'}</Text>
+          <Text style={styles.title}>{instantTry ? 'Instant Try Stores' : 'All Stores'}</Text>
           
           <View style={styles.grid}>
             {loading && !refreshing ? (
@@ -344,5 +499,158 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-
+  topStoresSection: {
+    marginTop: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  topStoresList: {
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  topStoreCard: {
+    width: width * 0.75,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 5,
+  },
+  cardCoverContainer: {
+    width: '100%',
+    height: 95,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cardCover: {
+    width: '100%',
+    height: '100%',
+  },
+  cardOnlineBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  cardOnlineDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  cardOnlineText: {
+    fontSize: 9,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.5,
+  },
+  cardLogoContainer: {
+    position: 'absolute',
+    top: 70,
+    left: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FFFFFF',
+    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 10,
+  },
+  cardLogo: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 23,
+  },
+  cardDetailsContainer: {
+    flex: 1,
+    paddingTop: 32,
+    paddingHorizontal: 16,
+    paddingBottom: 18,
+    backgroundColor: '#FFFFFF',
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cardShopName: {
+    color: '#0F172A',
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
+    flex: 1,
+    marginRight: 8,
+  },
+  cardRatingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 4,
+  },
+  cardRatingText: {
+    color: '#D97706',
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+  },
+  cardSubInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
+  cardSubInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  cardSubInfoText: {
+    color: '#64748B',
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  cardMetricDivider: {
+    color: '#CBD5E1',
+    fontSize: 11,
+  },
+  cardTagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6,
+  },
+  cardTag: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  cardTagText: {
+    color: '#475569',
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.medium,
+  },
 });

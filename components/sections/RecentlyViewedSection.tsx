@@ -1,12 +1,12 @@
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
-  FlatList,
-  StyleSheet,
-  Text,
   TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { GenderThemes, Typography } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
 import { useAddress } from '../../context/AddressContext';
@@ -66,7 +66,7 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     loadRecentlyViewed();
   }, [refreshKey]);
 
-  const renderItem = ({ item }: { item: Product }) => (
+  const renderItem = useCallback(({ item }: { item: Product }) => (
     <ProductCard
       product={item}
       width={155}
@@ -77,7 +77,7 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         });
       }}
     />
-  );
+  ), [router]);
 
   if (loading) {
     return <ProductSectionSkeleton />;
@@ -97,11 +97,12 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         </TouchableOpacity>
       </View>
 
-      <FlatList
+      <FlashList
         data={products}
         renderItem={renderItem}
-        keyExtractor={(item) => item._id || item.id || Math.random().toString()}
+        keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
         horizontal
+        estimatedItemSize={171}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"

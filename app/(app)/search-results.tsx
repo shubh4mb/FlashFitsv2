@@ -27,6 +27,9 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
@@ -235,6 +238,19 @@ export default function SearchResultsScreen() {
   const topLevelCategories = useMemo(() => {
     return categories.filter(cat => cat.level !== 1);
   }, [categories]);
+
+  const renderProduct = useCallback(({ item, index }: { item: any; index: number }) => (
+    <View style={{ marginBottom: 16, marginRight: index % 2 === 0 ? 10 : 0 }}>
+      <ProductCard
+        product={item}
+        containerStyle={styles.productCard}
+        width={(width - 48) / 2}
+        fromExplore={deliveryMode !== 'tryAndBuy'}
+        isNearby={deliveryMode === 'tryAndBuy' || item.isInstantBuyable || item.isNearby}
+        isOnline={item.isOnline !== false}
+      />
+    </View>
+  ), [deliveryMode]);
 
   // ── Footer component for FlatList ──
   const renderFooter = () => {
@@ -598,20 +614,13 @@ export default function SearchResultsScreen() {
           refreshing={refreshing}
           onRefresh={handleRefresh}
         >
-          <Animated.FlatList
+          <AnimatedFlashList
             data={products}
-            renderItem={({ item }) => (
-              <ProductCard
-                product={item}
-                containerStyle={styles.productCard}
-                width={(width - 48) / 2}
-                fromExplore={deliveryMode !== 'tryAndBuy'}
-              />
-            )}
-            keyExtractor={(item, index) => `${item._id || index}-${item.variantId || index}`}
+            renderItem={renderProduct}
+            estimatedItemSize={250}
+            keyExtractor={(item: any, index: number) => `${item._id || index}-${item.variantId || index}`}
             numColumns={2}
             contentContainerStyle={[styles.listContent, { paddingTop: headerHeight }]}
-            columnWrapperStyle={styles.columnWrapper}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
             onEndReached={handleLoadMore}

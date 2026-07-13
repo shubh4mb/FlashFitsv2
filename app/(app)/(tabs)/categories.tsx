@@ -21,6 +21,9 @@ import Skeleton from '@/components/common/Skeleton';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { Animated, NativeSyntheticEvent, NativeScrollEvent, RefreshControl } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
 
 const CategoriesSkeleton = ({ headerHeight }: { headerHeight: number }) => (
   <View style={styles.container}>
@@ -28,7 +31,7 @@ const CategoriesSkeleton = ({ headerHeight }: { headerHeight: number }) => (
       <View style={styles.sidebar}>
         {[1, 2, 3, 4, 5, 6].map((i) => (
           <View key={i} style={styles.sidebarItem}>
-            <Skeleton width={65} height={80} borderRadius={12} style={{ marginBottom: 6 }} />
+            <Skeleton width={56} height={56} borderRadius={8} style={{ marginBottom: 6 }} />
             <Skeleton width={50} height={12} />
           </View>
         ))}
@@ -197,7 +200,7 @@ export default function CategoriesScreen() {
                 <Image 
                   source={{ uri: getLogoUrl(cat) }} 
                   style={styles.sidebarImage} 
-                  contentFit="cover"
+                  contentFit="contain"
                 />
                 <Text 
                   style={[
@@ -220,15 +223,14 @@ export default function CategoriesScreen() {
           refreshing={refreshing}
           onRefresh={onRefresh}
         >
-          <Animated.FlatList
+          <AnimatedFlashList
             data={subCategories}
-            keyExtractor={(item) => item._id}
+            keyExtractor={(item: any) => item._id}
             numColumns={2}
-            key={'2_columns'}
             showsVerticalScrollIndicator={false}
-            columnWrapperStyle={styles.cardRow}
             contentContainerStyle={styles.listContent}
             scrollEventThrottle={16}
+            estimatedItemSize={cardSize + 40 + 16}
             ListHeaderComponent={() => (
               <Text style={styles.sectionTitle}>
                 {mainCategories.find(c => c._id === selectedMainId)?.name || 'Categories'}
@@ -239,9 +241,17 @@ export default function CategoriesScreen() {
                 <Text style={styles.emptyText}>No subcategories found</Text>
               </View>
             )}
-            renderItem={({ item }) => (
+            renderItem={({ item, index }: { item: any, index: number }) => (
               <TouchableOpacity
-                style={[styles.productCard, { width: cardSize, height: cardSize + 40 }]}
+                style={[
+                  styles.productCard, 
+                  { 
+                    width: cardSize, 
+                    height: cardSize + 40,
+                    marginBottom: 16,
+                    marginLeft: index % 2 === 1 ? 8 : 0
+                  }
+                ]}
                 onPress={() => handleSubcategoryPress(item.name, item._id)}
                 activeOpacity={0.8}
               >
@@ -297,9 +307,9 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
   },
   sidebarImage: { 
-    width: 65, 
-    height: 80, 
-    borderRadius: 12, 
+    width: 56, 
+    height: 56, 
+    borderRadius: 8, 
     marginBottom: 6, 
     // backgroundColor: '#F8F8F8' 
   },
