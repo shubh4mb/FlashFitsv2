@@ -316,10 +316,13 @@ export default function MerchantDetailScreen() {
               <Text style={styles.metaText}>{distanceInfo.mins} mins</Text>
             </View>
             <View style={styles.metaDivider} />
-            <View style={styles.metaItem}>
+            <TouchableOpacity 
+              style={styles.metaItem}
+              onPress={() => router.push({ pathname: '/merchant/reviews', params: { merchantId: id } } as any)}
+            >
               <Ionicons name="chatbubble-outline" size={14} color="#64748B" />
               <Text style={styles.metaText}>{reviewCount} reviews</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.metaDivider} />
             <View style={styles.metaItem}>
               <Ionicons name={distanceInfo.isNearby ? "cube-outline" : "cart-outline"} size={14} color="#64748B" />

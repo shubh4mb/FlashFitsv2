@@ -3,6 +3,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { GenderThemes, Typography } from '../../constants/theme';

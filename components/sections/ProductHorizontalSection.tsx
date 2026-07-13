@@ -7,6 +7,7 @@ import {
   Text,
   View,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
