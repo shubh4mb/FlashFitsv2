@@ -188,104 +188,99 @@ export default function StoresScreen() {
               contentContainerStyle={styles.topStoresList}
             >
               {topStores.map((store) => {
-                const distanceStr = getDistanceStr(store);
-                const ratingVal = store.rating && store.rating > 0 ? store.rating.toFixed(1) : '4.5';
-                return (
-                  <TouchableOpacity
-                    key={store._id}
-                    style={styles.topStoreCard}
-                    activeOpacity={0.9}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: '/merchant/[id]', params: { id: store._id } } as any);
-                    }}
-                  >
-                    {/* Cover Section */}
-                    <View style={styles.cardCoverContainer}>
-                      {store.backgroundImage?.url ? (
-                        <Image
-                          source={{ uri: store.backgroundImage.url }}
-                          style={styles.cardCover}
-                          contentFit="cover"
-                          transition={200}
-                        />
-                      ) : (
-                        <LinearGradient
-                          colors={['#475569', '#1E293B']}
-                          style={styles.cardCover}
-                        />
-                      )}
+  const distanceStr = getDistanceStr(store);
+  const ratingVal = store.rating && store.rating > 0 ? store.rating.toFixed(1) : '4.5';
+  return (
+    <TouchableOpacity
+      key={store._id}
+      style={styles.topStoreCard}
+      activeOpacity={0.85}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push({ pathname: '/merchant/[id]', params: { id: store._id } } as any);
+      }}
+    >
+      {/* Cover Section */}
+      <View style={styles.cardCoverContainer}>
+        {store.backgroundImage?.url ? (
+          <Image
+            source={{ uri: store.backgroundImage.url }}
+            style={styles.cardCover}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <View style={[styles.cardCover, styles.cardCoverFallback]} />
+        )}
 
-                      {/* Online Status Badge */}
-                      <View style={[
-                        styles.cardOnlineBadge, 
-                        { backgroundColor: store.isOnline ? 'rgba(34, 197, 94, 0.9)' : 'rgba(100, 116, 139, 0.9)' }
-                      ]}>
-                        <View style={[
-                          styles.cardOnlineDot, 
-                          { backgroundColor: store.isOnline ? '#FFF' : '#E2E8F0' }
-                        ]} />
-                        <Text style={[
-                          styles.cardOnlineText, 
-                          { color: store.isOnline ? '#FFF' : '#E2E8F0' }
-                        ]}>
-                          {store.isOnline ? 'ONLINE' : 'OFFLINE'}
-                        </Text>
-                      </View>
-                    </View>
+        {/* Status Pill */}
+        <View style={styles.cardStatusPill}>
+          <View
+            style={[
+              styles.cardStatusDot,
+              { backgroundColor: store.isOnline ? '#FFFFFF' : 'rgba(255,255,255,0.4)' },
+            ]}
+          />
+          <Text style={styles.cardStatusText}>
+            {store.isOnline ? 'Online' : 'Offline'}
+          </Text>
+        </View>
+      </View>
 
-                    {/* Absolute Logo */}
-                    <View style={styles.cardLogoContainer}>
-                      <Image
-                        source={{ uri: store.logo.url }}
-                        style={styles.cardLogo}
-                        contentFit="contain"
-                      />
-                    </View>
+      {/* Absolute Logo */}
+      <View style={styles.cardLogoContainer}>
+        <Image
+          source={{ uri: store.logo.url }}
+          style={styles.cardLogo}
+          contentFit="contain"
+        />
+      </View>
 
-                    {/* Details Section */}
-                    <View style={styles.cardDetailsContainer}>
-                      <View style={styles.cardHeaderRow}>
-                        <Text style={styles.cardShopName} numberOfLines={1}>
-                          {store.shopName}
-                        </Text>
-                        <View style={styles.cardRatingBox}>
-                          <Ionicons name="star" size={10} color="#F59E0B" />
-                          <Text style={styles.cardRatingText}>{ratingVal}</Text>
-                        </View>
-                      </View>
+      {/* Details Section */}
+      <View style={styles.cardDetailsContainer}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.cardShopName} numberOfLines={1}>
+            {store.shopName}
+          </Text>
+          <View style={styles.cardRatingBox}>
+            <Ionicons name="star" size={11} color="#0F172A" />
+            <Text style={styles.cardRatingText}>{ratingVal}</Text>
+          </View>
+        </View>
 
-                      {/* Info Row: Distance, Products */}
-                      <View style={styles.cardSubInfoRow}>
-                        {distanceStr && (
-                          <View style={styles.cardSubInfoItem}>
-                            <Ionicons name="location" size={12} color="#64748B" />
-                            <Text style={styles.cardSubInfoText}>{distanceStr}</Text>
-                          </View>
-                        )}
-                        
-                        {(store.stats?.totalProducts ?? 0) > 0 && (
-                          <>
-                            <Text style={styles.cardMetricDivider}>•</Text>
-                            <View style={styles.cardSubInfoItem}>
-                              <Ionicons name="cube" size={12} color="#64748B" />
-                              <Text style={styles.cardSubInfoText}>{store.stats?.totalProducts} Products</Text>
-                            </View>
-                          </>
-                        )}
-                      </View>
+        {/* Info Row: Distance, Products */}
+        <View style={styles.cardSubInfoRow}>
+          {distanceStr && (
+            <View style={styles.cardSubInfoItem}>
+              <Ionicons name="location-outline" size={12} color="#94A3B8" />
+              <Text style={styles.cardSubInfoText}>{distanceStr}</Text>
+            </View>
+          )}
 
-                      {/* Tags Row: Genders */}
-                      <View style={styles.cardTagsRow}>
-                        {store.genderCategory?.map(gen => (
-                          <View key={gen} style={styles.cardTag}>
-                            <Text style={styles.cardTagText}>{gen}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
+          {(store.stats?.totalProducts ?? 0) > 0 && (
+            <>
+              <View style={styles.cardMetricDivider} />
+              <View style={styles.cardSubInfoItem}>
+                <Ionicons name="cube-outline" size={12} color="#94A3B8" />
+                <Text style={styles.cardSubInfoText}>
+                  {store.stats?.totalProducts} Products
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Tags Row: Genders */}
+        <View style={styles.cardTagsRow}>
+          {store.genderCategory?.map((gen) => (
+            <View key={gen} style={styles.cardTag}>
+              <Text style={styles.cardTagText}>{gen}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
               })}
             </ScrollView>
           </View>
@@ -513,144 +508,140 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 16,
   },
-  topStoreCard: {
-    width: width * 0.75,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    marginBottom: 5,
-  },
-  cardCoverContainer: {
-    width: '100%',
-    height: 95,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  cardCover: {
-    width: '100%',
-    height: '100%',
-  },
-  cardOnlineBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  cardOnlineDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  cardOnlineText: {
-    fontSize: 9,
-    fontFamily: Typography.fontFamily.bold,
-    letterSpacing: 0.5,
-  },
-  cardLogoContainer: {
-    position: 'absolute',
-    top: 70,
-    left: 16,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FFFFFF',
-    padding: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    zIndex: 10,
-  },
-  cardLogo: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 23,
-  },
-  cardDetailsContainer: {
-    flex: 1,
-    paddingTop: 32,
-    paddingHorizontal: 16,
-    paddingBottom: 18,
-    backgroundColor: '#FFFFFF',
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardShopName: {
-    color: '#0F172A',
-    fontSize: 15,
-    fontFamily: Typography.fontFamily.bold,
-    flex: 1,
-    marginRight: 8,
-  },
-  cardRatingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFBEB',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    gap: 4,
-  },
-  cardRatingText: {
-    color: '#D97706',
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.bold,
-  },
-  cardSubInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 6,
-  },
-  cardSubInfoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  cardSubInfoText: {
-    color: '#64748B',
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.medium,
-  },
-  cardMetricDivider: {
-    color: '#CBD5E1',
-    fontSize: 11,
-  },
-  cardTagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    gap: 6,
-  },
-  cardTag: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  cardTagText: {
-    color: '#475569',
-    fontSize: 10,
-    fontFamily: Typography.fontFamily.medium,
-  },
+ topStoreCard: {
+  width: width * 0.7,
+  borderRadius: 12,
+  overflow: 'hidden',
+  backgroundColor: '#FFFFFF',
+  borderWidth: 1,
+  borderColor: '#EAEAEA',
+  marginBottom: 4,
+},
+cardCoverContainer: {
+  width: '100%',
+  height: 88,
+  position: 'relative',
+  overflow: 'hidden',
+  backgroundColor: '#F1F1F1',
+},
+cardCover: {
+  width: '100%',
+  height: '100%',
+},
+cardCoverFallback: {
+  backgroundColor: '#1A1A1A',
+},
+cardStatusPill: {
+  position: 'absolute',
+  top: 10,
+  right: 10,
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: 9,
+  paddingVertical: 4,
+  borderRadius: 20,
+  backgroundColor: 'rgba(15, 23, 42, 0.75)',
+  gap: 5,
+},
+cardStatusDot: {
+  width: 5,
+  height: 5,
+  borderRadius: 2.5,
+},
+cardStatusText: {
+  fontSize: 9,
+  fontFamily: Typography.fontFamily.medium,
+  color: '#FFFFFF',
+  letterSpacing: 0.3,
+},
+cardLogoContainer: {
+  position: 'absolute',
+  top: 64,
+  left: 16,
+  width: 48,
+  height: 48,
+  borderRadius: 24,
+  backgroundColor: '#FFFFFF',
+  padding: 2,
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 1,
+  borderColor: '#EAEAEA',
+  zIndex: 10,
+},
+cardLogo: {
+  width: '100%',
+  height: '100%',
+  borderRadius: 22,
+},
+cardDetailsContainer: {
+  flex: 1,
+  paddingTop: 28,
+  paddingHorizontal: 16,
+  paddingBottom: 16,
+  backgroundColor: '#FFFFFF',
+},
+cardHeaderRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+},
+cardShopName: {
+  color: '#0F172A',
+  fontSize: 15,
+  fontFamily: Typography.fontFamily.bold,
+  flex: 1,
+  marginRight: 8,
+},
+cardRatingBox: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 3,
+},
+cardRatingText: {
+  color: '#0F172A',
+  fontSize: 12,
+  fontFamily: Typography.fontFamily.bold,
+},
+cardSubInfoRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 6,
+  gap: 8,
+},
+cardSubInfoItem: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 3,
+},
+cardSubInfoText: {
+  color: '#94A3B8',
+  fontSize: 11,
+  fontFamily: Typography.fontFamily.medium,
+},
+cardMetricDivider: {
+  width: 3,
+  height: 3,
+  borderRadius: 1.5,
+  backgroundColor: '#CBD5E1',
+},
+cardTagsRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 12,
+  gap: 6,
+},
+cardTag: {
+  borderWidth: 1,
+  borderColor: '#E2E2E2',
+  paddingHorizontal: 8,
+  paddingVertical: 3,
+  borderRadius: 6,
+},
+cardTagText: {
+  color: '#0F172A',
+  fontSize: 9.5,
+  fontFamily: Typography.fontFamily.medium,
+  letterSpacing: 0.2,
+},
 });

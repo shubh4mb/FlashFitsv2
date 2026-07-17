@@ -5,7 +5,8 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
-import React from 'react';
+import React, { useEffect } from 'react';
+import Svg, { Path } from 'react-native-svg';
 import {
   Platform,
   StyleSheet,
@@ -64,18 +65,41 @@ const ProductCard = ({
   const mrp = variant?.mrp ?? product.mrp ?? price;
   const discount = mrp && mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
   const isTriable = variant?.isTriable ?? product.isTriable ?? false;
+  const isFast = (product.isInstantBuyable || isNearby || product.isNearby);
 
-  const scale = useSharedValue(1);
+  const translateY = useSharedValue(0);
+  const shadowOpacity = useSharedValue(0.05);
+  const fillProgress = useSharedValue(isFavorite ? 1 : 0);
 
-  const animatedHeartStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+  useEffect(() => {
+    fillProgress.value = withTiming(isFavorite ? 1 : 0, { duration: 200 });
+  }, [isFavorite]);
+
+  const animatedBookmarkStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    shadowOpacity: shadowOpacity.value,
+    shadowRadius: shadowOpacity.value > 0.08 ? 4 : 2,
+    elevation: shadowOpacity.value > 0.08 ? 4 : 2,
+  }));
+
+  const outlineStyle = useAnimatedStyle(() => ({
+    opacity: 1 - fillProgress.value,
+  }));
+  const solidStyle = useAnimatedStyle(() => ({
+    opacity: fillProgress.value,
   }));
 
   const handleWishlistPress = async () => {
     // Pop animation
-    scale.value = withSequence(
-      withTiming(1.3, { duration: 100 }),
-      withSpring(1, { damping: 10, stiffness: 100 })
+    translateY.value = withSequence(
+      withTiming(-3, { duration: 100 }),
+      withSpring(0, { damping: 12, stiffness: 180 })
+    );
+
+    // Shadow increase
+    shadowOpacity.value = withSequence(
+      withTiming(0.2, { duration: 100 }),
+      withTiming(0.05, { duration: 200 })
     );
 
     // Priority: explicit variantId > current variant's _id > first variant in array
@@ -105,34 +129,36 @@ const ProductCard = ({
           transition={300}
         />
 
-        {discount > 0 && (
-          <View style={styles.discountBadge}>
-            <Text style={styles.discountText}>{discount}% OFF</Text>
-          </View>
-        )}
 
-        {/* Wishlist Button */}
+
+        {/* Premium Bookmark Ribbon */}
         <TouchableOpacity
-          style={styles.wishlistButton}
-          activeOpacity={0.8}
+          style={styles.bookmarkButtonContainer}
+          activeOpacity={1}
           onPress={handleWishlistPress}
         >
-          <BlurView intensity={70} tint="light" style={styles.wishlistBlur}>
-            <Animated.View style={animatedHeartStyle}>
-              <Ionicons
-                name={isFavorite ? "heart" : "heart-outline"}
-                size={20}
-                color={isFavorite ? "#EF4444" : "#1E293B"}
-              />
+          <Animated.View style={[styles.bookmarkShadowContainer, animatedBookmarkStyle]}>
+            {/* Outline (Resting State) */}
+            <Animated.View style={[StyleSheet.absoluteFill, outlineStyle]}>
+              <Svg width="28" height="44" viewBox="0 0 28 44">
+                <Path d="M1,5 A4,4 0 0,1 5,1 L23,1 A4,4 0 0,1 27,5 L27,43 L14,35 L1,43 Z" fill="#FFFFFF" stroke="#CBD5E1" strokeWidth="1" />
+              </Svg>
             </Animated.View>
-          </BlurView>
+            
+            {/* Solid (Saved State) */}
+            <Animated.View style={[StyleSheet.absoluteFill, solidStyle]}>
+              <Svg width="28" height="44" viewBox="0 0 28 44">
+                <Path d="M1,5 A4,4 0 0,1 5,1 L23,1 A4,4 0 0,1 27,5 L27,43 L14,35 L1,43 Z" fill="#1C1C1E" />
+              </Svg>
+            </Animated.View>
+          </Animated.View>
         </TouchableOpacity>
 
         {/* Delivery Time Badge */}
-        <View style={[styles.tryBadge, { backgroundColor: (product.isInstantBuyable || isNearby || product.isNearby) ? "#22C55E" : "#64748B" }]}>
-          <Ionicons name={(product.isInstantBuyable || isNearby || product.isNearby) ? "flash" : "time-outline"} size={10} color="#FFFFFF" />
+        <View style={styles.tryBadge}>
+          <View style={[styles.tryDot, { backgroundColor: isFast ? "#3FA65C" : "#C9A24B" }]} />
           <Text style={styles.tryBadgeText}>
-            {(product.isInstantBuyable || isNearby || product.isNearby) ? "20-40 MINS" : "1-7 DAYS"}
+            {isFast ? "20-40 MINS" : "1-7 DAYS"}
           </Text>
         </View>
       </View>
@@ -159,8 +185,8 @@ const ProductCard = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginRight: 16,
+    borderRadius: 12,
+    marginRight: 8,
     overflow: 'hidden',
   },
   imageContainer: {
@@ -173,49 +199,31 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  wishlistButton: {
+  bookmarkButtonContainer: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    overflow: 'hidden',
+    top: -2,
+    right: 12,
+    zIndex: 10,
+  },
+  bookmarkShadowContainer: {
+    width: 28,
+    height: 44,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
   },
-  wishlistBlur: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
-  discountBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 0,
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8,
-  },
-  discountText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontFamily: Typography.fontFamily.bold,
-  },
+
   details: {
     padding: 8,
   },
   name: {
-    fontFamily: Typography.fontFamily.serif,
-    fontSize: 13,
-    color: '#0F172A',
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: 11.5,
+    color: '#1C1C1A',
+    letterSpacing: -0.3,
     marginBottom: 2,
   },
   priceRow: {
@@ -225,14 +233,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   price: {
-    fontFamily: Typography.fontFamily.serifMedium,
-    fontSize: 15,
-    color: '#0F172A',
+    fontFamily: Typography.fontFamily.semiBold,
+    fontSize: 13,
+    color: '#1C1C1A',
+    letterSpacing: -0.3,
   },
   mrp: {
     fontFamily: Typography.fontFamily.medium,
-    fontSize: 11,
+    fontSize: 10,
     color: '#94A3B8',
+    letterSpacing: -0.2,
     textDecorationLine: 'line-through',
   },
   ratingRow: {
@@ -289,25 +299,28 @@ const styles = StyleSheet.create({
   },
   tryBadge: {
     position: 'absolute',
-    bottom: 8,
-    left: 8,
+    bottom: 0,
+    left: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 100, // Minimal pill shape
+    paddingHorizontal: 7,
+    paddingVertical: 3.5,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 0,
+    borderTopLeftRadius: 0,
+    borderBottomRightRadius: 0,
     gap: 4,
-    // Refined professional shadow
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  tryDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
   },
   tryBadgeText: {
-    fontSize: 8, // Slightly larger for readability
+    fontSize: 7.5,
     fontFamily: Typography.fontFamily.bold,
-    color: '#FFF',
+    color: '#1C1C1A',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
