@@ -59,7 +59,9 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.PLACEHOLDER_REVERSED_CLIENT_ID"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

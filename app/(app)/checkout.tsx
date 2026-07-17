@@ -23,7 +23,9 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -745,7 +747,6 @@ export default function CheckoutScreen() {
         onError={handleRazorpayError}
         onClose={handleRazorpayClose}
       />
-
 
     </View>
   );

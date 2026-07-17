@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
+  Easing,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -20,7 +21,131 @@ import logo from "../../assets/images/logo/logo.png";
 import { useAuth } from "../../context/AuthContext";
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 
+// Safe import of expo-device — native module may not be available in Expo Go or Web
+let Device: { isDevice: boolean; totalMemory?: number } = { isDevice: Platform.OS !== 'web' };
+try {
+  Device = require('expo-device');
+} catch (e) {
+  console.warn('expo-device native module not available, using fallback');
+}
+
+const isLowSpec = !Device.isDevice || (Device.totalMemory ? Device.totalMemory < 3 * 1024 * 1024 * 1024 : false);
+
 const { width, height } = Dimensions.get("window");
+
+// Floating background assets
+const FLOATING_ASSETS_RESOURCES = [
+  require("../../assets/splashScreenAssests/24.png"),
+  require("../../assets/splashScreenAssests/25.png"),
+  require("../../assets/splashScreenAssests/26.png"),
+  require("../../assets/splashScreenAssests/27.png"),
+  require("../../assets/splashScreenAssests/28.png"),
+  require("../../assets/splashScreenAssests/29.png"),
+  require("../../assets/splashScreenAssests/30.png"),
+  require("../../assets/splashScreenAssests/31.png"),
+  require("../../assets/splashScreenAssests/32.png"),
+  require("../../assets/splashScreenAssests/33.png"),
+  require("../../assets/splashScreenAssests/34.png"),
+];
+
+interface MovingAssetProps {
+  source: any;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  baseScale: number;
+  isLowSpec?: boolean;
+}
+
+function MovingAsset({ source, minX, maxX, minY, maxY, baseScale, isLowSpec }: MovingAssetProps) {
+  const floatAnimX = useRef(new Animated.Value(0)).current;
+  const floatAnimY = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(baseScale)).current;
+
+  useEffect(() => {
+    // Fade in
+    Animated.timing(fadeAnim, {
+      toValue: 0.75,
+      duration: 1200,
+      useNativeDriver: true,
+    }).start();
+
+    // Constant non-linear movements (only on high-spec devices)
+    const move = () => {
+      const targetX = minX + Math.random() * (maxX - minX);
+      const targetY = minY + Math.random() * (maxY - minY);
+      const targetRotate = (Math.random() - 0.5) * 60;
+      const targetScale = baseScale * (0.8 + Math.random() * 0.4);
+      const duration = 8000 + Math.random() * 6000;
+
+      Animated.parallel([
+        Animated.timing(floatAnimX, {
+          toValue: targetX,
+          duration,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnimY, {
+          toValue: targetY,
+          duration,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotateAnim, {
+          toValue: targetRotate,
+          duration,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: targetScale,
+          duration,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start(() => move());
+    };
+
+    // Set initial position immediately without transition
+    const startX = minX + Math.random() * (maxX - minX);
+    const startY = minY + Math.random() * (maxY - minY);
+    floatAnimX.setValue(startX);
+    floatAnimY.setValue(startY);
+
+    // Delay start of movement slightly if not low spec
+    if (!isLowSpec) {
+      const timer = setTimeout(move, 200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const interpolatedRotate = rotateAnim.interpolate({
+    inputRange: [-180, 180],
+    outputRange: ["-180deg", "180deg"],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.floatingAsset,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { translateX: floatAnimX },
+            { translateY: floatAnimY },
+            { scale: scaleAnim },
+            { rotate: interpolatedRotate },
+          ],
+        },
+      ]}
+    >
+      <Image source={source} style={styles.floatingAssetImage} resizeMode="contain" />
+    </Animated.View>
+  );
+}
 
 export default function PhoneLogin() {
   const router = useRouter();
@@ -29,6 +154,51 @@ export default function PhoneLogin() {
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const randomAssets = useRef(
+    (() => {
+      const shuffled = [...FLOATING_ASSETS_RESOURCES].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, isLowSpec ? 2 : 4);
+      return selected.map((source, index) => {
+        let minX = 0;
+        let maxX = 0;
+        let minY = 0;
+        let maxY = 0;
+        const baseScale = 0.45;
+
+        if (index === 0) {
+          minX = -30;
+          maxX = width * 0.35;
+          minY = height * 0.02;
+          maxY = height * 0.18;
+        } else if (index === 1) {
+          minX = width * 0.55;
+          maxX = width - 50;
+          minY = height * 0.02;
+          maxY = height * 0.18;
+        } else if (index === 2) {
+          minX = -30;
+          maxX = width * 0.35;
+          minY = height * 0.78;
+          maxY = height * 0.90;
+        } else {
+          minX = width * 0.55;
+          maxX = width - 50;
+          minY = height * 0.78;
+          maxY = height * 0.90;
+        }
+
+        return {
+          source,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          baseScale,
+        };
+      });
+    })()
+  ).current;
 
   // Google Sign-In setup
   useEffect(() => {
@@ -194,12 +364,19 @@ export default function PhoneLogin() {
   // ── Render ─────────────────────────────────────────────────────────
   return (
     <View style={styles.centerWrapper}>
-      <LinearGradient colors={["#ffffffff", "#ffffffff", "#ffffffff"]} style={styles.gradient}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.select({ ios: 0, android: 20 })}
-        >
+      {/* Sibling absolute background layout */}
+      <LinearGradient colors={["#ffffffff", "#ffffffff", "#ffffffff"]} style={[StyleSheet.absoluteFillObject, { zIndex: -2 }]} />
+
+      {/* Floating Assets in Background */}
+      {randomAssets.map((asset, index) => (
+        <MovingAsset key={index} {...asset} isLowSpec={isLowSpec} />
+      ))}
+
+      <KeyboardAvoidingView
+        style={{ flex: 1, width: "100%" }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.select({ ios: 0, android: 20 })}
+      >
           <ScrollView
             contentContainerStyle={styles.scrollContainer}
             showsVerticalScrollIndicator={false}
@@ -362,14 +539,26 @@ export default function PhoneLogin() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-
-      </LinearGradient>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
+  floatingAsset: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: 100,
+    height: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: -1,
+  },
+  floatingAssetImage: {
+    width: "100%",
+    height: "100%",
+  },
 
   scrollContainer: {
     flexGrow: 1,
@@ -391,7 +580,7 @@ const styles = StyleSheet.create({
   /* ── CARD ── */
   cardWrapper: { width: "100%", marginBottom: 32 },
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "transparent",
     borderRadius: 32,
     padding: 28,
   },
