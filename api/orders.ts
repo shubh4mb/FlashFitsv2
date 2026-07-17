@@ -76,6 +76,19 @@ export const cancelOrder = async (orderId: string) => {
 };
 
 /**
+ * Report an unresponsive rider
+ */
+export const reportUnresponsiveRider = async (orderId: string) => {
+    try {
+        const res = await api.post(`/user/order/report-rider/${orderId}`);
+        return res.data;
+    } catch (error: any) {
+        console.error('Report rider error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
+/**
  * Confirm cloth selection (Keep/Return) — initiateReturn
  */
 export const confirmClothSelection = async (payload: { orderId: string; items: any[] }) => {

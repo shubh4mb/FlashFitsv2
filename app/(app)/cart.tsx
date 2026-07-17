@@ -374,65 +374,87 @@ export default function CartScreen() {
 
                             {mOffers.availableOffers.map((offer: any) => {
                               const isApplied = mOffers.appliedOffers?.some((o: any) => (o._id?.toString() || o.offerId?.toString()) === (offer._id?.toString() || offer.offerId?.toString()));
-                              return (
-                                <View
-                                  key={offer._id}
-                                  style={[
-                                    styles.offerCard,
-                                    isApplied && {
-                                      borderColor: theme.primary,
-                                      backgroundColor: theme.primary + '05',
-                                    }
-                                  ]}
-                                >
-                                  {isApplied && (
-                                    <View style={[styles.appliedBadge, { backgroundColor: theme.primary }]}>
-                                      <Ionicons name="checkmark" size={10} color="#fff" />
-                                    </View>
-                                  )}
+                              
+                              const minCartValue = offer.conditions?.minCartValue || 0;
+                              const minOrderValue = offer.conditions?.minOrderValue || 0;
+                              const threshold = Math.max(minCartValue, minOrderValue);
+                              const showTryAndBuyWarning = threshold > 0;
 
-                                  <View style={styles.offerCardLeft}>
-                                    <View style={[styles.iconContainer, { backgroundColor: theme.primary + '12' }]}>
-                                      <MaterialCommunityIcons name="ticket-percent" size={22} color={theme.primary} />
-                                    </View>
-                                    <View style={styles.offerDetails}>
-                                      <View style={styles.codeRow}>
-                                        <View style={[styles.codeBadge, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
-                                          <Text style={[styles.codeText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
-                                            {offer.couponCode || offer.title}
-                                          </Text>
-                                        </View>
-                                        {!!offer.discountAmount && (
-                                          <Text style={[styles.saveTag, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
-                                            Save ₹{offer.discountAmount}
-                                          </Text>
-                                        )}
+                              return (
+                                <View key={offer._id} style={{ marginBottom: 12 }}>
+                                  <View
+                                    style={[
+                                      styles.offerCard,
+                                      { marginBottom: 0 },
+                                      isApplied && {
+                                        borderColor: theme.primary,
+                                        backgroundColor: theme.primary + '05',
+                                      },
+                                      showTryAndBuyWarning && {
+                                        borderBottomLeftRadius: 0,
+                                        borderBottomRightRadius: 0,
+                                        borderBottomWidth: 0,
+                                      }
+                                    ]}
+                                  >
+                                    {isApplied && (
+                                      <View style={[styles.appliedBadge, { backgroundColor: theme.primary }]}>
+                                        <Ionicons name="checkmark" size={10} color="#fff" />
                                       </View>
-                                      <Text style={[styles.offerDescription, { fontFamily: Typography.fontFamily.medium }]} numberOfLines={2}>
-                                        {offer.description || `Get ₹${offer.discountAmount} off on your order`}
+                                    )}
+
+                                    <View style={styles.offerCardLeft}>
+                                      <View style={[styles.iconContainer, { backgroundColor: theme.primary + '12' }]}>
+                                        <MaterialCommunityIcons name="ticket-percent" size={22} color={theme.primary} />
+                                      </View>
+                                      <View style={styles.offerDetails}>
+                                        <View style={styles.codeRow}>
+                                          <View style={[styles.codeBadge, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
+                                            <Text style={[styles.codeText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
+                                              {offer.couponCode || offer.title}
+                                            </Text>
+                                          </View>
+                                          {!!offer.discountAmount && (
+                                            <Text style={[styles.saveTag, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
+                                              Save ₹{offer.discountAmount}
+                                            </Text>
+                                          )}
+                                        </View>
+                                        <Text style={[styles.offerDescription, { fontFamily: Typography.fontFamily.medium }]} numberOfLines={2}>
+                                          {offer.description || `Get ₹${offer.discountAmount} off on your order`}
+                                        </Text>
+                                      </View>
+                                    </View>
+
+                                    <View style={styles.offerCardRight}>
+                                      {isApplied ? (
+                                        <TouchableOpacity
+                                          onPress={() => removeOffer(offer._id)}
+                                          activeOpacity={0.7}
+                                          style={[styles.actionBtn, styles.removeBtn]}
+                                        >
+                                          <Text style={[styles.removeBtnText, { fontFamily: Typography.fontFamily.bold }]}>Remove</Text>
+                                        </TouchableOpacity>
+                                      ) : (
+                                        <TouchableOpacity
+                                          onPress={() => applyOffer(offer._id)}
+                                          activeOpacity={0.7}
+                                          style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+                                        >
+                                          <Text style={[styles.applyBtnText, { fontFamily: Typography.fontFamily.bold }]}>Apply</Text>
+                                        </TouchableOpacity>
+                                      )}
+                                    </View>
+                                  </View>
+
+                                  {showTryAndBuyWarning && (
+                                    <View style={styles.warningContainer}>
+                                      <Ionicons name="warning" size={14} color="#D97706" />
+                                      <Text style={styles.warningText}>
+                                        Try & Buy Note: You must keep items worth at least ₹{threshold} during final payment to claim this offer.
                                       </Text>
                                     </View>
-                                  </View>
-
-                                  <View style={styles.offerCardRight}>
-                                    {isApplied ? (
-                                      <TouchableOpacity
-                                        onPress={() => removeOffer(offer._id)}
-                                        activeOpacity={0.7}
-                                        style={[styles.actionBtn, styles.removeBtn]}
-                                      >
-                                        <Text style={[styles.removeBtnText, { fontFamily: Typography.fontFamily.bold }]}>Remove</Text>
-                                      </TouchableOpacity>
-                                    ) : (
-                                      <TouchableOpacity
-                                        onPress={() => applyOffer(offer._id)}
-                                        activeOpacity={0.7}
-                                        style={[styles.actionBtn, { backgroundColor: theme.primary }]}
-                                      >
-                                        <Text style={[styles.applyBtnText, { fontFamily: Typography.fontFamily.bold }]}>Apply</Text>
-                                      </TouchableOpacity>
-                                    )}
-                                  </View>
+                                  )}
                                 </View>
                               );
                             })}
@@ -1089,5 +1111,25 @@ const styles = StyleSheet.create({
   applyBtnText: {
     fontSize: 12,
     color: '#FFFFFF',
+  },
+  warningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    padding: 10,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderStyle: 'dashed',
+    borderTopWidth: 0,
+    gap: 8,
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '700',
+    flex: 1,
+    lineHeight: 16,
   },
 });

@@ -19,7 +19,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
-import { getOrderById, finalpaymentInitiate, finalPaymentVerify, confirmCodSelection } from '@/api/orders';
+import { getOrderById, finalpaymentInitiate, finalPaymentVerify, confirmCodSelection, reportUnresponsiveRider } from '@/api/orders';
 import { getMyReviews } from '@/api/reviews';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners, leaveOrderRoom } from '@/sockets/order.socket';
 import { getSocket } from '@/config/socket';
@@ -381,10 +381,38 @@ export default function OrderTrackingScreen() {
     };
   }, [orderId]);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
-    await fetchOrder();
-    setRefreshing(false);
+    fetchOrder().finally(() => setRefreshing(false));
+  }, [fetchOrder]);
+
+  const handleReportRider = async () => {
+    if (order?.riderUnresponsiveReport?.status === 'pending') {
+      showToast({ message: 'You have already reported the rider. An admin is reviewing it.', type: 'info' });
+      return;
+    }
+    
+    Alert.alert(
+      "Report Rider Unresponsive",
+      "Are you sure you want to report the rider? An admin will review this and may cancel your order if the rider cannot be reached.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Report", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              if (!orderId) return;
+              await reportUnresponsiveRider(orderId as string);
+              showToast({ message: 'Rider reported successfully. Admin will review.', type: 'success' });
+              fetchOrder();
+            } catch (err: any) {
+              showToast({ message: err.response?.data?.message || 'Failed to report rider.', type: 'error' });
+            }
+          }
+        }
+      ]
+    );
   };
 
   // ── Update billing whenever items change ──
@@ -582,6 +610,22 @@ export default function OrderTrackingScreen() {
     );
   }
 
+  const handleHelp = () => {
+    if (order?.riderUnresponsiveReport?.status === 'pending') {
+      Alert.alert('Rider Reported', 'You have already reported the rider. An admin is reviewing it.');
+      return;
+    }
+    Alert.alert(
+      "Help Support",
+      "How can we assist you with this order?",
+      [
+        { text: "Rider is unresponsive", onPress: handleReportRider },
+        { text: "Other Issue", onPress: () => router.push('/(app)/help-center') },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -592,7 +636,9 @@ export default function OrderTrackingScreen() {
           <Ionicons name="chevron-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order #{orderId?.slice(-5).toUpperCase()}</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={handleHelp} style={styles.backBtn}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary }}>Help</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -664,22 +710,24 @@ export default function OrderTrackingScreen() {
 
         {/* ─── Rider Info ─── */}
         {rider && (isTracking || isTryPhase) && (
-          <View style={styles.riderCard}>
-            <View style={[styles.riderAvatar, { backgroundColor: theme.primary + '15' }]}>
-              <Text style={[styles.avatarText, { color: theme.primary }]}>{rider.name?.charAt(0) || 'R'}</Text>
+          <View style={[styles.riderCard, { flexDirection: 'column', gap: 12 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.riderAvatar, { backgroundColor: theme.primary + '15' }]}>
+                <Text style={[styles.avatarText, { color: theme.primary }]}>{rider.name?.charAt(0) || 'R'}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.riderName}>{rider.name}</Text>
+                <Text style={styles.riderRole}>Delivery Partner</Text>
+              </View>
+              {rider.phone && rider.phone !== 'N/A' && (
+                <TouchableOpacity
+                  style={[styles.callBtn, { backgroundColor: theme.primary }]}
+                  onPress={() => Linking.openURL(`tel:${rider.phone}`)}
+                >
+                  <Ionicons name="call" size={18} color="#fff" />
+                </TouchableOpacity>
+              )}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.riderName}>{rider.name}</Text>
-              <Text style={styles.riderRole}>Delivery Partner</Text>
-            </View>
-            {rider.phone && rider.phone !== 'N/A' && (
-              <TouchableOpacity
-                style={[styles.callBtn, { backgroundColor: theme.primary }]}
-                onPress={() => Linking.openURL(`tel:${rider.phone}`)}
-              >
-                <Ionicons name="call" size={18} color="#fff" />
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
@@ -742,8 +790,8 @@ export default function OrderTrackingScreen() {
 
                 {item.tryStatus === 'returned' && (
                   <TextInput
-                    style={styles.reasonInput}
-                    placeholder="Why are you returning?"
+                    style={[styles.reasonInput, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}
+                    placeholder="Feel free to add feedback (Optional)"
                     placeholderTextColor="#94A3B8"
                     value={item.returnReason || ''}
                     onChangeText={text => handleItemUpdate(idx, 'returned', text)}

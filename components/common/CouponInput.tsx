@@ -187,45 +187,61 @@ export default function CouponInput({ cartContext, themeColor = '#0F172A', order
         <View style={styles.offersList}>
           {applicableOffers.map((offer) => {
             const isOfferLoading = localLoadingOfferId === offer._id;
+            const minCartValue = offer.conditions?.minCartValue || 0;
+            const minOrderValue = offer.conditions?.minOrderValue || 0;
+            const threshold = Math.max(minCartValue, minOrderValue);
+            const showTryAndBuyWarning = orderType === 'try_and_buy' && threshold > 0;
+
             return (
-              <View key={offer._id} style={styles.offerCard}>
-                <View style={styles.offerCardLeft}>
-                  <View style={[styles.iconContainer, { backgroundColor: themeColor + '12' }]}>
-                    <MaterialCommunityIcons name="ticket-percent" size={20} color={themeColor} />
-                  </View>
-                  <View style={styles.offerDetails}>
-                    <View style={styles.codeRow}>
-                      <View style={[styles.codeBadge, { borderColor: themeColor + '30', backgroundColor: themeColor + '08' }]}>
-                        <Text style={[styles.codeText, { color: themeColor }]}>
-                          {offer.couponCode || offer.title}
-                        </Text>
-                      </View>
-                      {!!offer.discountAmount && (
-                        <Text style={[styles.saveTag, { color: '#10B981' }]}>
-                          Save ₹{offer.discountAmount}
-                        </Text>
-                      )}
+              <View key={offer._id} style={styles.offerCardWrapper}>
+                <View style={[styles.offerCard, showTryAndBuyWarning && styles.offerCardWithWarning]}>
+                  <View style={styles.offerCardLeft}>
+                    <View style={[styles.iconContainer, { backgroundColor: themeColor + '12' }]}>
+                      <MaterialCommunityIcons name="ticket-percent" size={20} color={themeColor} />
                     </View>
-                    <Text style={styles.offerDescription} numberOfLines={2}>
-                      {offer.description || `Get discount on your order`}
+                    <View style={styles.offerDetails}>
+                      <View style={styles.codeRow}>
+                        <View style={[styles.codeBadge, { borderColor: themeColor + '30', backgroundColor: themeColor + '08' }]}>
+                          <Text style={[styles.codeText, { color: themeColor }]}>
+                            {offer.couponCode || offer.title}
+                          </Text>
+                        </View>
+                        {!!offer.discountAmount && (
+                          <Text style={[styles.saveTag, { color: '#10B981' }]}>
+                            Save ₹{offer.discountAmount}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={styles.offerDescription} numberOfLines={2}>
+                        {offer.description || `Get discount on your order`}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.offerCardRight}>
+                    <TouchableOpacity
+                      onPress={() => handleApplyOffer(offer)}
+                      activeOpacity={0.7}
+                      style={[styles.actionBtn, { backgroundColor: themeColor }]}
+                      disabled={isOfferLoading}
+                    >
+                      {isOfferLoading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.applyBtnText}>Apply</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                
+                {showTryAndBuyWarning && (
+                  <View style={styles.warningContainer}>
+                    <Ionicons name="warning" size={14} color="#D97706" />
+                    <Text style={styles.warningText}>
+                      Try & Buy Note: You must keep items worth at least ₹{threshold} during final payment to claim this offer.
                     </Text>
                   </View>
-                </View>
-
-                <View style={styles.offerCardRight}>
-                  <TouchableOpacity
-                    onPress={() => handleApplyOffer(offer)}
-                    activeOpacity={0.7}
-                    style={[styles.actionBtn, { backgroundColor: themeColor }]}
-                    disabled={isOfferLoading}
-                  >
-                    {isOfferLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.applyBtnText}>Apply</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                )}
               </View>
             );
           })}
@@ -400,7 +416,6 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderStyle: 'dashed',
     padding: 12,
-    marginTop: 10,
   },
   offerCardLeft: {
     flex: 1,
@@ -463,5 +478,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#FFFFFF',
     fontWeight: '800',
+  },
+  offerCardWrapper: {
+    marginTop: 10,
+  },
+  offerCardWithWarning: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
+  },
+  warningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    padding: 10,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderStyle: 'dashed',
+    borderTopWidth: 0,
+    gap: 8,
+  },
+  warningText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: '700',
+    flex: 1,
+    lineHeight: 16,
   },
 });
