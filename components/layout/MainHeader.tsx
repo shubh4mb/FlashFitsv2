@@ -1,7 +1,8 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Animated,
     Dimensions,
@@ -11,24 +12,25 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CATEGORY_GAP = 16;
 // Calculate item width to show exactly 4.3 items (4 full + peek of 5th)
 const CATEGORY_ITEM_WIDTH = (SCREEN_WIDTH - 32 - (CATEGORY_GAP * 4)) / 4.3;
 const LOGO_SIZE = CATEGORY_ITEM_WIDTH * 0.95; // Slightly smaller than container
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
 
 import { useCart } from "@/context/CartContext";
 import { useCourierCart } from "@/context/CourierCartContext";
+import { useWishlist } from "@/context/WishlistContext";
 import { fetchCategories } from "../../api/categories";
 import { GenderThemes, Typography } from "../../constants/theme";
 import { useAddress } from "../../context/AddressContext";
 import { Gender, useGender } from "../../context/GenderContext";
-import Skeleton from "../common/Skeleton";
 import AddressSelectorModal from "../common/AddressSelectorModal";
+import Skeleton from "../common/Skeleton";
 
 interface MainHeaderProps {
     cartCount?: number;
@@ -49,17 +51,19 @@ const capitalize = (str?: string) => {
 export default function MainHeader({ hideCategories = false, scrollY, onHeaderLayout, refreshKey }: MainHeaderProps) {
     const { cart } = useCart();
     const { courierCart } = useCourierCart();
+    const { wishlistIds } = useWishlist();
 
     const instantCartCount = cart?.merchantCarts?.length || 0;
     const courierCartCount = courierCart?.items?.length || 0;
     const totalCartCount = instantCartCount + courierCartCount;
+    const totalWishlistCount = wishlistIds?.length || 0;
 
     const router = useRouter();
-    const { 
-        locationAddress, 
-        deliveryAvailable, 
-        locationLoading, 
-        detectLocation, 
+    const {
+        locationAddress,
+        deliveryAvailable,
+        locationLoading,
+        detectLocation,
         locationPermission,
         selectedAddress,
         tbAvailable,
@@ -70,7 +74,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
     const [keywordIndex, setKeywordIndex] = useState(0);
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const slideAnim = useRef(new Animated.Value(0)).current;
-    const { selectedGender, setSelectedGender } = useGender();
+    const { selectedGender, setSelectedGender, selectedSubGender, setSelectedSubGender } = useGender();
     const genders: Gender[] = ['Men', 'Women', 'Kids'];
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
@@ -230,90 +234,134 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                 <Animated.View style={[styles.topRow, { opacity: topRowOpacity, elevation: 12, zIndex: 20 }]}>
                     <TouchableOpacity
                         style={styles.locationContainer}
-                        activeOpacity={0.7}
-                        onPress={() => setAddressModalVisible(true)}
+                        activeOpacity={0.6}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setAddressModalVisible(true);
+                        }}
+                        hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                     >
-                        <View style={styles.locationPin}>
+                        <View style={styles.locationPin} pointerEvents="none">
                             <Ionicons name="location" size={18} color={theme.text} />
                         </View>
-                        <View style={styles.addressInfo}>
+                        <View style={styles.addressInfo} pointerEvents="none">
                             {/* Top row: Status */}
-                            <View style={styles.statusRow}>
+                            <View style={styles.statusRow} pointerEvents="none">
                                 {(!locationLoading && (deliveryAvailable !== null || selectedAddress)) ? (
                                     <>
-                                        <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} />
-                                        <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
+                                        <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} pointerEvents="none" />
+                                        <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
                                             {tbAvailable ? 'Try in 60 mins' : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery')}
                                         </Text>
                                     </>
                                 ) : (
-                                    <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1}>
+                                    <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
                                         {locationLoading ? 'Locating...' : 'FlashFits Delivery'}
                                     </Text>
                                 )}
                             </View>
-                            
+
                             {/* Bottom row: Address */}
-                            <Text style={[styles.subText, { color: theme.text }]} numberOfLines={1}>
-                                {selectedAddress 
+                            <Text style={[styles.subText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
+                                {selectedAddress
                                     ? `${capitalize(selectedAddress.addressType)} - ${selectedAddress.addressLine1}`
-                                    : locationLoading 
-                                    ? 'Fetching your location...' 
-                                    : locationPermission !== 'granted'
-                                    ? 'Enable location permission'
-                                    : (locationAddress || 'Tap to select delivery location')}
+                                    : locationLoading
+                                        ? 'Fetching your location...'
+                                        : locationPermission !== 'granted'
+                                            ? 'Enable location permission'
+                                            : (locationAddress || 'Tap to select delivery location')}
                             </Text>
                         </View>
-                        <Ionicons name="chevron-down" size={16} color={theme.text} style={{ marginLeft: 6 }} />
+                        <Ionicons name="chevron-down" size={16} color={theme.text} style={{ marginLeft: 6 }} pointerEvents="none" />
                     </TouchableOpacity>
 
                     <View style={styles.actionIcons}>
 
+                        {/* Wishlist Button */}
                         <TouchableOpacity
                             style={styles.iconButton}
                             activeOpacity={0.7}
-                            onPress={() => router.push("/cart" as any)}
-                            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push("/(app)/wishlist" as any);
+                            }}
+                            hitSlop={{ top: 18, bottom: 18, left: 10, right: 10 }}
                         >
-                            <Ionicons name="bag-handle-outline" size={24} color={theme.text} />
-                            
-                            {/* Instant Cart Badge (Top Right) */}
-                            {instantCartCount > 0 && (
-                                <View style={[styles.badge, styles.instantBadge, { backgroundColor: '#F59E0B' }]}>
-                                    <View style={styles.badgeContent}>
-                                        <Ionicons name="flash" size={7} color="#fff" style={{ marginRight: 1 }} />
-                                        <Text style={styles.badgeText}>{instantCartCount > 9 ? '9+' : instantCartCount}</Text>
+                            <View style={styles.iconWrapper} pointerEvents="none">
+                                <MaterialCommunityIcons name="heart-outline" size={20} color={theme.text} />
+                                {totalWishlistCount > 0 && (
+                                    <View style={[styles.badgeContainer, styles.topRightBadge]} pointerEvents="none">
+                                        <Text style={[styles.badgeText, { color: theme.text }]}>
+                                            {totalWishlistCount > 99 ? '99+' : totalWishlistCount}
+                                        </Text>
                                     </View>
-                                </View>
-                            )}
-
-                            {/* Courier Cart Badge (Bottom Right) */}
-                            {courierCartCount > 0 && (
-                                <View style={[styles.badge, styles.courierBadge, { backgroundColor: theme.accent }]}>
-                                    <Text style={styles.badgeText}>{courierCartCount > 9 ? '9+' : courierCartCount}</Text>
-                                </View>
-                            )}
+                                )}
+                            </View>
                         </TouchableOpacity>
 
+                        {/* Cart Button */}
+                        <TouchableOpacity
+                            style={styles.iconButton}
+                            activeOpacity={0.7}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push("/cart" as any);
+                            }}
+                            hitSlop={{ top: 18, bottom: 18, left: 10, right: 10 }}
+                        >
+                            <View style={styles.iconWrapper} pointerEvents="none">
+                                <MaterialCommunityIcons name="shopping-outline" size={20} color={theme.text} />
+
+                                {/* Instant Cart Badge (Top Right) */}
+                                {instantCartCount > 0 && (
+                                    <View style={[styles.badgeContainer, styles.topRightBadge, { right: -8, paddingLeft: 2 }]} pointerEvents="none">
+                                        <Text style={[styles.badgeText, { color: theme.text }]}>
+                                            {instantCartCount > 99 ? '99+' : instantCartCount}
+                                        </Text>
+                                        <Ionicons name="flash" size={8} color={theme.text} style={{ marginLeft: 0.5 }} />
+                                    </View>
+                                )}
+
+                                {/* Courier Cart Badge (Top Right if instant is 0, Bottom Right if both exist) */}
+                                {courierCartCount > 0 && (
+                                    <View
+                                        style={[
+                                            styles.badgeContainer,
+                                            instantCartCount > 0 ? styles.bottomRightBadge : styles.topRightBadge,
+                                        ]}
+                                        pointerEvents="none"
+                                    >
+                                        <Text style={[styles.badgeText, { color: theme.text }]}>
+                                            {courierCartCount > 99 ? '99+' : courierCartCount}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        </TouchableOpacity>
+
+                        {/* Menu / Profile Button */}
                         <TouchableOpacity
                             activeOpacity={0.7}
-                            onPress={() => router.push("/(app)/profile" as any)}
-                            hitSlop={{ top: 15, bottom: 15, left: 10, right: 20 }}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push("/(app)/profile" as any);
+                            }}
+                            hitSlop={{ top: 18, bottom: 18, left: 10, right: 14 }}
                         >
-                            <View style={styles.profileCircle}>
-                                <Ionicons name="person-outline" size={16} color={theme.text} />
+                            <View style={styles.iconWrapper} pointerEvents="none">
+                                <MaterialCommunityIcons name="menu" size={22} color={theme.text} />
                             </View>
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
 
                 {/* ── Sticky Section Header ── */}
-                <Animated.View 
+                <Animated.View
                     style={{ transform: [{ translateY: stickyCounterY }], zIndex: 10, elevation: 10 }}
                     pointerEvents="box-none"
                 >
                     {/* Opaque Background for Sticky Section */}
-                    <Animated.View 
+                    <Animated.View
                         style={{
                             position: 'absolute',
                             top: -insets.top - 10,
@@ -343,7 +391,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                         activeOpacity={0.85}
                         onPress={() => router.push("/search" as any)}
                     >
-                        <Ionicons name="search" size={18} color="#94A3B8" style={{ marginRight: 10 }} />
+                        <Ionicons name="search" size={16} color="#94A3B8" style={{ marginRight: 8 }} />
                         <View style={styles.searchTextContainer}>
                             <Text style={styles.staticSearchText}>Try </Text>
                             <Animated.Text
@@ -361,7 +409,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
 
                         </View>
                         <View style={styles.micButton}>
-                            <MaterialCommunityIcons name="microphone-outline" size={18} color="#64748B" />
+                            <MaterialCommunityIcons name="microphone-outline" size={16} color="#64748B" />
                         </View>
                     </TouchableOpacity>
 
@@ -443,6 +491,33 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                     </View>
                 </Animated.View>
 
+                {/* Sub-Gender Switcher for Kids */}
+                {selectedGender === 'Kids' && (
+                    <View style={styles.subGenderContainer}>
+                        {['All', 'Boys', 'Girls'].map((sg) => {
+                            const isSgActive = selectedSubGender === sg;
+                            return (
+                                <TouchableOpacity
+                                    key={sg}
+                                    onPress={() => setSelectedSubGender(sg as any)}
+                                    style={[
+                                        styles.subGenderButton,
+                                        isSgActive && { backgroundColor: theme.primary }
+                                    ]}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[
+                                        styles.subGenderText,
+                                        { color: isSgActive ? '#FFFFFF' : '#64748B' }
+                                    ]}>
+                                        {sg}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                )}
+
                 {/* ── Category List ── */}
                 {!hideCategories && (
                     <Animated.ScrollView
@@ -464,50 +539,50 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     return cat.allowedGenders ? cat.allowedGenders.includes(genderKey) : true;
                                 })
                                 .map((cat) => {
-                                const isActive = selectedCategoryId === cat._id;
-                                const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
-                                const logoUrl = cat.logos?.[genderKey]?.url || cat.logo?.url || cat.image?.url;
+                                    const isActive = selectedCategoryId === cat._id;
+                                    const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
+                                    const logoUrl = cat.logos?.[genderKey]?.url || cat.logo?.url || cat.image?.url;
 
-                                return (
-                                    <TouchableOpacity
-                                        key={cat._id}
-                                        style={styles.categoryItem}
-                                        onPress={() => router.push({
-                                            pathname: '/search-results' as any,
-                                            params: {
-                                                categoryId: cat._id,
-                                                gender: selectedGender.toUpperCase(),
-                                            }
-                                        })}
-                                    >
-                                        <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
-                                            {logoUrl ? (
-                                                <Animated.Image
-                                                    source={{ uri: logoUrl }}
-                                                    style={styles.categoryLogo}
-                                                    resizeMode="contain"
-                                                />
-                                            ) : (
-                                                <View style={styles.placeholderLogo}>
-                                                    <Text style={styles.placeholderText}>{cat.name[0]}</Text>
-                                                </View>
-                                            )}
-                                        </View>
-                                        <Text style={[styles.categoryName, { color: 'grey' }]} numberOfLines={1}>
-                                            {cat.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                );
-                            })
+                                    return (
+                                        <TouchableOpacity
+                                            key={cat._id}
+                                            style={styles.categoryItem}
+                                            onPress={() => router.push({
+                                                pathname: '/search-results' as any,
+                                                params: {
+                                                    categoryId: cat._id,
+                                                    gender: selectedGender.toUpperCase(),
+                                                }
+                                            })}
+                                        >
+                                            <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
+                                                {logoUrl ? (
+                                                    <Animated.Image
+                                                        source={{ uri: logoUrl }}
+                                                        style={styles.categoryLogo}
+                                                        resizeMode="contain"
+                                                    />
+                                                ) : (
+                                                    <View style={styles.placeholderLogo}>
+                                                        <Text style={styles.placeholderText}>{cat.name[0]}</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <Text style={[styles.categoryName, { color: 'grey' }]} numberOfLines={1}>
+                                                {cat.name}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })
                         }
                     </Animated.ScrollView>
                 )}
             </LinearGradient>
 
             {/* Address Selector Modal */}
-            <AddressSelectorModal 
-                visible={addressModalVisible} 
-                onClose={() => setAddressModalVisible(false)} 
+            <AddressSelectorModal
+                visible={addressModalVisible}
+                onClose={() => setAddressModalVisible(false)}
             />
         </Animated.View>
     );
@@ -594,59 +669,43 @@ const styles = StyleSheet.create({
     actionIcons: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 14,
+        gap: 16,
     },
     iconButton: {
-        position: 'relative',
-        padding: 4,
+        padding: 2,
     },
-    badge: {
-        position: 'absolute',
-        minWidth: 16,
-        height: 16,
-        borderRadius: 8,
+    iconWrapper: {
+        position: 'relative',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 3,
-        borderWidth: 1.5,
-        borderColor: '#fff',
+        padding: 2,
     },
-    instantBadge: {
-        top: -4,
-        right: -4,
-        zIndex: 2,
-    },
-    courierBadge: {
-        bottom: -2,
-        right: -4,
-        zIndex: 1,
-    },
-    badgeContent: {
+    badgeContainer: {
+        position: 'absolute',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
     },
     badgeText: {
-        color: '#fff',
-        fontSize: 8,
-        fontFamily: Typography.fontFamily.bold,
-        letterSpacing: -0.2,
+        fontSize: 10,
+        fontFamily: Typography.fontFamily.extraBold,
+        letterSpacing: -0.3,
+        lineHeight: 11,
     },
-    profileCircle: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        alignItems: 'center',
-        justifyContent: 'center',
+    topRightBadge: {
+        top: -3,
+        right: -6,
+    },
+    bottomRightBadge: {
+        bottom: -3,
+        right: -6,
     },
     searchBar: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'rgba(255,255,255,0.93)',
-        borderRadius: 16,
-        paddingHorizontal: 14,
-        height: 48,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        height: 40,
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
@@ -666,20 +725,20 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     staticSearchText: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#94A3B8',
         fontFamily: Typography.fontFamily.regular,
     },
     animatedSearchText: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#1E293B',
         fontFamily: Typography.fontFamily.bold,
         letterSpacing: 0.1,
     },
     micButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 10,
+        width: 28,
+        height: 28,
+        borderRadius: 8,
         backgroundColor: 'rgba(148,163,184,0.12)',
         alignItems: 'center',
         justifyContent: 'center',
@@ -694,6 +753,31 @@ const styles = StyleSheet.create({
         gap: 2,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
+    },
+    subGenderContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.03)',
+        padding: 3,
+        borderRadius: 10,
+        marginTop: 8,
+        alignSelf: 'center',
+        gap: 4,
+        width: '90%',
+    },
+    subGenderButton: {
+        flex: 1,
+        paddingVertical: 5,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    subGenderText: {
+        fontSize: 10,
+        fontFamily: Typography.fontFamily.extraBold,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     genderButtonWrapper: {
         flex: 1,

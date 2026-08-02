@@ -7,7 +7,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { GenderThemes, Typography } from '../../constants/theme';
+import { GenderThemes, Typography, SectionHeaderStyles } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
 import { useAddress } from '../../context/AddressContext';
 import { getRecentlyViewed, Product } from '../../utils/recentlyViewed';
@@ -73,7 +73,10 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
       onPress={() => {
         router.push({
           pathname: '/(app)/product/[id]' as any,
-          params: { id: item._id || item.id },
+          params: { 
+            id: item._id || item.id,
+            variantId: item.variantId || undefined
+          },
         });
       }}
     />
@@ -93,7 +96,7 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
           <Text style={styles.subtitle}>Pick up where you left off</Text>
         </View>
         <TouchableOpacity>
-          <Text style={[styles.seeAll, { color: theme.primary }]}>See All</Text>
+          <Text style={styles.seeAll}>View All</Text>
         </TouchableOpacity>
       </View>
 
@@ -123,21 +126,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 16,
   },
-  title: {
-    fontSize: 20,
-    fontFamily: Typography.fontFamily.semiBold,
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-    fontFamily: Typography.fontFamily.medium,
-  },
-  seeAll: {
-    fontSize: 13,
-    fontFamily: Typography.fontFamily.bold,
-  },
+  title: SectionHeaderStyles.title,
+  subtitle: SectionHeaderStyles.subtitle,
+  seeAll: SectionHeaderStyles.viewAll,
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 10,

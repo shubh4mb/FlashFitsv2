@@ -36,7 +36,7 @@ const ProductSectionSkeleton = () => (
 
 const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
   const router = useRouter();
-  const { selectedGender } = useGender();
+  const { selectedGender, selectedSubGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -46,7 +46,9 @@ const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     const loadNewArrivals = async () => {
       try {
         setLoading(true);
-        const apiGender = selectedGender.toUpperCase();
+        const apiGender = selectedGender === 'Kids' && selectedSubGender !== 'All'
+          ? selectedSubGender.toUpperCase()
+          : (selectedGender === 'Kids' ? 'KIDS' : selectedGender.toUpperCase());
         const data = await fetchnewArrivalsProductsData(apiGender);
         setProducts(data);
       } catch (error) {
@@ -57,7 +59,7 @@ const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     };
 
     loadNewArrivals();
-  }, [selectedGender, refreshKey]);
+  }, [selectedGender, selectedSubGender, refreshKey]);
 
   const renderItem = useCallback(({ item }: { item: Product }) => (
     <ProductCard
@@ -68,7 +70,10 @@ const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
       onPress={() => {
         router.push({
           pathname: '/(app)/product/[id]' as any,
-          params: { id: item._id || item.id },
+          params: { 
+            id: item._id || item.id,
+            variantId: item.variantId || undefined
+          },
         });
       }}
     />

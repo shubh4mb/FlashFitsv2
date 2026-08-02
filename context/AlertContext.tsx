@@ -16,9 +16,14 @@ interface AlertOptions {
 }
 
 interface ToastOptions {
+  title?: string;
   message: string;
   type?: AlertType;
   duration?: number;
+  action?: {
+    label: string;
+    onPress: () => void;
+  };
 }
 
 interface AlertContextData {

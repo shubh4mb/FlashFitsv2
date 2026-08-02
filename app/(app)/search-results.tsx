@@ -39,7 +39,7 @@ type SortOption = 'relevance' | 'price_low' | 'price_high' | 'newest' | 'trendin
 type DeliveryMode = 'tryAndBuy' | 'courier' | null;
 
 export default function SearchResultsScreen() {
-  const { query, categoryId, subCategoryId, gender, collectionId, title, merchantId, sortBy: initialSortBy } = useLocalSearchParams<{
+  const { query, categoryId, subCategoryId, gender, collectionId, title, merchantId, sortBy: initialSortBy, flashmart } = useLocalSearchParams<{
     query?: string;
     categoryId?: string;
     subCategoryId?: string;
@@ -48,6 +48,7 @@ export default function SearchResultsScreen() {
     title?: string;
     merchantId?: string;
     sortBy?: SortOption;
+    flashmart?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -87,7 +88,7 @@ export default function SearchResultsScreen() {
   const [selectedSubCategoryIds, setSelectedSubCategoryIds] = useState<string[]>(subCategoryId ? [subCategoryId] : []);
   const [priceRange, setPriceRange] = useState<number[]>([0, 10000]);
   const [genderFilter, setGenderFilter] = useState<string>(gender || '');
-  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(null);
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(flashmart === 'true' ? 'tryAndBuy' : null);
   const [collectionFilter, setCollectionFilter] = useState<string | undefined>(collectionId);
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(merchantId ? [merchantId] : []);
 
@@ -572,9 +573,14 @@ export default function SearchResultsScreen() {
         {/* Gender Filter Row (Moved Outside) */}
         <View style={styles.genderFilterRow}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genderScrollContent}>
-            {['ALL', 'MEN', 'WOMEN', 'KIDS', 'UNISEX'].map((g) => {
+            {['ALL', 'MEN', 'WOMEN', 'KIDS', 'BOYS', 'GIRLS', 'UNISEX'].map((g) => {
               const isSelected = (g === 'ALL' && !genderFilter) || genderFilter === g;
-              const label = g === 'ALL' ? 'All' : g === 'MEN' ? 'Men' : g === 'WOMEN' ? 'Women' : g === 'KIDS' ? 'Kids' : 'Unisex';
+              const label = g === 'ALL' ? 'All' : 
+                            g === 'MEN' ? 'Men' : 
+                            g === 'WOMEN' ? 'Women' : 
+                            g === 'KIDS' ? 'Kids' : 
+                            g === 'BOYS' ? 'Boys' : 
+                            g === 'GIRLS' ? 'Girls' : 'Unisex';
               return (
                 <TouchableOpacity
                   key={g}

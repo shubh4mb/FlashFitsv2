@@ -23,6 +23,7 @@ export const GenderThemes = {
     background: "#01184eff",
     text: "#FFFFFF",
     accent: "#38BDF8",
+    dark: "#00081d",
   },
   Women: {
     primary: "#DB2777",
@@ -30,13 +31,15 @@ export const GenderThemes = {
     background: "#DB2777",
     text: "#FFFFFF",
     accent: "#F472B6",
+    dark: "#4c0525",
   },
   Kids: {
-    primary: "#F59E0B",
-    secondary: "#D97706",
-    background: "#F59E0B",
+    primary: "#df4300ff",
+    secondary: "#d95e06ff",
+    background: "#f5650bff",
     text: "#FFFFFF",
-    accent: "#FBBF24",
+    accent: "#fb6c24ff",
+    dark: "#471200",
   },
 };
 
@@ -84,9 +87,34 @@ export const Colors = {
   },
 };
 
+export const SectionHeaderStyles = {
+  title: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.extraBold,
+    letterSpacing: 0.1, // Increased from -0.8 to create more distance/breathing room
+    color: '#1C1917', // Warm black
+  },
+  subtitle: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+    fontFamily: Typography.fontFamily.medium,
+    letterSpacing: 0.1,
+  },
+  viewAll: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.semiBold,
+    letterSpacing: 0.2,
+    color: '#1C1917', // Warm black
+  },
+};
+
+
+
 export default {
   Palette,
   GenderThemes,
   Typography,
   Colors,
+  SectionHeaderStyles,
 };

@@ -7,6 +7,7 @@ export interface AddToCartParams {
   quantity: number;
   merchantId: string;
   image: string | { url: string };
+  source?: string;
 }
 
 /**

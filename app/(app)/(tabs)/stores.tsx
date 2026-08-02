@@ -13,6 +13,7 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import CompactStoreCard from '@/components/common/CompactStoreCard';
 import { Ionicons } from '@expo/vector-icons';
 import Loader from '@/components/common/Loader';
 import { Image } from 'expo-image';
@@ -56,9 +57,15 @@ interface Merchant {
 }
 
 const MerchantSkeleton = () => (
-  <View style={styles.merchantCard}>
-    <Skeleton width={COLUMN_WIDTH} height={COLUMN_WIDTH} borderRadius={2} style={{ marginBottom: 8 }} />
-    <Skeleton width={COLUMN_WIDTH * 0.8} height={10} borderRadius={2} style={{ alignSelf: 'center' }} />
+  <View style={[styles.merchantCard, { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#F1F5F9', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2, paddingBottom: 12 }]}>
+    <Skeleton width="100%" height={60} borderRadius={0} />
+    <View style={{ padding: 8, paddingTop: 22, position: 'relative' }}>
+      <View style={{ position: 'absolute', top: -16, left: 8, width: 36, height: 36, borderRadius: 8, backgroundColor: '#FFF', padding: 2, borderWidth: 1, borderColor: '#F1F5F9' }}>
+        <Skeleton width="100%" height="100%" borderRadius={6} />
+      </View>
+      <Skeleton width="70%" height={12} style={{ marginBottom: 6 }} />
+      <Skeleton width="50%" height={10} />
+    </View>
   </View>
 );
 
@@ -129,6 +136,7 @@ export default function StoresScreen() {
     const mCoords = merchant.address?.location?.coordinates;
     if (!mCoords || !userLat || !userLng) return null;
     const dist = distanceInMeters(userLat, userLng, mCoords[1], mCoords[0]);
+    if (dist > 10000) return null; // Only show if under 10 km
     if (dist < 1000) {
       return `${Math.round(dist)}m`;
     }
@@ -189,97 +197,18 @@ export default function StoresScreen() {
             >
               {topStores.map((store) => {
   const distanceStr = getDistanceStr(store);
-  const ratingVal = store.rating && store.rating > 0 ? store.rating.toFixed(1) : '4.5';
   return (
-    <TouchableOpacity
+    <CompactStoreCard
       key={store._id}
-      style={styles.topStoreCard}
-      activeOpacity={0.85}
+      merchant={store}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.push({ pathname: '/merchant/[id]', params: { id: store._id } } as any);
+        router.push({ pathname: '/merchant/[id]', params: { id: store._id, isWarehouse: store.isWarehouse ? 'true' : 'false' } } as any);
       }}
-    >
-      {/* Cover Section */}
-      <View style={styles.cardCoverContainer}>
-        {store.backgroundImage?.url ? (
-          <Image
-            source={{ uri: store.backgroundImage.url }}
-            style={styles.cardCover}
-            contentFit="cover"
-            transition={200}
-          />
-        ) : (
-          <View style={[styles.cardCover, styles.cardCoverFallback]} />
-        )}
-
-        {/* Status Pill */}
-        <View style={styles.cardStatusPill}>
-          <View
-            style={[
-              styles.cardStatusDot,
-              { backgroundColor: store.isOnline ? '#FFFFFF' : 'rgba(255,255,255,0.4)' },
-            ]}
-          />
-          <Text style={styles.cardStatusText}>
-            {store.isOnline ? 'Online' : 'Offline'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Absolute Logo */}
-      <View style={styles.cardLogoContainer}>
-        <Image
-          source={{ uri: store.logo.url }}
-          style={styles.cardLogo}
-          contentFit="contain"
-        />
-      </View>
-
-      {/* Details Section */}
-      <View style={styles.cardDetailsContainer}>
-        <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardShopName} numberOfLines={1}>
-            {store.shopName}
-          </Text>
-          <View style={styles.cardRatingBox}>
-            <Ionicons name="star" size={11} color="#0F172A" />
-            <Text style={styles.cardRatingText}>{ratingVal}</Text>
-          </View>
-        </View>
-
-        {/* Info Row: Distance, Products */}
-        <View style={styles.cardSubInfoRow}>
-          {distanceStr && (
-            <View style={styles.cardSubInfoItem}>
-              <Ionicons name="location-outline" size={12} color="#94A3B8" />
-              <Text style={styles.cardSubInfoText}>{distanceStr}</Text>
-            </View>
-          )}
-
-          {(store.stats?.totalProducts ?? 0) > 0 && (
-            <>
-              <View style={styles.cardMetricDivider} />
-              <View style={styles.cardSubInfoItem}>
-                <Ionicons name="cube-outline" size={12} color="#94A3B8" />
-                <Text style={styles.cardSubInfoText}>
-                  {store.stats?.totalProducts} Products
-                </Text>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* Tags Row: Genders */}
-        <View style={styles.cardTagsRow}>
-          {store.genderCategory?.map((gen) => (
-            <View key={gen} style={styles.cardTag}>
-              <Text style={styles.cardTagText}>{gen}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </TouchableOpacity>
+      subInfoText={distanceStr}
+      subInfoIcon="location-outline"
+      containerStyle={{ width: (width - 50) / 2.3, marginRight: 0 }}
+    />
   );
               })}
             </ScrollView>
@@ -319,41 +248,22 @@ export default function StoresScreen() {
               // Show skeletons during gender change or refresh
               Array(12).fill(0).map((_, i) => <MerchantSkeleton key={i} />)
             ) : (
-              filteredMerchants.map((merchant) => (
-                <TouchableOpacity 
-                  key={merchant._id} 
-                  style={styles.merchantCard}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push({ pathname: '/merchant/[id]', params: { id: merchant._id } } as any);
-                  }}
-                >
-                  <View style={styles.logoContainer}>
-                    <Image
-                      source={{ uri: merchant.logo.url }}
-                      style={styles.logo}
-                      contentFit="contain"
-                      transition={300}
-                    />
-                    {merchant.isOnline && (
-                      <View style={styles.onlineDot} />
-                    )}
-                    {merchant.isNearby && (
-                      <View style={[styles.instantBadge, { backgroundColor: theme.primary }]}>
-                        <Ionicons name="flash" size={6} color="#FFF" />
-                        <Text style={styles.instantBadgeText}>TRY & BUY</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.merchantInfo}>
-                    <Text style={styles.shopName} numberOfLines={1}>
-                      {merchant.shopName}
-                    </Text>
-
-                  </View>
-                </TouchableOpacity>
-              ))
+              filteredMerchants.map((merchant) => {
+                const distanceStr = getDistanceStr(merchant);
+                return (
+                  <CompactStoreCard
+                    key={merchant._id}
+                    merchant={merchant}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      router.push({ pathname: '/merchant/[id]', params: { id: merchant._id, isWarehouse: merchant.isWarehouse ? 'true' : 'false' } } as any);
+                    }}
+                    subInfoText={distanceStr}
+                    subInfoIcon="location-outline"
+                    containerStyle={styles.merchantCard}
+                  />
+                );
+              })
             )}
           </View>
         </View>
@@ -390,31 +300,13 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    gap: 20,
+    justifyContent: 'space-between',
+    gap: 12,
   },
   merchantCard: {
-    width: COLUMN_WIDTH,
-    marginBottom: 20,
-    backgroundColor: '#FFFFFF',
-  },
-  logoContainer: {
-    width: COLUMN_WIDTH,
-    height: COLUMN_WIDTH, // Make it a perfect square
-    borderRadius: 2, // As requested: borderRadius 2 (curved)
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  logo: {
-    width: '65%',
-    height: '65%',
-  },
-  shopName: {
-    fontSize: 10,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#1E293B',
-    textAlign: 'center',
+    width: '48%',
+    marginRight: 0, // Override CompactStoreCard default
+    marginBottom: 12,
   },
   filterSection: {
     paddingHorizontal: 20,

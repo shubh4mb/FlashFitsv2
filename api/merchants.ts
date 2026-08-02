@@ -18,14 +18,19 @@ export const fetchMerchants = async (lat?: number, lng?: number, gender?: string
 };
 
 export const fetchMerchantById = async (id: string, lat?: number, lng?: number) => {
+    if (!id || id === 'flashmart' || id.includes('warehouse') || id.length !== 24) {
+        return null;
+    }
     try {
         // Backend route in admin.routes.js is /getMerchant/:id
         const res = await api.get(`admin/getMerchant/${id}`, {
             params: { lat, lng }
         });
         return res.data;
-    } catch (error) {
-        console.error(`Axios error in fetchMerchantById (${id}):`, error);
+    } catch (error: any) {
+        if (error?.response?.status !== 404) {
+            console.error(`Axios error in fetchMerchantById (${id}):`, error);
+        }
         throw error;
     }
 };

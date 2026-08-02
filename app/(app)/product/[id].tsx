@@ -2,6 +2,7 @@ import { fetchRelatedProducts, productDetailPage } from '@/api/products';
 import Loader from '@/components/common/Loader';
 import ProductCard from '@/components/common/ProductCard';
 import { GenderThemes, Typography } from '@/constants/theme';
+import flashfitsLogo from '@/assets/images/logo/logo.png';
 import { useAddress } from '@/context/AddressContext';
 import { useCart } from '@/context/CartContext';
 import { useGender } from '@/context/GenderContext';
@@ -17,6 +18,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useToast } from '@/context/AlertContext';
 import { useCourierCart } from '@/context/CourierCartContext';
+import ExpandableSection from '@/components/common/ExpandableSection';
 import {
   ActivityIndicator,
   Animated,
@@ -35,10 +37,102 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ImageViewing from 'react-native-image-viewing';
 
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 520;
+
+const formatText = (text: string) => {
+  if (!text) return '';
+  return text
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .split(' ')
+    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
+const reconstructLegacyStructure = (data: any) => {
+  if (!data || !data.isFlatPayload) return data;
+
+  const activeProduct = data.activeProduct;
+  const siblings = data.siblings || [];
+
+  const allProducts = [activeProduct, ...siblings];
+
+  // De-duplicate documents by _id
+  const seenIds = new Set();
+  const uniqueProducts = allProducts.filter(p => {
+    const idStr = p._id?.toString();
+    if (!idStr || seenIds.has(idStr)) return false;
+    seenIds.add(idStr);
+    return true;
+  });
+
+  const parentGroupId = activeProduct.styleGroupId || activeProduct._id.toString();
+
+  // Group size combinations by color name
+  const colorGroups: Record<string, any> = {};
+  uniqueProducts.forEach(p => {
+    const colorName = p.color?.name || 'Default';
+    if (!colorGroups[colorName]) {
+      colorGroups[colorName] = {
+        color: p.color || { name: 'Default', hex: '' },
+        mrp: p.mrp || 0,
+        price: p.price || 0,
+        discount: p.discount || 0,
+        images: p.images || [],
+        sizesMap: {}
+      };
+    }
+
+    colorGroups[colorName].sizesMap[p.size] = {
+      _id: p._id.toString(),
+      size: p.size,
+      stock: p.stock || 0
+    };
+  });
+
+  const legacyVariants = Object.keys(colorGroups).map(colorName => {
+    const group = colorGroups[colorName];
+    const firstProduct = uniqueProducts.find(p => (p.color?.name || 'Default') === colorName);
+    const colorVariantId = firstProduct?.colorVariantId || 'fallback';
+
+    return {
+      _id: colorVariantId,
+      color: group.color,
+      mrp: group.mrp,
+      price: group.price,
+      discount: group.discount,
+      images: group.images,
+      sizes: Object.values(group.sizesMap)
+    };
+  });
+
+  return {
+    _id: parentGroupId,
+    name: activeProduct.name,
+    brandId: activeProduct.brandId,
+    categoryId: activeProduct.categoryId,
+    subCategoryId: activeProduct.subCategoryId,
+    subSubCategoryId: activeProduct.subSubCategoryId,
+    merchantId: activeProduct.merchantId,
+    gender: activeProduct.gender,
+    description: activeProduct.description,
+    isTriable: activeProduct.isTriable,
+    ratings: activeProduct.ratings,
+    numReviews: activeProduct.numReviews,
+    isActive: activeProduct.isActive,
+    isVerified: activeProduct.isVerified,
+    isDeleted: activeProduct.isDeleted,
+    attributes: activeProduct.attributes,
+    variants: legacyVariants,
+    isInstantBuyable: data.isInstantBuyable,
+    isNearby: data.isNearby,
+    fulfillmentOptions: data.fulfillmentOptions
+  };
+};
 
 const ProductDetailPage = () => {
   const { id, fromExplore, variantId, size } = useLocalSearchParams();
@@ -48,7 +142,8 @@ const ProductDetailPage = () => {
   const { selectedGender } = useGender();
   const [cartModalVisible, setCartModalVisible] = useState(false);
   const [limitErrorModalVisible, setLimitErrorModalVisible] = useState(false);
-  const [showFullDescription, setShowFullDescription] = useState(false);
+  const [limitErrorMessage, setLimitErrorMessage] = useState<string | null>(null);
+  const [activeDetailTab, setActiveDetailTab] = useState<'details' | 'features' | 'specs'>('details');
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { userLocation, selectedAddress } = useAddress();
   const showToast = useToast();
@@ -60,13 +155,12 @@ const ProductDetailPage = () => {
   const courierCartCount = courierCart?.items?.length || 0;
 
   const [product, setProduct] = useState<any>(null);
-  
-  // Robust context calculation mimicking cart.tsx structure
+
   const currentMerchantCount = useMemo(() => {
     if (!product || !cart?.merchantCarts) return 0;
-    
+
     const targetMid = String(product?.merchantId?._id || product?.merchantId);
-    
+
     const mCart = cart.merchantCarts.find((mc: any) => {
       const mcId = String(mc.merchantDetails?._id || mc.merchantId);
       return mcId === targetMid;
@@ -80,14 +174,56 @@ const ProductDetailPage = () => {
 
   const otherMerchantCart = useMemo(() => {
     if (!product || !cart?.merchantCarts) return null;
-    
+
     const targetMid = String(product?.merchantId?._id || product?.merchantId);
-    
+
     return cart.merchantCarts.find((mc: any) => {
       const mcId = String(mc.merchantDetails?._id || mc.merchantId);
       return mcId !== targetMid;
     });
   }, [product, cart?.merchantCarts]);
+
+  const [selectedFulfillmentMode, setSelectedFulfillmentMode] = useState<'flashmart' | 'directStore' | 'courier'>('courier');
+  const [deliveryOptionsModalVisible, setDeliveryOptionsModalVisible] = useState(false);
+  const [lastAddedCartType, setLastAddedCartType] = useState<'flashmart' | 'directStore' | 'courier'>('flashmart');
+  const [wasAlreadyInCart, setWasAlreadyInCart] = useState(false);
+  const [lastAddedItemQty, setLastAddedItemQty] = useState(1);
+
+  const targetStoreInfo = useMemo(() => {
+    if (lastAddedCartType === 'courier') {
+      const totalCourierQty = courierCart?.items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || courierCartCount || 0;
+      const shopName = product?.merchantId?.shopName || product?.merchantName || 'Courier Store';
+      return {
+        shopName: `${shopName} (Courier)`,
+        itemCount: totalCourierQty,
+      };
+    }
+
+    if (lastAddedCartType === 'flashmart') {
+      const flashmartCart = cart?.merchantCarts?.find((mc: any) => String(mc.merchantId) === 'flashmart');
+      const totalFlashmartQty = flashmartCart?.items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) ||
+                               cart?.items?.filter((i: any) => i.source === 'warehouse')?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || 0;
+      return {
+        shopName: 'FlashFits Hub Warehouse',
+        itemCount: totalFlashmartQty,
+      };
+    }
+
+    // Direct Store
+    const targetMid = String(product?.merchantId?._id || product?.merchantId);
+    const mCart = cart?.merchantCarts?.find((mc: any) => {
+      const mcId = String(mc.merchantDetails?._id || mc.merchantId);
+      return mcId === targetMid;
+    });
+
+    const storeQty = mCart?.items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || currentMerchantCount || 0;
+    const storeName = mCart?.merchantDetails?.shopName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Store';
+
+    return {
+      shopName: storeName,
+      itemCount: storeQty,
+    };
+  }, [lastAddedCartType, product, cart, courierCart, currentMerchantCount, courierCartCount]);
 
   const [loading, setLoading] = useState(true);
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
@@ -97,12 +233,16 @@ const ProductDetailPage = () => {
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
-  const isWishlisted = product ? isInWishlist(product._id) : false;
+  const isWishlisted = product ? isInWishlist(product._id, (product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0])?._id) : false;
+
+  const [isZoomVisible, setIsZoomVisible] = useState(false);
+  const [zoomIndex, setZoomIndex] = useState(0);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const wishlistScale = useRef(new Animated.Value(1)).current;
   const [showAddedFeedback, setShowAddedFeedback] = useState(false);
   const feedbackOpacity = useRef(new Animated.Value(0)).current;
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -111,7 +251,8 @@ const ProductDetailPage = () => {
       setRefreshing(true);
       const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
-      const data = await productDetailPage(id as string, lat, lng);
+      const rawData = await productDetailPage(id as string, lat, lng);
+      const data = reconstructLegacyStructure(rawData);
       setProduct(data);
 
       if (data?._id) {
@@ -135,13 +276,26 @@ const ProductDetailPage = () => {
     const fetchProduct = async () => {
       try {
         setLoading(true);
+        console.log("=== ProductDetailPage Mount ===", { id, fromExplore, variantId, size });
         const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
         const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
-        const data = await productDetailPage(id as string, lat, lng);
+        const rawData = await productDetailPage(id as string, lat, lng);
+        const data = reconstructLegacyStructure(rawData);
         setProduct(data);
 
+        // Smart location & fulfillment mode default
+        const flashmartAvail = !!(data?.fulfillmentOptions?.flashmart?.available || (data?.isWarehouseListing && data?.isNearby));
+        const storeAvail = !!(data?.fulfillmentOptions?.directStore?.available || data?.availableInShop || (!data?.isWarehouseListing && data?.isInstantBuyable && data?.isNearby));
+        if (flashmartAvail) {
+          setSelectedFulfillmentMode('flashmart');
+        } else if (storeAvail) {
+          setSelectedFulfillmentMode('directStore');
+        } else {
+          setSelectedFulfillmentMode('courier');
+        }
+        console.log("=== ProductDetailPage data.variants ===", data.variants?.map((v: any) => ({ _id: v._id, color: v.color?.name })));
+
         if (data.variants?.[0]) {
-          // Find target variant based on variantId param or fallback to first
           const targetVariant = variantId
             ? data.variants.find((v: any) => v._id === variantId)
             : data.variants[0];
@@ -149,7 +303,6 @@ const ProductDetailPage = () => {
           if (targetVariant) {
             setSelectedColor(targetVariant.color.name);
 
-            // Set size from param or first in stock
             if (size) {
               setSelectedSize(size as string);
             } else {
@@ -182,7 +335,6 @@ const ProductDetailPage = () => {
     if (id) fetchProduct();
   }, [id, variantId, size]);
 
-  // ── Fetch Related Products ──
   useEffect(() => {
     const loadRelated = async () => {
       if (!product?._id) return;
@@ -219,8 +371,6 @@ const ProductDetailPage = () => {
     extrapolate: 'clamp',
   });
 
-
-
   const handleShare = async () => {
     try {
       await Share.share({
@@ -234,7 +384,7 @@ const ProductDetailPage = () => {
 
   const isNearby = product?.isNearby || false;
   const isOnline = product?.isOnline !== false && product?.merchantId?.isOnline !== false;
-  const productIsNearby = isNearby; // Using proximity for showing range-based info
+  const productIsNearby = isNearby;
 
   const showFeedback = () => {
     setShowAddedFeedback(true);
@@ -257,67 +407,105 @@ const ProductDetailPage = () => {
     }
   };
 
-  const handleOpenCartModal = () => {
+  const handleOpenDeliveryOptions = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDeliveryOptionsModalVisible(true);
+  };
+
+  const handleAddToCartSelectedMode = async () => {
     if (!selectedSize) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast({ message: 'Please select a size', type: 'warning' });
       return;
     }
-    setCartModalVisible(true);
-  };
 
-  const handleConfirmAddToCartInstant = async () => {
     try {
       setIsAdding(true);
       const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
-      const targetMerchantId = product.merchantId?._id || product.merchantId;
+      const rawMerchantId = product.merchantId?._id || product.merchantId;
+      const targetMerchantId = rawMerchantId ? String(rawMerchantId) : (product.source === 'warehouse' || selectedFulfillmentMode === 'flashmart' ? 'flashmart' : 'flashmart');
 
-      await addItemToCart({
-        productId: product._id,
-        variantId: activeVariant._id,
-        size: selectedSize,
-        quantity: 1,
-        merchantId: targetMerchantId,
-        image: { url: activeVariant.images?.[0]?.url || '' },
-      });
+      // Check if item was already in cart before adding
+      let existed = false;
+      let prevQty = 0;
+      if (selectedFulfillmentMode === 'courier') {
+        const existing = courierCart?.items?.find((i: any) => 
+          String(i.productId?._id || i.productId) === String(product._id) && 
+          String(i.variantId) === String(activeVariant._id) && 
+          i.size === selectedSize
+        );
+        if (existing) {
+          existed = true;
+          prevQty = existing.quantity || 1;
+        }
+      } else {
+        const isWh = selectedFulfillmentMode === 'flashmart';
+        const existing = cart?.items?.find((i: any) => 
+          String(i.productId?._id || i.productId) === String(product._id) && 
+          String(i.variantId) === String(activeVariant._id) && 
+          i.size === selectedSize &&
+          (isWh ? i.source === 'warehouse' : i.source !== 'warehouse')
+        );
+        if (existing) {
+          existed = true;
+          prevQty = existing.quantity || 1;
+        }
+      }
 
-      setCartModalVisible(false);
-      showFeedback();
+      setWasAlreadyInCart(existed);
+      setLastAddedItemQty(existed ? prevQty + 1 : 1);
+
+      if (selectedFulfillmentMode === 'courier') {
+        await addItemToCourierCart({
+          productId: product._id,
+          variantId: activeVariant._id,
+          size: selectedSize,
+          quantity: 1,
+          merchantId: targetMerchantId,
+          image: { url: activeVariant.images?.[0]?.url || '' },
+        });
+        setLastAddedCartType('courier');
+      } else if (selectedFulfillmentMode === 'flashmart') {
+        await addItemToCart({
+          productId: product._id,
+          variantId: activeVariant._id,
+          size: selectedSize,
+          quantity: 1,
+          merchantId: targetMerchantId,
+          image: { url: activeVariant.images?.[0]?.url || '' },
+          source: 'warehouse',
+        });
+        setLastAddedCartType('flashmart');
+      } else {
+        await addItemToCart({
+          productId: product._id,
+          variantId: activeVariant._id,
+          size: selectedSize,
+          quantity: 1,
+          merchantId: targetMerchantId,
+          image: { url: activeVariant.images?.[0]?.url || '' },
+          source: 'shop',
+        });
+        setLastAddedCartType('directStore');
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setDeliveryOptionsModalVisible(false);
+      showToast({ message: 'Added to cart', type: 'success' });
     } catch (error: any) {
-      if (error?.response?.status === 400) {
-        setCartModalVisible(false);
+      const serverMessage = error?.response?.data?.message || '';
+      const isLimitError = error?.response?.status === 400 && (
+        /limit|6|try & buy|slot/i.test(serverMessage)
+      );
+
+      if (isLimitError) {
+        setDeliveryOptionsModalVisible(false);
+        setLimitErrorMessage(serverMessage || "You can only have up to 6 Try & Buy item slots per merchant.");
         setLimitErrorModalVisible(true);
       } else {
         console.error('Failed to add to cart:', error);
-        showToast({ message: error?.response?.data?.message || 'Failed to add item to bag. Please try again.', type: 'error' });
+        showToast({ message: serverMessage || 'Failed to add item to bag. Please try again.', type: 'error' });
       }
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleConfirmAddToCartStandard = async () => {
-    try {
-      setIsAdding(true);
-      const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
-      const targetMerchantId = product.merchantId?._id || product.merchantId;
-
-      await addItemToCourierCart({
-        productId: product._id,
-        variantId: activeVariant._id,
-        size: selectedSize,
-        quantity: 1,
-        merchantId: targetMerchantId,
-        image: { url: activeVariant.images?.[0]?.url || '' },
-      });
-
-      setCartModalVisible(false);
-      showFeedback();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      console.error('Failed to add to courier cart:', error);
-      showToast({ message: 'Failed to add item to bag. Please try again.', type: 'error' });
     } finally {
       setIsAdding(false);
     }
@@ -335,7 +523,7 @@ const ProductDetailPage = () => {
   if (!product) {
     return (
       <View style={styles.errorContainer}>
-        <Ionicons name="alert-circle-outline" size={48} color="#CBD5E1" />
+        <Ionicons name="alert-circle-outline" size={44} color="#CBD5E1" />
         <Text style={styles.errorText}>Product not found</Text>
         <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.primary }]} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>Go Back</Text>
@@ -344,7 +532,7 @@ const ProductDetailPage = () => {
     );
   }
 
-  const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
+  const activeVariant = product.variants.find((v: any) => v.color?.name === selectedColor) || product.variants[0];
   const images = activeVariant?.images || [];
   const discountPercent = activeVariant.mrp > activeVariant.price
     ? Math.round(((activeVariant.mrp - activeVariant.price) / activeVariant.mrp) * 100)
@@ -363,10 +551,10 @@ const ProductDetailPage = () => {
       {/* Floating Static Header */}
       <View style={[styles.staticHeader, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity style={styles.staticIcon} onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+          <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
-        <View style={{ width: 40 }} />
+        <View style={{ width: 36 }} />
       </View>
 
       <Animated.ScrollView
@@ -401,14 +589,23 @@ const ProductDetailPage = () => {
                   transform: [{ scale: imageScale }],
                 }}
               >
-                <Image source={{ uri: img.url }} style={styles.mainImage} contentFit="cover" transition={300} />
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    setZoomIndex(index);
+                    setIsZoomVisible(true);
+                  }}
+                  style={{ width: '100%', height: '100%' }}
+                >
+                  <Image source={{ uri: img.url }} style={styles.mainImage} contentFit="cover" transition={300} />
+                </TouchableOpacity>
               </Animated.View>
             ))}
           </ScrollView>
 
           {/* Image Counter Pill */}
           <View style={styles.imageCounter}>
-            <BlurView intensity={50} tint="dark" style={[StyleSheet.absoluteFill, { borderRadius: 12 }]} />
+            <BlurView intensity={40} tint="dark" style={[StyleSheet.absoluteFill, { borderRadius: 10 }]} />
             <Text style={styles.imageCounterText}>{activeIndex + 1}/{images.length}</Text>
           </View>
 
@@ -425,10 +622,9 @@ const ProductDetailPage = () => {
             ))}
           </View>
 
-
           {/* Bottom Shade Gradient */}
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.4)']}
+            colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.32)']}
             style={styles.imageBottomShade}
           />
         </View>
@@ -437,37 +633,32 @@ const ProductDetailPage = () => {
         <View style={styles.content}>
           {/* Brand + Rating Row */}
           <View style={styles.topRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.brand, { color: theme.accent }]}>
-                {product.brandId?.name || 'FlashFits Exclusive'}
-              </Text>
+            <View style={{ flex: 1, marginRight: 16 }}>
               <Text style={styles.name}>{product.name}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: 8 }}>
-              <TouchableOpacity
-                style={styles.inlineShareBtn}
-                onPress={handleShare}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="share-social-outline" size={18} color="#64748B" />
-              </TouchableOpacity>
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={12} color="#F59E0B" />
-                <Text style={styles.ratingText}>{product.ratings || '4.5'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
+                <View style={styles.ratingBadge}>
+                  <Ionicons name="star" size={10} color="#F59E0B" />
+                  <Text style={styles.ratingText}>{product.ratings || '4.5'}</Text>
+                </View>
               </View>
             </View>
+            <TouchableOpacity
+              style={styles.inlineShareBtn}
+              onPress={handleShare}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="share-social-outline" size={15} color="#94A3B8" />
+            </TouchableOpacity>
           </View>
 
           {/* Price & Status Badges */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7 }}>
               <Text style={styles.price}>₹{activeVariant.price}</Text>
               {discountPercent > 0 && (
                 <>
                   <Text style={styles.mrp}>₹{activeVariant.mrp}</Text>
-                  <View style={styles.discountBadge}>
-                    <Text style={styles.discountText}>{discountPercent}% OFF</Text>
-                  </View>
+                  <Text style={styles.discountText}>{discountPercent}% off</Text>
                 </>
               )}
             </View>
@@ -475,88 +666,158 @@ const ProductDetailPage = () => {
             {productIsNearby && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 {product?.merchantId?.isOnline === false && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
-                    <Ionicons name="moon" size={12} color="#D97706" style={{ marginRight: 5 }} />
-                    <Text style={{ color: '#92400E', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
-                      Merchant Offline
-                    </Text>
+                  <View style={styles.statusPillWarning}>
+                    <Ionicons name="moon" size={10} color="#B45309" style={{ marginRight: 4 }} />
+                    <Text style={styles.statusPillWarningText}>Merchant offline</Text>
                   </View>
                 )}
                 {product?.isTriable && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#A7F3D0' }}>
-                    <Ionicons name="flash" size={12} color="#059669" style={{ marginRight: 5 }} />
-                    <Text style={{ color: '#065F46', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>
-                      Try & Buy Available
-                    </Text>
+                  <View style={styles.statusPillSuccess}>
+                    <Ionicons name="flash" size={10} color="#059669" style={{ marginRight: 4 }} />
+                    <Text style={styles.statusPillSuccessText}>Try & Buy</Text>
                   </View>
                 )}
               </View>
             )}
           </View>
 
-          {/* Merchant Section */}
+          {/* Merchant / FlashMart Section */}
           <TouchableOpacity
             style={styles.merchantSection}
-            onPress={() => router.push(`/merchant/${product.merchantId?._id}` as any)}
+            onPress={() => {
+              if (product.isWarehouseListing && product.availableInShop && product.shopMerchantId) {
+                router.push(`/merchant/${product.shopMerchantId}` as any);
+              } else if (product.merchantId?._id) {
+                router.push(`/merchant/${product.merchantId._id}` as any);
+              }
+            }}
             activeOpacity={0.7}
           >
             <View style={styles.merchantLogoContainer}>
-              <Image
-                source={{ uri: product.merchantId?.logo?.url }}
-                style={styles.merchantLogo}
-                contentFit="contain"
-              />
+              {product.isWarehouseListing ? (
+                <Image
+                  source={flashfitsLogo}
+                  style={styles.merchantLogo}
+                  contentFit="contain"
+                />
+              ) : (
+                <Image
+                  source={{ uri: product.merchantId?.logo?.url }}
+                  style={styles.merchantLogo}
+                  contentFit="contain"
+                />
+              )}
             </View>
             <View style={styles.merchantInfo}>
-              <Text style={styles.merchantLabel}>Sold by</Text>
-              <Text style={styles.merchantName}>{product.merchantId?.shopName}</Text>
+              <Text style={styles.merchantLabel}>
+                {product.isWarehouseListing ? 'Dispatched from' : 'Sold by'}
+              </Text>
+              <Text style={styles.merchantName}>
+                {product.isWarehouseListing
+                  ? `FF Warehouse • ${product.sourceMerchantName || product.merchantId?.shopName || 'Partner Store'}`
+                  : product.merchantId?.shopName}
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+            <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
           </TouchableOpacity>
+
+          {/* Dual Availability Banner */}
+          {product.isWarehouseListing && product.availableInShop && (
+            <View style={{
+              backgroundColor: '#ECFDF5',
+              borderColor: '#10B981',
+              borderWidth: 1,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              shadowColor: '#10B981',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 1,
+            }}>
+              <View style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                backgroundColor: '#D1FAE5',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}>
+                <Ionicons name="storefront" size={18} color="#059669" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#065F46' }}>
+                  Also Available in Store 🏪
+                </Text>
+                <Text style={{ fontSize: 11, color: '#047857', marginTop: 2, fontFamily: Typography.fontFamily.medium }}>
+                  In stock at {product.shopMerchantName || 'the local merchant shop'} (in range for Instant Try)
+                </Text>
+              </View>
+              {product.shopMerchantId && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/merchant/${product.shopMerchantId}` as any)}
+                  style={{ backgroundColor: '#059669', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontFamily: Typography.fontFamily.bold }}>View Store</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {/* Divider */}
           <View style={styles.divider} />
 
           {/* Color Selection */}
-          <Text style={styles.sectionTitle}>
-            Color <Text style={styles.sectionSubtitle}>{selectedColor}</Text>
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectionRow}>
-            {product.variants.map((v: any, i: number) => {
-              const isSelected = selectedColor === v.color.name;
-              return (
-                <TouchableOpacity
-                  key={i}
-                  onPress={() => {
-                    setSelectedColor(v.color.name);
-                    setActiveIndex(0);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  activeOpacity={0.7}
-                  style={[
-                    styles.colorChip,
-                    isSelected && { borderColor: theme.primary, borderWidth: 2, backgroundColor: '#FFFFFF' },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.colorCircle,
-                      { backgroundColor: v.color.hex || '#ccc' },
-                      isSelected && {
-                        ...Platform.select({
-                          ios: { shadowColor: v.color.hex, shadowOpacity: 0.4, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
-                          android: { elevation: 3 },
-                        }),
-                      },
-                    ]}
-                  />
-                  <Text style={[styles.chipText, isSelected && { color: theme.primary, fontWeight: '800' }]}>
-                    {v.color.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          {product.variants.length > 1 && product.variants.some((v: any) => v.color && v.color.name && v.color.name.toLowerCase() !== 'none' && v.color.name.trim() !== '') && (
+            <>
+              <Text style={styles.sectionTitle}>
+                Color <Text style={styles.sectionSubtitle}>{formatText(selectedColor)}</Text>
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectionRow}>
+                {product.variants.map((v: any, i: number) => {
+                  if (!v.color || !v.color.name || v.color.name.toLowerCase() === 'none' || v.color.name.trim() === '') return null;
+                  const isSelected = selectedColor === v.color.name;
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      onPress={() => {
+                        setSelectedColor(v.color.name);
+                        setActiveIndex(0);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      activeOpacity={0.7}
+                      style={[
+                        styles.colorChip,
+                        isSelected && { borderColor: theme.primary, borderWidth: 1.5, backgroundColor: '#FFFFFF' },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.colorCircle,
+                          { backgroundColor: v.color.hex || '#ccc' },
+                          isSelected && {
+                            ...Platform.select({
+                              ios: { shadowColor: v.color.hex, shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1.5 } },
+                              android: { elevation: 2 },
+                            }),
+                          },
+                        ]}
+                      />
+                      <Text style={[styles.chipText, isSelected && { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
+                        {formatText(v.color.name)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
 
           {/* Size Selection */}
           <Text style={styles.sectionTitle}>
@@ -579,10 +840,18 @@ const ProductDetailPage = () => {
                   activeOpacity={0.7}
                   style={[
                     styles.sizeChip,
-                    isSelected && { backgroundColor: theme.primary, borderColor: theme.primary },
+                    isSelected && { borderColor: 'transparent' },
                     outOfStock && styles.disabledSizeChip,
                   ]}
                 >
+                  {isSelected && (
+                    <LinearGradient
+                      colors={[theme.dark || '#000000', theme.primary]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  )}
                   <Text
                     style={[
                       styles.sizeText,
@@ -601,47 +870,97 @@ const ProductDetailPage = () => {
           {/* Delivery Info Strip */}
           <View style={styles.deliveryStrip}>
             <View style={styles.deliveryItem}>
-              <Ionicons name="flash" size={16} color="#64748B" />
-              <Text style={styles.deliveryText}>Express Delivery</Text>
+              <Ionicons name="flash" size={13} color="#94A3B8" />
+              <Text style={styles.deliveryText}>Express delivery</Text>
             </View>
             <View style={styles.deliveryDivider} />
             <View style={styles.deliveryItem}>
-              <Ionicons name="refresh" size={16} color="#64748B" />
-              <Text style={styles.deliveryText}>Easy Returns</Text>
+              <Ionicons name="refresh" size={13} color="#94A3B8" />
+              <Text style={styles.deliveryText}>Easy returns</Text>
             </View>
             <View style={styles.deliveryDivider} />
             <View style={styles.deliveryItem}>
-              <Ionicons name="shield-checkmark" size={16} color="#64748B" />
+              <Ionicons name="shield-checkmark" size={13} color="#94A3B8" />
               <Text style={styles.deliveryText}>Genuine</Text>
             </View>
           </View>
 
-          <View style={{ marginBottom: 24 }}>
-            <Text
-              style={styles.description}
-              numberOfLines={showFullDescription ? undefined : 3}
-            >
-              {product.description ||
-                'Elevate your wardrobe with this stylish and durable piece. Crafted with premium materials for ultimate comfort and a sleek modern look.'}
-            </Text>
-            {(product.description?.length > 150 || (!product.description && 130 > 150)) && (
-              <TouchableOpacity
-                onPress={() => setShowFullDescription(!showFullDescription)}
-                style={{ marginTop: 4 }}
-                activeOpacity={0.7}
-              >
-                <Text style={{ color: theme.primary, fontFamily: Typography.fontFamily.bold, fontSize: 13 }}>
-                  {showFullDescription ? 'Show Less' : 'Read More'}
-                </Text>
-              </TouchableOpacity>
-            )}
+          <View style={{ marginBottom: 26 }}>
+            <View style={{ flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0', marginBottom: 16 }}>
+              {[
+                { id: 'details', label: 'Details' },
+                ...(product.features?.length ? [{ id: 'features', label: 'Highlights' }] : []),
+                ...(product.attributes?.length ? [{ id: 'specs', label: 'Specs' }] : [])
+              ].map(tab => (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setActiveDetailTab(tab.id as any)}
+                  style={{ paddingVertical: 10, marginRight: 24, borderBottomWidth: 2, borderBottomColor: activeDetailTab === tab.id ? theme.primary : 'transparent', paddingHorizontal: 2 }}
+                >
+                  <Text style={{ fontSize: 13, fontFamily: activeDetailTab === tab.id ? Typography.fontFamily.semiBold : Typography.fontFamily.medium, color: activeDetailTab === tab.id ? theme.primary : '#64748B' }}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={{ minHeight: 60 }}>
+              {activeDetailTab === 'details' && (
+                <View>
+                  <Text
+                    style={[styles.description, { lineHeight: 22 }]}
+                    numberOfLines={isDescExpanded ? undefined : 3}
+                  >
+                    {product.description ||
+                      'Elevate your wardrobe with this stylish and durable piece. Crafted with premium materials for ultimate comfort and a sleek modern look.'}
+                  </Text>
+                  {(product.description || 'Elevate your wardrobe with this stylish and durable piece. Crafted with premium materials for ultimate comfort and a sleek modern look.').length > 120 && (
+                    <TouchableOpacity
+                      onPress={() => setIsDescExpanded(!isDescExpanded)}
+                      style={{ marginTop: 6, alignSelf: 'flex-start' }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        fontSize: 12,
+                        fontFamily: Typography.fontFamily.bold,
+                        color: theme.primary
+                      }}>
+                        {isDescExpanded ? 'Read Less' : 'Read More'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {activeDetailTab === 'features' && (
+                <View>
+                  {product.features?.map((feature: string, index: number) => (
+                    <View key={index} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8, paddingHorizontal: 4 }}>
+                      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#94A3B8', marginTop: 8, marginRight: 10 }} />
+                      <Text style={[styles.description, { flex: 1, lineHeight: 20 }]}>{feature}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {activeDetailTab === 'specs' && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 }}>
+                  {product.attributes?.map((attr: any, index: number) => (
+                    <View key={index} style={{ width: '50%', marginBottom: 14, paddingRight: 8 }}>
+                      <Text style={{ fontSize: 11, color: '#94A3B8', fontFamily: Typography.fontFamily.medium, textTransform: 'uppercase', marginBottom: 3, letterSpacing: 0.5 }}>{formatText(attr.attributeId?.name || attr.attribute?.name || attr.name || attr.key || 'Specification')}</Text>
+                      <Text style={{ fontSize: 13, color: '#1E293B', fontFamily: Typography.fontFamily.semiBold }}>{formatText(attr.value)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
           </View>
 
           {/* Related Products Section */}
           <View style={styles.relatedSection}>
-            <View style={[styles.relatedHeader, { justifyContent: 'space-between', marginBottom: 16 }]}>
+            <View style={[styles.relatedHeader, { justifyContent: 'space-between', marginBottom: 14 }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={[styles.sectionTitle, { marginBottom: 0, marginTop: 0 }]}>You May Also Like</Text>
+                <Text style={[styles.sectionTitle, { marginBottom: 0, marginTop: 0 }]}>You may also like</Text>
                 {loadingRelated && <ActivityIndicator size="small" color={theme.primary} />}
               </View>
 
@@ -656,9 +975,9 @@ const ProductDetailPage = () => {
                     setShowOnlyNearby(val);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
-                  trackColor={{ false: '#CBD5E1', true: theme.primary }}
+                  trackColor={{ false: '#E2E8F0', true: theme.primary }}
                   thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showOnlyNearby ? theme.secondary : '#F8FAFC'}
-                  style={{ transform: [{ scale: 0.8 }] }}
+                  style={{ transform: [{ scale: 0.75 }] }}
                 />
               </View>
             </View>
@@ -708,7 +1027,7 @@ const ProductDetailPage = () => {
           >
             <Ionicons
               name={isWishlisted ? 'heart' : 'heart-outline'}
-              size={24}
+              size={21}
               color={isWishlisted ? '#EF4444' : '#64748B'}
             />
           </TouchableOpacity>
@@ -719,19 +1038,17 @@ const ProductDetailPage = () => {
           onPress={() => router.push('/cart')}
           activeOpacity={0.7}
         >
-          <Ionicons name="bag-handle-outline" size={24} color="#64748B" />
+          <Ionicons name="bag-handle-outline" size={21} color="#64748B" />
 
-          {/* Instant Cart Badge (Top Right) */}
           {instantCartCount > 0 && (
             <View style={[styles.cartBadge, styles.cartInstantBadge, { backgroundColor: '#F59E0B' }]}>
-              <View style={styles.cartBadgeContent}>
-                <Ionicons name="flash" size={7} color="#fff" style={{ marginRight: 1 }} />
+              <View style={[styles.cartBadgeContent, { paddingLeft: 2 }]}>
                 <Text style={styles.cartBadgeText}>{instantCartCount > 9 ? '9+' : instantCartCount}</Text>
+                <Ionicons name="flash" size={6} color="#fff" style={{ marginLeft: 1 }} />
               </View>
             </View>
           )}
 
-          {/* Courier Cart Badge (Bottom Right) */}
           {courierCartCount > 0 && (
             <View style={[styles.cartBadge, styles.cartCourierBadge, { backgroundColor: theme.accent || theme.primary }]}>
               <Text style={styles.cartBadgeText}>{courierCartCount > 9 ? '9+' : courierCartCount}</Text>
@@ -740,131 +1057,298 @@ const ProductDetailPage = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.cartBtn, { backgroundColor: theme.primary }, isAdding && { opacity: 0.8 }]}
-          onPress={handleOpenCartModal}
+          style={[styles.cartBtn, { backgroundColor: theme.dark || '#000000' }, isAdding && { opacity: 0.8 }]}
+          onPress={handleOpenDeliveryOptions}
           activeOpacity={0.85}
           disabled={isAdding}
         >
           <LinearGradient
-            colors={[theme.primary, theme.secondary]}
+            colors={[theme.dark || '#000000', theme.primary]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: 16 }]}
+            style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
           />
           {isAdding ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
             <>
-              <Ionicons name="bag-add-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.cartBtnText}>ADD TO BAG</Text>
+              <Ionicons name="bag-add-outline" size={17} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.cartBtnText}>
+                Add to Bag
+              </Text>
             </>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Product Added Feedback Indicator */}
-      {showAddedFeedback && (
-        <Animated.View style={[styles.feedbackIndicator, { opacity: feedbackOpacity, bottom: insets.bottom + 100 }]}>
-          <BlurView intensity={90} tint="dark" style={styles.feedbackBlur}>
-            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-            <Text style={styles.feedbackText}>Added to Bag</Text>
-            <TouchableOpacity onPress={() => router.push('/cart')}>
-              <Text style={[styles.viewCartText, { color: theme.primary }]}>VIEW CART</Text>
-            </TouchableOpacity>
-          </BlurView>
-        </Animated.View>
-      )}
-
-      {/* Add To Cart Modal */}
+      {/* Delivery Options Popup Modal (Sliding Bottom Sheet) */}
       <Modal
-        visible={cartModalVisible}
+        visible={deliveryOptionsModalVisible}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setCartModalVisible(false)}
+        onRequestClose={() => setDeliveryOptionsModalVisible(false)}
       >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
-          onPress={() => setCartModalVisible(false)}
+          onPress={() => setDeliveryOptionsModalVisible(false)}
         >
-          <View style={styles.modalContent}>
+          <View
+            style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Choose Delivery Option</Text>
 
-            {/* Instant Delivery Option */}
-            <TouchableOpacity
-              style={[styles.deliveryOptionBtn, (!isNearby || currentMerchantCount >= 6) && styles.deliveryOptionBtnDisabled]}
-              onPress={
-                !isNearby 
-                  ? undefined 
-                  : currentMerchantCount >= 6 
-                    ? () => {
-                        setCartModalVisible(false);
-                        setLimitErrorModalVisible(true);
-                      }
-                    : handleConfirmAddToCartInstant
-              }
-              activeOpacity={0.7}
-            >
-              <View style={styles.deliveryOptionIcon}>
-                <Ionicons name="flash" size={24} color={(isNearby && currentMerchantCount < 6) ? "#22C55E" : "#94A3B8"} />
+            {/* Header Row */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View>
+                <Text style={{ fontSize: 16, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }}>
+                  Select Delivery Option
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748B', fontFamily: Typography.fontFamily.medium, marginTop: 2 }}>
+                  Choose how you'd like your item fulfilled
+                </Text>
               </View>
-              <View style={styles.deliveryOptionTexts}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={[styles.deliveryOptionTitle, (!isNearby || currentMerchantCount >= 6) && { color: "#94A3B8" }]}>
-                    Instant Delivery
-                  </Text>
-                  <Text style={[styles.deliveryOptionTitle, { fontSize: 13, color: currentMerchantCount >= 6 ? '#EF4444' : '#64748B' }]}>
-                    {currentMerchantCount}/6
-                  </Text>
-                </View>
-                <Text style={styles.deliveryOptionSub}>20 - 40 Mins</Text>
-                {!isNearby ? (
-                  <Text style={styles.deliveryOptionReason}>Out of range for instant delivery</Text>
-                ) : currentMerchantCount >= 6 ? (
-                  <Text style={[styles.deliveryOptionReason, { color: '#EF4444' }]}>
-                    Limit reached. Checkout your Try & Buy cart first.
-                  </Text>
-                ) : !isOnline ? (
-                  <Text style={[styles.deliveryOptionReason, { color: '#D97706' }]}>
-                    Merchant is offline. Item will be added to {product.merchantId?.shopName}'s instant cart.
-                  </Text>
-                ) : (
-                  <Text style={[styles.deliveryOptionReason, { color: '#64748B' }]}>
-                    Item will be added to {product.merchantId?.shopName}'s instant cart.
+              <TouchableOpacity
+                onPress={() => setDeliveryOptionsModalVisible(false)}
+                style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Item Summary Pill */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#F1F5F9' }}>
+              <Image
+                source={{ uri: activeVariant?.images?.[0]?.url }}
+                style={{ width: 38, height: 46, borderRadius: 8, backgroundColor: '#E2E8F0' }}
+                contentFit="cover"
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }} numberOfLines={1}>
+                  {product?.name}
+                </Text>
+                <Text style={{ fontSize: 11, color: selectedSize ? '#64748B' : '#EF4444', fontFamily: Typography.fontFamily.medium, marginTop: 2 }}>
+                  Size: <Text style={{ color: selectedSize ? '#0F172A' : '#EF4444', fontFamily: Typography.fontFamily.bold }}>{selectedSize || 'Not Selected'}</Text>
+                  {selectedColor ? ` • Color: ${formatText(selectedColor)}` : ''}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
+                ₹{activeVariant?.price}
+              </Text>
+            </View>
+
+            {/* Size Selector inside Pop Up */}
+            <View style={{ marginBottom: 14, backgroundColor: selectedSize ? '#F8FAFC' : '#FEF2F2', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: selectedSize ? '#F1F5F9' : '#FCA5A5' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: selectedSize ? '#0F172A' : '#DC2626' }}>
+                  {selectedSize ? `Size: ${selectedSize}` : '⚠️ Select Size (Required)'}
+                </Text>
+                {!selectedSize && (
+                  <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#DC2626' }}>
+                    Tap a size below
                   </Text>
                 )}
-                {otherMerchantCart && isNearby && currentMerchantCount < 6 && (
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 8, gap: 4, backgroundColor: '#FFFBEB', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
-                    <Ionicons name="information-circle" size={14} color="#D97706" style={{ marginTop: 1 }} />
-                    <Text style={{ fontSize: 10, fontFamily: Typography.fontFamily.medium, color: '#B45309', flex: 1, lineHeight: 14 }}>
-                      You have items from "{otherMerchantCart.merchantDetails?.shopName || 'another store'}" in your Try & Buy cart. This item will go into a separate order for "{product.merchantId?.shopName}".
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {activeVariant?.sizes?.map((s: any, i: number) => {
+                  const isSelected = selectedSize === s.size;
+                  const outOfStock = s.stock === 0;
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      onPress={() => {
+                        if (!outOfStock) {
+                          setSelectedSize(s.size);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
+                      }}
+                      disabled={outOfStock}
+                      activeOpacity={0.7}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        backgroundColor: isSelected ? theme.primary : outOfStock ? '#F1F5F9' : '#FFFFFF',
+                        borderWidth: 1.5,
+                        borderColor: isSelected ? theme.primary : outOfStock ? '#E2E8F0' : selectedSize ? '#CBD5E1' : '#F87171',
+                        minWidth: 42,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontFamily: Typography.fontFamily.bold,
+                          color: isSelected ? '#FFFFFF' : outOfStock ? '#CBD5E1' : '#0F172A',
+                          textDecorationLine: outOfStock ? 'line-through' : 'none',
+                        }}
+                      >
+                        {s.size}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Options List */}
+            {(() => {
+              const flashmartAvailable = !!(product?.fulfillmentOptions?.flashmart?.available || (product?.isWarehouseListing && product?.isNearby));
+              const directStoreAvailable = !!(product?.fulfillmentOptions?.directStore?.available || product?.availableInShop || (!product?.isWarehouseListing && product?.isNearby && (product?.isInstantBuyable || !isOnline)));
+              const merchantShopName = product?.shopMerchantName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Store';
+
+              return (
+                <View style={{ gap: 10, marginBottom: 18 }}>
+                  {/* Option 1: FlashMart Express */}
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    disabled={!flashmartAvailable}
+                    onPress={() => {
+                      setSelectedFulfillmentMode('flashmart');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    style={[
+                      styles.fulfillmentCard,
+                      selectedFulfillmentMode === 'flashmart' && styles.fulfillmentCardActiveFlashmart,
+                      !flashmartAvailable && styles.fulfillmentCardDisabled,
+                    ]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons
+                          name={selectedFulfillmentMode === 'flashmart' ? "radio-button-on" : "radio-button-off"}
+                          size={18}
+                          color={selectedFulfillmentMode === 'flashmart' ? '#10B981' : '#94A3B8'}
+                        />
+                        <Ionicons name="flash" size={16} color={flashmartAvailable ? '#10B981' : '#94A3B8'} />
+                        <Text style={[styles.fulfillmentTitle, !flashmartAvailable && styles.disabledText]}>
+                          FlashMart Express
+                        </Text>
+                      </View>
+                      <View style={[styles.fulfillmentBadge, { backgroundColor: flashmartAvailable ? '#ECFDF5' : '#F1F5F9' }]}>
+                        <Text style={[styles.fulfillmentBadgeText, { color: flashmartAvailable ? '#059669' : '#94A3B8' }]}>
+                          45 MINS
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                      {flashmartAvailable ? '⚡ Try & Buy at doorstep from FlashFits Hub' : 'Not available in your area'}
                     </Text>
-                  </View>
-                )}
-              </View>
-              {(isNearby && currentMerchantCount < 6) && <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />}
-            </TouchableOpacity>
+                  </TouchableOpacity>
 
-            {/* Standard Delivery Option */}
+                  {/* Option 2: Dynamic Merchant Store Try & Buy */}
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    disabled={!directStoreAvailable}
+                    onPress={() => {
+                      setSelectedFulfillmentMode('directStore');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    style={[
+                      styles.fulfillmentCard,
+                      selectedFulfillmentMode === 'directStore' && styles.fulfillmentCardActiveStore,
+                      !directStoreAvailable && styles.fulfillmentCardDisabled,
+                    ]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                        <Ionicons
+                          name={selectedFulfillmentMode === 'directStore' ? "radio-button-on" : "radio-button-off"}
+                          size={18}
+                          color={selectedFulfillmentMode === 'directStore' ? '#F59E0B' : '#94A3B8'}
+                        />
+                        <Ionicons name="storefront-outline" size={16} color={directStoreAvailable ? '#F59E0B' : '#94A3B8'} />
+                        <Text style={[styles.fulfillmentTitle, !directStoreAvailable && styles.disabledText]} numberOfLines={1}>
+                          {merchantShopName} Try & Buy
+                        </Text>
+                      </View>
+                      <View style={[styles.fulfillmentBadge, { backgroundColor: directStoreAvailable ? '#FEF3C7' : '#F1F5F9' }]}>
+                        <Text style={[styles.fulfillmentBadgeText, { color: directStoreAvailable ? '#D97706' : '#94A3B8' }]}>
+                          45–60 MINS
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                      {directStoreAvailable 
+                        ? `🏪 Doorstep Try & Buy directly from ${merchantShopName}`
+                        : 'Beyond 7 km Try & Buy radius'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Option 3: Pan-India Courier */}
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      setSelectedFulfillmentMode('courier');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    style={[
+                      styles.fulfillmentCard,
+                      selectedFulfillmentMode === 'courier' && styles.fulfillmentCardActiveCourier,
+                    ]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons
+                          name={selectedFulfillmentMode === 'courier' ? "radio-button-on" : "radio-button-off"}
+                          size={18}
+                          color={selectedFulfillmentMode === 'courier' ? theme.primary : '#94A3B8'}
+                        />
+                        <Ionicons name="cube-outline" size={16} color="#64748B" />
+                        <Text style={styles.fulfillmentTitle}>Pan-India Courier</Text>
+                      </View>
+                      <View style={[styles.fulfillmentBadge, { backgroundColor: '#F1F5F9' }]}>
+                        <Text style={[styles.fulfillmentBadgeText, { color: '#475569' }]}>2–4 DAYS</Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                      📦 Doorstep Shipping Across India
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })()}
+
+            {/* Confirm Add Button */}
             <TouchableOpacity
-              style={styles.deliveryOptionBtn}
-              onPress={handleConfirmAddToCartStandard}
-              activeOpacity={0.7}
+              style={{
+                height: 48,
+                borderRadius: 14,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+                gap: 8,
+                overflow: 'hidden',
+                position: 'relative',
+              }}
+              onPress={handleAddToCartSelectedMode}
+              activeOpacity={0.85}
+              disabled={isAdding}
             >
-              <View style={[styles.deliveryOptionIcon, { backgroundColor: '#F1F5F9' }]}>
-                <Ionicons name="cube-outline" size={24} color="#64748B" />
-              </View>
-              <View style={styles.deliveryOptionTexts}>
-                <Text style={styles.deliveryOptionTitle}>Standard Delivery</Text>
-                <Text style={styles.deliveryOptionSub}>1 - 7 Days</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+              <LinearGradient
+                colors={[theme.dark || '#000000', theme.primary]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFill}
+              />
+              {isAdding ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="bag-add-outline" size={18} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontFamily: Typography.fontFamily.bold }}>
+                    Confirm & Add to Bag
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
-
           </View>
         </TouchableOpacity>
       </Modal>
+
 
       {/* Limit Error Modal */}
       <Modal
@@ -874,26 +1358,36 @@ const ProductDetailPage = () => {
         onRequestClose={() => setLimitErrorModalVisible(false)}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#fff', padding: 24, borderRadius: 16, width: '100%', maxWidth: 340, alignItems: 'center' }}>
-            <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
-              <Ionicons name="warning-outline" size={32} color="#EF4444" />
+          <View style={{ backgroundColor: '#fff', padding: 24, borderRadius: 20, width: '100%', maxWidth: 340, alignItems: 'center' }}>
+            <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+              <Ionicons name="warning-outline" size={26} color="#EF4444" />
             </View>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' }}>Cart Limit Reached</Text>
-            <Text style={{ fontSize: 14, color: '#64748B', textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
-              You can only have a maximum of 6 Try & Buy items per merchant. Please checkout your existing cart first to add more.
+            <Text style={{ fontSize: 16, fontFamily: Typography.fontFamily.bold, color: '#0F172A', marginBottom: 6, textAlign: 'center' }}>Cart limit reached</Text>
+            <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', marginBottom: 22, lineHeight: 18 }}>
+              {limitErrorMessage || "You can only have a maximum of 6 Try & Buy items per merchant. Please checkout your existing cart first to add more."}
             </Text>
-            <TouchableOpacity 
-              style={{ backgroundColor: theme.primary, width: '100%', paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
+            <TouchableOpacity
+              style={{ backgroundColor: theme.primary, width: '100%', paddingVertical: 13, borderRadius: 12, alignItems: 'center' }}
               onPress={() => {
                 setLimitErrorModalVisible(false);
                 router.push({ pathname: '/cart', params: { tab: 'instant' } } as any);
               }}
             >
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Go to Cart</Text>
+              <Text style={{ color: '#fff', fontSize: 13, fontFamily: Typography.fontFamily.bold }}>Go to cart</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* Zoom Modal */}
+      <ImageViewing
+        images={images.map((img: any) => ({ uri: img.url }))}
+        imageIndex={zoomIndex}
+        visible={isZoomVisible}
+        onRequestClose={() => setIsZoomVisible(false)}
+        swipeToCloseEnabled={true}
+        doubleTapToZoomEnabled={true}
+      />
     </View>
   );
 };
@@ -908,35 +1402,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    gap: 12,
+    gap: 10,
   },
   loadingText: {
-    fontSize: 14,
+    fontSize: 12.5,
     color: '#94A3B8',
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    gap: 12,
+    gap: 10,
   },
   errorText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#64748B',
-    fontWeight: '600',
+    fontFamily: Typography.fontFamily.semiBold,
   },
   backButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 14,
-    marginTop: 8,
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderRadius: 12,
+    marginTop: 6,
   },
   backButtonText: {
     color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: 13,
   },
   feedbackIndicator: {
     position: 'absolute',
@@ -948,24 +1442,24 @@ const styles = StyleSheet.create({
   feedbackBlur: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
-    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 16,
+    gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
     overflow: 'hidden',
   },
   feedbackText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 12.5,
+    fontFamily: Typography.fontFamily.semiBold,
     flex: 1,
   },
   viewCartText: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 10.5,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.4,
   },
   header: {
     position: 'absolute',
@@ -976,50 +1470,50 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   headerContent: {
-    height: 52,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
   },
   headerIcon: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
+    borderRadius: 18,
   },
   headerTitle: {
     flex: 1,
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.bold,
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#0F172A',
     textAlign: 'center',
     marginHorizontal: 8,
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
   },
   staticHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 110, // Higher than animated header to stay on top
+    zIndex: 110,
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
   },
   staticIcon: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.3)', // Semi-transparent for visibility on light backgrounds
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.25)',
     overflow: 'hidden',
   },
   imageGallery: {
     height: IMAGE_HEIGHT,
-    backgroundColor: '#000000', // Changed to black to blend with the bottom shade
+    backgroundColor: '#F8FAFC',
     overflow: 'hidden',
   },
   mainImage: {
@@ -1028,57 +1522,56 @@ const styles = StyleSheet.create({
   },
   imageCounter: {
     position: 'absolute',
-    top: 60,
+    top: 58,
     right: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 10,
     overflow: 'hidden',
   },
   imageCounterText: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: Typography.fontFamily.medium,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   imageBottomShade: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 120, // Slightly taller for a smoother shade
+    height: 110,
   },
-
   pagination: {
     position: 'absolute',
-    bottom: 36,
+    bottom: 32,
     flexDirection: 'row',
     alignSelf: 'center',
-    gap: 6,
+    gap: 5,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.35)',
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   activeDot: {
-    width: 22,
-    borderRadius: 3,
+    width: 18,
+    borderRadius: 2.5,
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 22,
     backgroundColor: '#FFFFFF',
-    marginTop: -40,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    marginTop: -28,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.04,
-        shadowRadius: 10,
+        shadowOffset: { width: 0, height: -3 },
+        shadowOpacity: 0.03,
+        shadowRadius: 8,
       },
     }),
   },
@@ -1086,35 +1579,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   brand: {
-    fontSize: 12,
-    fontFamily: Typography.fontFamily.medium,
+    fontSize: 10.5,
+    fontFamily: Typography.fontFamily.semiBold,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.1,
     marginBottom: 4,
   },
   name: {
-    fontSize: 20,
+    fontSize: 16.5,
     fontFamily: Typography.fontFamily.semiBold,
     color: '#0F172A',
-    letterSpacing: -0.3,
-    lineHeight: 24,
+    letterSpacing: -0.2,
+    lineHeight: 21,
   },
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 7,
+    backgroundColor: '#F8FAFC',
     gap: 3,
-    marginTop: 4,
+    marginTop: 2,
   },
   ratingText: {
     color: '#475569',
-    fontSize: 12,
+    fontSize: 10.5,
     fontFamily: Typography.fontFamily.medium,
   },
   priceRow: {
@@ -1124,16 +1617,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   price: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: Typography.fontFamily.bold,
     color: '#0F172A',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   mrp: {
-    fontSize: 14,
-    color: '#94A3B8',
+    fontSize: 12.5,
+    color: '#B0B8C4',
     textDecorationLine: 'line-through',
-    fontFamily: Typography.fontFamily.medium,
+    fontFamily: Typography.fontFamily.regular,
   },
   discountBadge: {
     paddingHorizontal: 2,
@@ -1142,69 +1635,95 @@ const styles = StyleSheet.create({
   discountText: {
     fontSize: 12,
     color: '#059669',
-    fontFamily: Typography.fontFamily.medium,
-    letterSpacing: 0.2,
+    fontFamily: Typography.fontFamily.semiBold,
+    letterSpacing: 0.1,
+  },
+  statusPillWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: 7,
+  },
+  statusPillWarningText: {
+    color: '#B45309',
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  statusPillSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF7',
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: 7,
+  },
+  statusPillSuccessText: {
+    color: '#059669',
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.semiBold,
   },
   divider: {
     height: 1,
     backgroundColor: '#F1F5F9',
-    marginBottom: 16,
+    marginBottom: 18,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 13,
     fontFamily: Typography.fontFamily.semiBold,
     color: '#0F172A',
-    marginBottom: 8,
-    marginTop: 4,
+    marginBottom: 9,
+    marginTop: 2,
     letterSpacing: -0.1,
   },
   sectionSubtitle: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.medium,
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
     color: '#94A3B8',
   },
   selectionRow: {
-    marginBottom: 16,
+    marginBottom: 18,
   },
   colorChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 6,
-    borderRadius: 10,
+    borderRadius: 9,
     backgroundColor: '#F8FAFC',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#EEF2F6',
   },
   colorCircle: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     marginRight: 6,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.06)',
   },
   chipText: {
-    fontSize: 13,
+    fontSize: 11.5,
     fontFamily: Typography.fontFamily.medium,
-    color: '#334155',
+    color: '#475569',
   },
   sizeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 22,
   },
   sizeChip: {
-    width: 44,
-    height: 38,
-    borderRadius: 10,
+    width: 40,
+    height: 34,
+    borderRadius: 9,
     backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#EEF2F6',
     overflow: 'hidden',
   },
   disabledSizeChip: {
@@ -1212,9 +1731,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
   sizeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: Typography.fontFamily.semiBold,
-    color: '#1E293B',
+    color: '#334155',
   },
   selectedSizeText: {
     color: '#FFFFFF',
@@ -1226,7 +1745,7 @@ const styles = StyleSheet.create({
   strikethrough: {
     position: 'absolute',
     width: '70%',
-    height: 1.5,
+    height: 1,
     backgroundColor: '#CBD5E1',
     transform: [{ rotate: '-20deg' }],
   },
@@ -1234,38 +1753,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    paddingVertical: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+    backgroundColor: '#FAFBFC',
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginBottom: 22,
   },
   deliveryItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   deliveryText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontFamily: Typography.fontFamily.medium,
     color: '#64748B',
-    letterSpacing: 0.1,
+    letterSpacing: 0.05,
   },
   deliveryDivider: {
     width: 1,
-    height: 14,
-    backgroundColor: '#E2E8F0',
+    height: 12,
+    backgroundColor: '#E7EBEF',
   },
   description: {
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 12.5,
+    lineHeight: 19,
     color: '#64748B',
     fontFamily: Typography.fontFamily.regular,
-    letterSpacing: 0.1,
+    letterSpacing: 0.05,
   },
   spacer: {
-    height: 120,
+    height: 110,
   },
   bottomBar: {
     position: 'absolute',
@@ -1274,27 +1791,27 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 12,
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: '#F4F6F8',
   },
   wishlistBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 14,
     backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
   },
   cartBtn: {
     flex: 1,
-    height: 54,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1302,24 +1819,24 @@ const styles = StyleSheet.create({
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.12,
+        shadowRadius: 10,
       },
       android: {
-        elevation: 6,
+        elevation: 5,
       },
     }),
   },
   cartBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.bold,
-    letterSpacing: 1,
+    fontSize: 12.5,
+    fontFamily: Typography.fontFamily.semiBold,
+    letterSpacing: 0.3,
   },
   relatedSection: {
-    marginTop: 32,
-    marginBottom: 8,
+    marginTop: 30,
+    marginBottom: 6,
   },
   relatedHeader: {
     flexDirection: 'row',
@@ -1334,28 +1851,28 @@ const styles = StyleSheet.create({
   relatedCard: {
     marginRight: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 5,
+        shadowOpacity: 0.04,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 3,
+        elevation: 2,
       },
     }),
   },
   emptyRelated: {
-    padding: 20,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
+    padding: 18,
+    backgroundColor: '#FAFBFC',
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyRelatedText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#94A3B8',
     fontFamily: Typography.fontFamily.medium,
     textAlign: 'center',
@@ -1366,7 +1883,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   floatingToggleBlur: {
-    borderRadius: 20,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.8)',
@@ -1374,109 +1891,107 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 5,
+        elevation: 4,
       },
     }),
   },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 10,
   },
   toggleTextCol: {
     justifyContent: 'center',
   },
   toggleLabel: {
-    fontSize: 12,
-    fontFamily: Typography.fontFamily.bold,
+    fontSize: 10.5,
+    fontFamily: Typography.fontFamily.semiBold,
     color: '#0F172A',
   },
   toggleSublabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: Typography.fontFamily.medium,
-    color: '#64748B',
+    color: '#94A3B8',
   },
   inlineShareBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 22,
+    paddingBottom: Platform.OS === 'ios' ? 38 : 22,
   },
   modalHandle: {
-    width: 40,
+    width: 36,
     height: 4,
     backgroundColor: '#E2E8F0',
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 15.5,
     fontFamily: Typography.fontFamily.bold,
     color: '#0F172A',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   deliveryOptionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
+    padding: 14,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 12,
+    borderColor: '#EEF2F6',
+    marginBottom: 10,
     backgroundColor: '#FFFFFF',
   },
   deliveryOptionBtnDisabled: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FAFBFC',
     borderColor: '#F1F5F9',
   },
   deliveryOptionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#DCFCE7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   deliveryOptionTexts: {
     flex: 1,
   },
   deliveryOptionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: Typography.fontFamily.semiBold,
     color: '#0F172A',
     marginBottom: 2,
   },
   deliveryOptionSub: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: Typography.fontFamily.medium,
-    color: '#64748B',
+    color: '#94A3B8',
   },
   deliveryOptionReason: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontFamily: Typography.fontFamily.medium,
     color: '#EF4444',
     marginTop: 4,
@@ -1484,20 +1999,72 @@ const styles = StyleSheet.create({
   merchantSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
+    padding: 11,
+    backgroundColor: '#FAFBFC',
+    borderRadius: 14,
+    marginBottom: 18,
+  },
+  fulfillmentSection: {
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+  },
+  fulfillmentGrid: {
+    gap: 10,
+    marginTop: 8,
+  },
+  fulfillmentCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  fulfillmentCardActiveFlashmart: {
+    borderColor: '#10B981',
+    backgroundColor: '#ECFDF5',
+  },
+  fulfillmentCardActiveStore: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#FFFBEB',
+  },
+  fulfillmentCardActiveCourier: {
+    borderColor: '#64748B',
+    backgroundColor: '#F8FAFC',
+  },
+  fulfillmentCardDisabled: {
+    opacity: 0.5,
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  fulfillmentTitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+  },
+  disabledText: {
+    color: '#94A3B8',
+  },
+  fulfillmentSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 4,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  fulfillmentBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  fulfillmentBadgeText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
   },
   merchantLogoContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#EEF2F6',
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1508,36 +2075,36 @@ const styles = StyleSheet.create({
   },
   merchantInfo: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 11,
   },
   merchantLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: Typography.fontFamily.medium,
     color: '#94A3B8',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   merchantName: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#0F172A',
+    fontSize: 12.5,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#1C1917',
   },
   cartIconBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 14,
     backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
     position: 'relative',
   },
   cartBadge: {
     position: 'absolute',
-    minWidth: 20,
-    height: 20,
-    borderRadius: 8,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 3,
@@ -1545,13 +2112,13 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   cartInstantBadge: {
-    top: -4,
-    right: -4,
+    top: -3,
+    right: -3,
     zIndex: 2,
   },
   cartCourierBadge: {
     bottom: -2,
-    right: -4,
+    right: -3,
     zIndex: 1,
   },
   cartBadgeContent: {
@@ -1561,9 +2128,9 @@ const styles = StyleSheet.create({
   },
   cartBadgeText: {
     color: '#FFFFFF',
-    fontSize: 8,
+    fontSize: 7.5,
     fontFamily: Typography.fontFamily.bold,
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
   },
 });
 

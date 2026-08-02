@@ -99,6 +99,9 @@ export const getBestOffersForCart = async (
  * Get offers for a specific merchant's store page.
  */
 export const getMerchantOffers = async (merchantId: string): Promise<Offer[]> => {
+  if (!merchantId || merchantId === 'flashmart' || merchantId.includes('warehouse') || merchantId.length !== 24) {
+    return [];
+  }
   try {
     const res = await api.get(`user/offers/merchant/${merchantId}`);
     return res.data?.offers || [];

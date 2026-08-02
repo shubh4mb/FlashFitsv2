@@ -17,7 +17,7 @@ interface WishlistItem {
 interface WishlistContextType {
   wishlistIds: WishlistItem[];
   toggleWishlist: (productId: string, variantId: string) => Promise<void>;
-  isInWishlist: (productId: string) => boolean;
+  isInWishlist: (productId: string, variantId?: string) => boolean;
   loading: boolean;
   refreshWishlist: () => Promise<void>;
 }
@@ -57,8 +57,12 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated]);
 
-  const isInWishlist = (productId: string) => {
+  const isInWishlist = (productId: string, variantId?: string) => {
     const pId = String(productId);
+    if (variantId) {
+      const vId = String(variantId);
+      return wishlistIds.some(item => String(item.productId) === pId && String(item.variantId) === vId);
+    }
     return wishlistIds.some(item => String(item.productId) === pId);
   };
 
@@ -66,12 +70,12 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
     // 1. Haptic Feedback immediately
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const existingItem = wishlistIds.find(item => item.productId === productId);
+    const existingItem = wishlistIds.find(item => item.productId === productId && item.variantId === variantId);
     const wasInWishlist = !!existingItem;
 
     // 2. Optimistic Update
     if (wasInWishlist) {
-      setWishlistIds(prev => prev.filter(item => item.productId !== productId));
+      setWishlistIds(prev => prev.filter(item => !(item.productId === productId && item.variantId === variantId)));
     } else {
       setWishlistIds(prev => [...prev, { productId, variantId }]);
     }
@@ -99,7 +103,7 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
           variantId: vId, 
           _id: response?._id 
         };
-        setWishlistIds(prev => prev.map(item => item.productId === pId ? newItem : item));
+        setWishlistIds(prev => prev.map(item => (item.productId === pId && item.variantId === vId) ? newItem : item));
       }
     } catch (error: any) {
       console.error(`Wishlist toggle failed for Product: ${productId}, Variant: ${variantId}`);
@@ -112,7 +116,7 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
       if (wasInWishlist) {
         setWishlistIds(prev => [...prev, existingItem!]);
       } else {
-        setWishlistIds(prev => prev.filter(item => item.productId !== productId));
+        setWishlistIds(prev => prev.filter(item => !(item.productId === productId && item.variantId === variantId)));
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }

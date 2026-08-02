@@ -58,19 +58,19 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
   const [courierCart, setCourierCart] = useState<CourierCartData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchCart = useCallback(async () => {
+  const fetchCart = useCallback(async (isSilent = false) => {
     if (!isAuthenticated) {
       setLoading(false);
       return;
     }
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const response = await getCourierCartApi();
       setCourierCart(response);
     } catch (error) {
       console.error('Failed to fetch courier cart:', error);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [isAuthenticated]);
 
@@ -88,8 +88,8 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       await addToCourierCartApi(params);
       await fetchCart();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      console.error('Add to courier cart failed:', error);
+    } catch (error: any) {
+      console.error('Add to courier cart failed:', error?.response?.data?.message || error?.message || error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error;
     }
@@ -97,37 +97,55 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
 
   const updateQuantity = async (cartId: string, quantity: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    let previousCart: CourierCartData | null = null;
+
+    setCourierCart(prevCart => {
+      previousCart = prevCart;
+      if (!prevCart) return null;
+      return {
+        ...prevCart,
+        items: prevCart.items.map(item =>
+          item._id === cartId ? { ...item, quantity } : item
+        ),
+      };
+    });
+
     try {
-      if (courierCart) {
-        setCourierCart({
-          ...courierCart,
-          items: courierCart.items.map(item =>
-            item._id === cartId ? { ...item, quantity } : item
-          ),
-        });
-      }
       await updateQtyApi(cartId, quantity);
-      await fetchCart();
+      await fetchCart(true); // Silent fetch without full page overlay
     } catch (error) {
       console.error('Update courier cart quantity failed:', error);
-      await fetchCart();
+      if (previousCart) {
+        setCourierCart(previousCart);
+      }
+      await fetchCart(true);
+      throw error;
     }
   };
 
   const removeItem = async (itemId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    let previousCart: CourierCartData | null = null;
+
+    setCourierCart(prevCart => {
+      previousCart = prevCart;
+      if (!prevCart) return null;
+      return {
+        ...prevCart,
+        items: prevCart.items.filter(item => item._id !== itemId),
+      };
+    });
+
     try {
-      if (courierCart) {
-        setCourierCart({
-          ...courierCart,
-          items: courierCart.items.filter(item => item._id !== itemId),
-        });
-      }
       await removeItemApi(itemId);
-      await fetchCart();
+      await fetchCart(true);
     } catch (error) {
       console.error('Remove courier cart item failed:', error);
-      await fetchCart();
+      if (previousCart) {
+        setCourierCart(previousCart);
+      }
+      await fetchCart(true);
+      throw error;
     }
   };
 

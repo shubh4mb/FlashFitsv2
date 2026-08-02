@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { GenderThemes, Typography } from '../../constants/theme';
+import { GenderThemes, Typography, SectionHeaderStyles } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
 import { Product } from '../../utils/recentlyViewed';
 import ProductCard from '../common/ProductCard';
@@ -92,7 +92,11 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
       onPress={() => {
         router.push({
           pathname: `/(app)/product/${item._id || item.id}` as any,
-          params: { id: item._id || item.id, fromExplore: 'false' },
+          params: { 
+            id: item._id || item.id, 
+            fromExplore: 'false',
+            variantId: item.variantId || undefined
+          },
         });
       }}
     />
@@ -114,7 +118,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </View>
         <TouchableOpacity onPress={handleNavigation}>
-          <Text style={[styles.seeAll, { color: theme.primary }]}>See All</Text>
+          <Text style={styles.seeAll}>View All</Text>
         </TouchableOpacity>
       </View>
 
@@ -166,21 +170,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 16,
   },
-  title: {
-    fontSize: 20,
-    fontFamily: Typography.fontFamily.semiBold,
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: '#000000ff',
-    marginTop: 2,
-    fontFamily: Typography.fontFamily.serif,
-  },
-  seeAll: {
-    fontSize: 13,
-    fontFamily: Typography.fontFamily.serif,
-  },
+  title: SectionHeaderStyles.title,
+  subtitle: SectionHeaderStyles.subtitle,
+  seeAll: SectionHeaderStyles.viewAll,
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 10,

@@ -6,7 +6,6 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import React, { useEffect } from 'react';
-import Svg, { Path } from 'react-native-svg';
 import {
   Platform,
   StyleSheet,
@@ -19,7 +18,8 @@ import Animated, {
   useSharedValue, 
   withSpring, 
   withSequence,
-  withTiming
+  withTiming,
+  interpolateColor,
 } from 'react-native-reanimated';
 import { Product } from '../../utils/recentlyViewed';
 import { GenderThemes, Typography } from '../../constants/theme';
@@ -49,10 +49,11 @@ const ProductCard = ({
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const productId = product._id || product.id || '';
-  const isFavorite = isInWishlist(productId);
 
   // Robust data extraction
   const variant = product.variant || (Array.isArray(product.variants) && product.variants.length > 0 ? product.variants[0] : null);
+  const variantIdForFav = product.variantId || variant?._id || (Array.isArray(product.variants) ? product.variants[0]?._id : null);
+  const isFavorite = isInWishlist(productId, variantIdForFav);
   
   // Image URL extraction: variant images array > top-level images array > variant singular image field > placeholder
   const imageUrl = 
@@ -65,21 +66,21 @@ const ProductCard = ({
   const mrp = variant?.mrp ?? product.mrp ?? price;
   const discount = mrp && mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
   const isTriable = variant?.isTriable ?? product.isTriable ?? false;
-  const isFast = (product.isInstantBuyable || isNearby || product.isNearby);
+  const isFast = (product.isInstantBuyable || isNearby || (product as any).isNearby);
 
   const translateY = useSharedValue(0);
-  const shadowOpacity = useSharedValue(0.05);
+  const scaleValue = useSharedValue(1);
   const fillProgress = useSharedValue(isFavorite ? 1 : 0);
 
   useEffect(() => {
-    fillProgress.value = withTiming(isFavorite ? 1 : 0, { duration: 200 });
+    fillProgress.value = withTiming(isFavorite ? 1 : 0, { duration: 250 });
   }, [isFavorite]);
 
-  const animatedBookmarkStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-    shadowOpacity: shadowOpacity.value,
-    shadowRadius: shadowOpacity.value > 0.08 ? 4 : 2,
-    elevation: shadowOpacity.value > 0.08 ? 4 : 2,
+  const animatedIconStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: translateY.value },
+      { scale: scaleValue.value },
+    ],
   }));
 
   const outlineStyle = useAnimatedStyle(() => ({
@@ -90,16 +91,14 @@ const ProductCard = ({
   }));
 
   const handleWishlistPress = async () => {
-    // Pop animation
+    // Bounce + scale pop animation for tactile feel
     translateY.value = withSequence(
-      withTiming(-3, { duration: 100 }),
-      withSpring(0, { damping: 12, stiffness: 180 })
+      withTiming(-4, { duration: 80 }),
+      withSpring(0, { damping: 10, stiffness: 200 })
     );
-
-    // Shadow increase
-    shadowOpacity.value = withSequence(
-      withTiming(0.2, { duration: 100 }),
-      withTiming(0.05, { duration: 200 })
+    scaleValue.value = withSequence(
+      withTiming(1.15, { duration: 80 }),
+      withSpring(1, { damping: 10, stiffness: 200 })
     );
 
     // Priority: explicit variantId > current variant's _id > first variant in array
@@ -117,7 +116,13 @@ const ProductCard = ({
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={onPress || (() => router.push({ pathname: `/product/${product._id || product.id}`, params: { fromExplore: fromExplore ? 'true' : 'false' } } as any))}
+      onPress={onPress || (() => router.push({ 
+        pathname: `/product/${product._id || product.id}`, 
+        params: { 
+          fromExplore: fromExplore ? 'true' : 'false',
+          variantId: variantIdForFav || undefined
+        } 
+      } as any))}
       style={[styles.container, width ? { width } : {}, containerStyle]}
     >
       {/* Image Section */}
@@ -129,27 +134,22 @@ const ProductCard = ({
           transition={300}
         />
 
-
-
-        {/* Premium Bookmark Ribbon */}
+        {/* Wishlist Heart Icon */}
         <TouchableOpacity
-          style={styles.bookmarkButtonContainer}
+          style={styles.wishlistButton}
           activeOpacity={1}
           onPress={handleWishlistPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Animated.View style={[styles.bookmarkShadowContainer, animatedBookmarkStyle]}>
-            {/* Outline (Resting State) */}
-            <Animated.View style={[StyleSheet.absoluteFill, outlineStyle]}>
-              <Svg width="28" height="44" viewBox="0 0 28 44">
-                <Path d="M1,5 A4,4 0 0,1 5,1 L23,1 A4,4 0 0,1 27,5 L27,43 L14,35 L1,43 Z" fill="#FFFFFF" stroke="#CBD5E1" strokeWidth="1" />
-              </Svg>
+          <Animated.View style={[styles.wishlistIconContainer, animatedIconStyle]}>
+            {/* Outline heart (Unsaved state) */}
+            <Animated.View style={[StyleSheet.absoluteFill, outlineStyle, { alignItems: 'center', justifyContent: 'center' }]}>
+               <Ionicons name="heart-outline" size={16} color="#8E8E93" />
             </Animated.View>
-            
-            {/* Solid (Saved State) */}
-            <Animated.View style={[StyleSheet.absoluteFill, solidStyle]}>
-              <Svg width="28" height="44" viewBox="0 0 28 44">
-                <Path d="M1,5 A4,4 0 0,1 5,1 L23,1 A4,4 0 0,1 27,5 L27,43 L14,35 L1,43 Z" fill="#1C1C1E" />
-              </Svg>
+
+            {/* Solid heart (Saved state) */}
+            <Animated.View style={[StyleSheet.absoluteFill, solidStyle, { alignItems: 'center', justifyContent: 'center' }]}>
+               <Ionicons name="heart" size={16} color="#8B0000" />
             </Animated.View>
           </Animated.View>
         </TouchableOpacity>
@@ -158,7 +158,7 @@ const ProductCard = ({
         <View style={styles.tryBadge}>
           <View style={[styles.tryDot, { backgroundColor: isFast ? "#3FA65C" : "#C9A24B" }]} />
           <Text style={styles.tryBadgeText}>
-            {isFast ? "20-40 MINS" : "1-7 DAYS"}
+            {product.isWarehouseListing || product.source === 'warehouse' ? "FLASHMART" : (isFast ? "20-40 MINS" : "1-7 DAYS")}
           </Text>
         </View>
       </View>
@@ -176,7 +176,11 @@ const ProductCard = ({
           )}
         </View>
 
-        {/* Rating removed per request */}
+        {(product.isWarehouseListing || product.source === 'warehouse') && (
+          <Text style={{ fontSize: 9.5, color: '#059669', fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
+            FF Warehouse • {product.merchantId?.shopName || 'Partner Store'}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -199,31 +203,33 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  bookmarkButtonContainer: {
+
+  wishlistButton: {
     position: 'absolute',
-    top: -2,
-    right: 12,
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)', // very low opacity white bg
+    alignItems: 'center',
+    justifyContent: 'center',
     zIndex: 10,
   },
-  bookmarkShadowContainer: {
-    width: 28,
-    height: 44,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+  wishlistIconContainer: {
+    width: 16,
+    height: 16,
   },
-
 
   details: {
     padding: 8,
   },
   name: {
-    fontFamily: Typography.fontFamily.medium,
-    fontSize: 11.5,
+    fontFamily: Typography.fontFamily.serifMedium,
+    fontWeight: 700,
+    fontSize: 10.5,
     color: '#1C1C1A',
-    letterSpacing: -0.3,
+    letterSpacing: -0.4, // slightly tight as requested
     marginBottom: 2,
   },
   priceRow: {
@@ -233,16 +239,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   price: {
-    fontFamily: Typography.fontFamily.semiBold,
-    fontSize: 13,
-    color: '#1C1C1A',
-    letterSpacing: -0.3,
+    fontFamily: Typography.fontFamily.serifMedium,
+    fontSize: 12,
+    color: '#3F3F46',
+    letterSpacing: -0.2,
   },
   mrp: {
-    fontFamily: Typography.fontFamily.medium,
+    fontFamily: Typography.fontFamily.serifMedium,
     fontSize: 10,
     color: '#94A3B8',
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
     textDecorationLine: 'line-through',
   },
   ratingRow: {
@@ -292,7 +298,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#22C55E', // Green
+    backgroundColor: '#22C55E',
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
     zIndex: 10,
@@ -352,3 +358,4 @@ const MemoizedProductCard = React.memo(ProductCard, (prevProps, nextProps) => {
 });
 
 export default MemoizedProductCard;
+

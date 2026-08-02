@@ -1,14 +1,17 @@
+import { createRazorpayOrder, verifyPayment } from '@/api/orders';
 import logo from '@/assets/images/logo/logo.png';
 import AddressSelectorModal from '@/components/common/AddressSelectorModal';
 import CartItem from '@/components/common/CartItem';
 import CouponInput from '@/components/common/CouponInput';
 import Loader from '@/components/common/Loader';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import RazorpayWebView from '@/components/common/RazorpayWebView';
+import SwipeToBuy from '@/components/common/SwipeToBuy';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
-import { useToast } from '@/context/AlertContext';
+import { useAlert, useToast } from '@/context/AlertContext';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
 import { useGender } from '@/context/GenderContext';
@@ -18,18 +21,17 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
-  FlatList,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -39,6 +41,7 @@ type CartTab = 'instant' | 'standard';
 export default function CartScreen() {
   const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart, applyOffer, removeOffer } = useCart();
   const showToast = useToast();
+  const showAlert = useAlert();
   const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart, applyOfferCourier, removeOfferCourier } = useCourierCart();
   const { selectedGender } = useGender();
   const { selectedAddress, tbAvailable, deliveryAvailable } = useAddress();
@@ -50,9 +53,73 @@ export default function CartScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const { computeBestOffers, couponCode, appliedOffers } = useOffers();
 
+  // Razorpay & Swipe to Buy State
+  const [razorpayOptions, setRazorpayOptions] = useState<any>(null);
+  const [showRazorpay, setShowRazorpay] = useState(false);
+  const [placingOrder, setPlacingOrder] = useState(false);
+  const [resetSwipeKey, setResetSwipeKey] = useState(0);
+  const checkoutPromiseRef = useRef<{ resolve: (value: any) => void; reject: (reason?: any) => void } | null>(null);
+  const openRazorpayCheckout = (options: any): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      setRazorpayOptions(options);
+      checkoutPromiseRef.current = { resolve, reject };
+      setShowRazorpay(true);
+    });
+  };
+
+  const handleRazorpaySuccess = (data: any) => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.resolve(data);
+      checkoutPromiseRef.current = null;
+    }
+  };
+
+  const handleRazorpayError = (error: any) => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.reject(error);
+      checkoutPromiseRef.current = null;
+    }
+  };
+
+  const handleRazorpayClose = () => {
+    setShowRazorpay(false);
+    if (checkoutPromiseRef.current) {
+      checkoutPromiseRef.current.reject({ code: 'PAYMENT_CANCELLED' });
+      checkoutPromiseRef.current = null;
+    }
+  };
+
   const scrollX = useRef(new Animated.Value(0)).current;
-  const flatListRef = useRef<FlashList<any>>(null);
-  const merchantCarts = cart?.merchantCarts || [];
+  const horizontalScrollRef = useRef<ScrollView>(null);
+
+  // Optimized merchant carts memoization with O(N) precomputed timestamps
+  const merchantCarts = useMemo(() => {
+    if (!cart?.merchantCarts?.length) return [];
+    const mapped = cart.merchantCarts.map((mc: any) => {
+      let maxTime = 0;
+      if (mc.items && mc.items.length > 0) {
+        for (let i = 0; i < mc.items.length; i++) {
+          const item = mc.items[i];
+          let t = 0;
+          if (item.updatedAt) {
+            t = new Date(item.updatedAt).getTime();
+          } else if (item.createdAt) {
+            t = new Date(item.createdAt).getTime();
+          } else if (item.addedAt) {
+            t = new Date(item.addedAt).getTime();
+          } else if (item._id && typeof item._id === 'string' && item._id.length === 24) {
+            t = parseInt(item._id.substring(0, 8), 16) * 1000;
+          }
+          if (t > maxTime) maxTime = t;
+        }
+      }
+      return { mc, maxTime };
+    });
+    mapped.sort((a, b) => b.maxTime - a.maxTime);
+    return mapped.map(entry => entry.mc);
+  }, [cart?.merchantCarts]);
 
   // Calculate initial index based on passed merchantId
   const initialIndex = useMemo(() => {
@@ -61,7 +128,7 @@ export default function CartScreen() {
       return idx !== -1 ? idx : 0;
     }
     return 0;
-  }, [targetMerchantId, merchantCarts.length]);
+  }, [targetMerchantId, merchantCarts]);
 
   const [activeIndex, setActiveIndex] = useState(initialIndex);
 
@@ -69,6 +136,9 @@ export default function CartScreen() {
   useEffect(() => {
     if (initialIndex > 0) {
       setActiveIndex(initialIndex);
+      setTimeout(() => {
+        horizontalScrollRef.current?.scrollTo({ x: initialIndex * SCREEN_WIDTH, animated: false });
+      }, 100);
     }
   }, [initialIndex]);
 
@@ -96,28 +166,119 @@ export default function CartScreen() {
     setRefreshing(false);
   };
 
-  const handleCheckout = (merchantId: string) => {
+  const handleTryBuyPlaceOrder = async (merchantId: string) => {
     const merchantCart = cart?.merchantCarts?.find(mc => mc.merchantId === merchantId);
-    console.log(merchantCart, 'merchantCart');
-
     if (!merchantCart) return;
 
     if (!selectedAddress) {
+      showToast({ message: 'Please select a delivery address.', type: 'warning' });
       setModalVisible(true);
+      setResetSwipeKey(prev => prev + 1);
       return;
     }
 
     if (merchantCart.deliveryDetails?.isEligibleForTryBuy === false) {
-      showToast({ message: "This store is too far for Try & Buy. Move items to courier or remove them.", type: 'warning' });
+      showToast({ message: 'This store is too far for Try & Buy. Please change address.', type: 'warning' });
+      setModalVisible(true);
+      setResetSwipeKey(prev => prev + 1);
       return;
     }
 
     if (merchantCart.merchantDetails?.isOnline === false) {
-      showToast({ message: "This merchant is currently offline", type: 'error' });
+      showToast({ message: 'This store is currently offline.', type: 'error' });
+      setResetSwipeKey(prev => prev + 1);
       return;
     }
 
-    router.push({ pathname: '/checkout', params: { type: 'trybuy', merchantId } } as any);
+    setPlacingOrder(true);
+    try {
+      const addressId = selectedAddress._id || (selectedAddress as any)?.id;
+      const result = await createRazorpayOrder(
+        addressId,
+        deliveryTip,
+        couponCode || undefined,
+        merchantId,
+        'online'
+      );
+
+      if (result.isFreeOrder) {
+        await refreshCart();
+        showAlert({
+          title: '✅ Order Placed!',
+          message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
+          type: 'success',
+          buttons: [{
+            text: 'Go to Home',
+            onPress: () => router.replace('/(tabs)' as any),
+          }],
+        });
+
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Order Placed Successfully! 🛍️',
+            body: `Your order #${result.orderId?.slice(-6).toUpperCase()} has been confirmed.`,
+            data: { orderId: result.orderId },
+          },
+          trigger: null,
+        });
+        return;
+      }
+
+      const options = {
+        description: 'Try & Buy Delivery Fee',
+        currency: 'INR',
+        key: result.key_id,
+        amount: result.amount,
+        name: 'FlashFits',
+        order_id: result.razorpayOrderId,
+        prefill: {
+          contact: result.contact,
+          name: result.name,
+          email: result.email,
+        },
+        theme: { color: theme.primary },
+      };
+
+      const paymentData = await openRazorpayCheckout(options);
+
+      const verifyResult = await verifyPayment({
+        razorpay_order_id: paymentData.razorpay_order_id,
+        razorpay_payment_id: paymentData.razorpay_payment_id,
+        razorpay_signature: paymentData.razorpay_signature,
+        orderId: result.orderId,
+      });
+
+      if (verifyResult.success) {
+        await refreshCart();
+        showAlert({
+          title: '✅ Order Placed!',
+          message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
+          type: 'success',
+          buttons: [{
+            text: 'Go to Home',
+            onPress: () => router.replace('/(tabs)' as any),
+          }],
+        });
+
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Order Placed Successfully! 🛍️',
+            body: `Your order #${result.orderId?.slice(-6).toUpperCase()} has been confirmed.`,
+            data: { orderId: result.orderId },
+          },
+          trigger: null,
+        });
+      }
+    } catch (error: any) {
+      if (error?.code === 'PAYMENT_CANCELLED') {
+        showToast({ message: 'Payment cancelled.', type: 'warning' });
+      } else {
+        showToast({ message: error?.message || 'Payment failed. Please try again.', type: 'error' });
+      }
+      setResetSwipeKey(prev => prev + 1);
+    } finally {
+      setPlacingOrder(false);
+    }
   };
 
   const handleStandardCheckout = () => {
@@ -138,7 +299,7 @@ export default function CartScreen() {
   };
 
   const scrollToMerchant = (index: number) => {
-    flatListRef.current?.scrollToIndex({ index, animated: true });
+    horizontalScrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
   };
 
   // Standard (Courier) Cart Data
@@ -154,7 +315,7 @@ export default function CartScreen() {
   const currentMerchantCart = merchantCarts[activeIndex];
 
 
-  if ((loading || courierLoading) && tbItems.length === 0 && courierItems.length === 0) {
+  if ((loading || courierLoading) && merchantCarts.length === 0 && courierItems.length === 0) {
     return (
       <View style={styles.centered}>
         <Loader size={60} />
@@ -233,7 +394,7 @@ export default function CartScreen() {
                     styles.hubLogoContainer,
                     activeIndex !== index && { opacity: 0.4, backgroundColor: 'transparent' }
                   ]}>
-                    <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.hubLogo} contentFit="contain" />
+                    <Image source={mc.merchantId === 'flashmart' ? logo : { uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.hubLogo} contentFit="contain" />
                   </View>
                   {activeIndex === index && <View style={styles.hubActiveLine} />}
                 </TouchableOpacity>
@@ -259,30 +420,29 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <FlashList
-              ref={flatListRef}
-              data={merchantCarts}
+            <ScrollView
+              ref={horizontalScrollRef}
+              style={{ flex: 1 }}
               horizontal
               pagingEnabled
-              estimatedItemSize={SCREEN_WIDTH}
               showsHorizontalScrollIndicator={false}
-              keyExtractor={(item: any) => item.merchantId}
-              initialScrollIndex={initialIndex}
               scrollEventThrottle={16}
-              onScroll={(e) => {
+              keyboardShouldPersistTaps="handled"
+              onMomentumScrollEnd={(e) => {
                 const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
                 if (index !== activeIndex) {
                   setActiveIndex(index);
                 }
               }}
-              renderItem={({ item: mc, index }) => {
+            >
+              {merchantCarts.map((mc, index) => {
                 const mTotals = mc.totals;
                 const mOffers = mc.appliedOffers;
                 const isOffline = mc.merchantDetails?.isOnline === false;
                 const isEligible = mc.deliveryDetails?.isEligibleForTryBuy !== false;
 
                 return (
-                  <View style={{ width: SCREEN_WIDTH }}>
+                  <View key={mc.merchantId} style={{ width: SCREEN_WIDTH, flex: 1 }}>
                     <PremiumRefreshWrapper
                       scrollY={scrollY}
                       refreshing={refreshing}
@@ -292,7 +452,33 @@ export default function CartScreen() {
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={styles.slideContent}
                         scrollEventThrottle={16}
+                        keyboardShouldPersistTaps="handled"
                       >
+                        {/* Delivery Address Header Card */}
+                        <TouchableOpacity
+                          style={styles.addressHeaderCard}
+                          activeOpacity={0.8}
+                          onPress={() => setModalVisible(true)}
+                        >
+                          <View style={styles.addressHeaderLeft}>
+                            <View style={[styles.addressIconCircle, { backgroundColor: theme.primary + '15' }]}>
+                              <Ionicons name="location" size={18} color={theme.primary} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.addressSubHeader}>Delivering Try & Buy to</Text>
+                              <Text style={styles.addressMainText} numberOfLines={1}>
+                                {selectedAddress
+                                  ? `${selectedAddress.addressType ? selectedAddress.addressType.toUpperCase() + ': ' : ''}${selectedAddress.addressLine1 || selectedAddress.street || selectedAddress.city || 'Saved Address'}`
+                                  : 'Tap to select delivery address'}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={[styles.changePill, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
+                            <Text style={[styles.changePillText, { color: theme.primary }]}>Change</Text>
+                            <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+                          </View>
+                        </TouchableOpacity>
+
                         {/* Merchant Header Branding */}
                         <TouchableOpacity
                           style={styles.brandingHeader}
@@ -317,7 +503,7 @@ export default function CartScreen() {
                               )}
                             </View>
                           </View>
-                          <Image source={{ uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.brandingLogo} contentFit="contain" />
+                          <Image source={mc.merchantId === 'flashmart' ? logo : { uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.brandingLogo} contentFit="contain" />
                         </TouchableOpacity>
 
                         {!isEligible && (
@@ -350,6 +536,20 @@ export default function CartScreen() {
                           </View>
                         )}
 
+                        {isEligible && isOffline && (
+                          <View style={[styles.warningBanner, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
+                            <View style={styles.warningHeaderRow}>
+                              <Ionicons name="moon-outline" size={24} color="#EF4444" />
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.warningTitle, { color: '#B91C1C', fontFamily: Typography.fontFamily.bold }]}>Merchant is Offline</Text>
+                                <Text style={[styles.warningText, { color: '#DC2626', fontFamily: Typography.fontFamily.medium }]}>
+                                  This store is currently offline. You can keep these items in your Try & Buy cart, and checkout when the store is back online.
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        )}
+
                         {/* Items */}
                         <View style={styles.itemsContainer}>
                           {mc.items.map((item) => (
@@ -374,7 +574,7 @@ export default function CartScreen() {
 
                             {mOffers.availableOffers.map((offer: any) => {
                               const isApplied = mOffers.appliedOffers?.some((o: any) => (o._id?.toString() || o.offerId?.toString()) === (offer._id?.toString() || offer.offerId?.toString()));
-                              
+
                               const minCartValue = offer.conditions?.minCartValue || 0;
                               const minOrderValue = offer.conditions?.minOrderValue || 0;
                               const threshold = Math.max(minCartValue, minOrderValue);
@@ -553,8 +753,8 @@ export default function CartScreen() {
                     </PremiumRefreshWrapper>
                   </View>
                 );
-              }}
-            />
+              })}
+            </ScrollView>
           )
         ) : (
           /* Standard Cart Section */
@@ -579,6 +779,7 @@ export default function CartScreen() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.standardContent}
                 scrollEventThrottle={16}
+                keyboardShouldPersistTaps="handled"
               >
                 <View style={styles.standardBanner}>
                   <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
@@ -729,69 +930,70 @@ export default function CartScreen() {
         )}
       </View>
 
-      {/* Pinned Checkout Button */}
+      {/* Pinned Bottom Area */}
       {(activeTab === 'instant' ? merchantCarts.length > 0 : courierItems.length > 0) && (
-        <View style={[styles.pinnedContainer, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={[styles.pinnedContainer, { paddingBottom: insets.bottom + 12 }]}>
           <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} style={styles.pinnedGradient} />
 
-          <View style={styles.pinnedInner}>
-            {activeTab === 'instant' && (deliveryAvailable === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false) ? (
-              <TouchableOpacity
-                style={[
-                  styles.checkoutBtn,
-                  { backgroundColor: theme.primary, flex: 1, justifyContent: 'center' }
-                ]}
-                onPress={() => setModalVisible(true)}
-              >
-                <Text style={[styles.checkoutBtnText, { textAlign: 'center', fontFamily: Typography.fontFamily.bold }]}>
-                  {currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
-                    ? "Too Far From Store • Change Address"
-                    : "Outside Service Area • Change Address"}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <>
-                {!(activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false) && (
-                    <View>
-                      <Text style={styles.pinnedPrice}>
-                        ₹{activeTab === 'instant'
-                          ? Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)
-                          : Math.round(courierTotal)}
-                      </Text>
-                      <Text style={styles.pinnedSub}>{activeTab === 'instant' ? 'Payable Now' : 'Total Payable'}</Text>
-                    </View>
-                  )}
-
+          {activeTab === 'instant' ? (
+            <View style={{ gap: 8 }}>
+              {deliveryAvailable === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ? (
                 <TouchableOpacity
                   style={[
                     styles.checkoutBtn,
-                    { backgroundColor: theme.primary },
-                    activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false && { backgroundColor: '#CBD5E1', flex: 1, justifyContent: 'center' }
+                    { backgroundColor: theme.primary, flex: 1, justifyContent: 'center' }
                   ]}
-                  disabled={activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false}
-                  onPress={() => activeTab === 'instant' ? handleCheckout(currentMerchantCart.merchantId) : handleStandardCheckout()}
+                  onPress={() => setModalVisible(true)}
                 >
-                  <Text style={[
-                    styles.checkoutBtnText,
-                    activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false && { textAlign: 'center' }
-                  ]}>
-                    {activeTab === 'instant'
-                      ? currentMerchantCart?.merchantDetails?.isOnline === false
-                        ? "Sorry, Shop Closed Now"
-                        : 'Proceed to Try & Buy'
-                      : 'Checkout Now'}
+                  <Text style={[styles.checkoutBtnText, { textAlign: 'center', fontFamily: Typography.fontFamily.bold }]}>
+                    {currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false
+                      ? "Too Far From Store • Tap to Change Address"
+                      : "Outside Service Area • Tap to Change Address"}
                   </Text>
-                  {!(activeTab === 'instant' && currentMerchantCart?.merchantDetails?.isOnline === false) && (
-                    <Feather name="arrow-right" size={20} color="#fff" />
-                  )}
                 </TouchableOpacity>
-              </>
-            )}
-          </View>
+              ) : (
+                <SwipeToBuy
+                  onSwipeComplete={() => handleTryBuyPlaceOrder(currentMerchantCart.merchantId)}
+                  disabled={currentMerchantCart?.merchantDetails?.isOnline === false || placingOrder}
+                  loading={placingOrder}
+                  themeColor={theme.primary}
+                  resetKey={resetSwipeKey}
+                  text={
+                    currentMerchantCart?.merchantDetails?.isOnline === false
+                      ? 'Shop Closed Now'
+                      : `Swipe to Try & Buy • Pay ₹${Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)}`
+                  }
+                />
+              )}
+            </View>
+          ) : (
+            <View style={styles.pinnedInner}>
+              <View>
+                <Text style={styles.pinnedPrice}>₹{Math.round(courierTotal)}</Text>
+                <Text style={styles.pinnedSub}>Total Payable</Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.checkoutBtn, { backgroundColor: theme.primary }]}
+                onPress={handleStandardCheckout}
+              >
+                <Text style={styles.checkoutBtnText}>Checkout Now</Text>
+                <Feather name="arrow-right" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
 
       <AddressSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+
+      <RazorpayWebView
+        visible={showRazorpay}
+        options={razorpayOptions}
+        onSuccess={handleRazorpaySuccess}
+        onError={handleRazorpayError}
+        onClose={handleRazorpayClose}
+      />
 
       {/* Loading Overlay */}
       {isUpdating && (
@@ -810,73 +1012,73 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A' },
-  clearText: { fontSize: 14, fontWeight: '700' },
+  backButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  clearText: { fontSize: 13, fontWeight: '700' },
 
-  tabContainer: { flexDirection: 'row', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8, borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 6, borderBottomWidth: 3, borderBottomColor: 'transparent' },
   activeTab: { borderBottomWidth: 3 },
-  tabText: { fontSize: 13, color: '#94A3B8', fontWeight: '600' },
-  badge: { minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  tabText: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
+  badge: { minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText: { color: '#fff', fontSize: 9, fontWeight: '900' },
 
   // Merchant Hub
-  merchantHub: { backgroundColor: '#fff', paddingBottom: 12 },
-  merchantHubContent: { paddingHorizontal: 20, gap: 16 },
-  hubWrapper: { alignItems: 'center', justifyContent: 'center', height: 60 },
-  hubLogoContainer: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
+  merchantHub: { backgroundColor: '#fff', paddingBottom: 8 },
+  merchantHubContent: { paddingHorizontal: 16, gap: 12 },
+  hubWrapper: { alignItems: 'center', justifyContent: 'center', height: 48 },
+  hubLogoContainer: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
   hubLogo: { width: '80%', height: '80%' },
-  hubActiveLine: { position: 'absolute', bottom: 0, width: 28, height: 3, borderRadius: 2, backgroundColor: '#000' },
+  hubActiveLine: { position: 'absolute', bottom: 0, width: 24, height: 3, borderRadius: 2, backgroundColor: '#000' },
 
-  slideContent: { padding: 20, paddingBottom: 140 },
-  brandingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  slideContent: { padding: 12, paddingBottom: 110 },
+  brandingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   brandingInfo: { flex: 1 },
-  brandingShopName: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
-  brandingStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  statusTag: { fontSize: 10, fontWeight: '800', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, textTransform: 'uppercase' },
-  brandingMins: { fontSize: 12, color: '#64748B', fontWeight: '600' },
-  brandingLogo: { width: 60, height: 60, borderRadius: 12 },
+  brandingShopName: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  brandingStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  statusTag: { fontSize: 9, fontWeight: '800', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, textTransform: 'uppercase' },
+  brandingMins: { fontSize: 11, color: '#64748B', fontWeight: '600' },
+  brandingLogo: { width: 44, height: 44, borderRadius: 10 },
 
   warningBanner: {
     backgroundColor: '#FFFBEB',
-    padding: 16,
-    borderRadius: 20,
+    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#FEF3C7',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   warningHeaderRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     alignItems: 'flex-start',
   },
   warningTitle: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#92400E',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   warningText: {
-    fontSize: 13,
+    fontSize: 11.5,
     color: '#B45309',
-    lineHeight: 18,
+    lineHeight: 16,
   },
   warningActionsContainer: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
+    gap: 8,
+    marginTop: 10,
   },
   warningActionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
+    gap: 4,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   changeAddressButton: {
     backgroundColor: '#FFFBEB',
@@ -887,97 +1089,97 @@ const styles = StyleSheet.create({
     // background dynamically styled
   },
   warningActionButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#0F172A',
   },
 
-  itemsContainer: { gap: 12, marginBottom: 24 },
+  itemsContainer: { gap: 8, marginBottom: 14 },
 
-  premiumBill: { backgroundColor: '#fff', borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
-  billTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
-  billRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  billLabel: { fontSize: 14, color: '#64748B' },
-  billValue: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  billSubText: { fontSize: 8, color: '#64748B', marginTop: -6, marginBottom: 10, fontWeight: '500', marginLeft: 0 },
-  billDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
+  premiumBill: { backgroundColor: '#fff', borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 6, elevation: 1 },
+  billTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
+  billRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  billLabel: { fontSize: 12.5, color: '#64748B' },
+  billValue: { fontSize: 12.5, fontWeight: '700', color: '#0F172A' },
+  billSubText: { fontSize: 8, color: '#64748B', marginTop: -4, marginBottom: 6, fontWeight: '500', marginLeft: 0 },
+  billDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 8 },
 
-  payLaterSection: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 12, marginBottom: 20 },
-  payLaterText: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  payLaterSection: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 10, marginBottom: 12 },
+  payLaterText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
 
-  upfrontTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 12 },
-  grandTotalLabel: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
-  grandTotalValue: { fontSize: 20, fontWeight: '900' },
+  upfrontTitle: { fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+  grandTotalLabel: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
+  grandTotalValue: { fontSize: 17, fontWeight: '900' },
 
-  slideTipSection: { marginTop: 20, padding: 20, backgroundColor: '#fff', borderRadius: 24 },
-  tipSectionTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
-  tipRow: { flexDirection: 'row', gap: 12 },
-  tipPill: { flex: 1, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
-  tipPillText: { fontSize: 14, fontWeight: '700', color: '#64748B' },
+  slideTipSection: { marginTop: 12, padding: 12, backgroundColor: '#fff', borderRadius: 16 },
+  tipSectionTitle: { fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
+  tipRow: { flexDirection: 'row', gap: 8 },
+  tipPill: { flex: 1, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  tipPillText: { fontSize: 12.5, fontWeight: '700', color: '#64748B' },
 
   // Standard Cart
-  standardContent: { padding: 20, paddingBottom: 140 },
-  standardBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F3E8FF', padding: 14, borderRadius: 16, marginBottom: 20 },
-  standardBannerText: { fontSize: 13, fontWeight: '700', color: '#7C3AED' },
-  summaryCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },
+  standardContent: { padding: 12, paddingBottom: 110 },
+  standardBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F3E8FF', padding: 10, borderRadius: 12, marginBottom: 12 },
+  standardBannerText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
+  summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14 },
   logisticsNote: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: '#F8FAFC',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 16,
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   logisticsNoteText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
-    lineHeight: 18,
+    lineHeight: 15,
     fontWeight: '500',
   },
 
   // Pinned Bottom
-  pinnedContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', paddingHorizontal: 20, paddingTop: 10 },
-  pinnedGradient: { position: 'absolute', top: -30, left: 0, right: 0, height: 30 },
+  pinnedContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 6 },
+  pinnedGradient: { position: 'absolute', top: -20, left: 0, right: 0, height: 20 },
   pinnedInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  pinnedPrice: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
-  pinnedSub: { fontSize: 12, color: '#64748B', fontWeight: '700' },
-  checkoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 20 },
-  checkoutBtnText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  pinnedPrice: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
+  pinnedSub: { fontSize: 10, color: '#64748B', fontWeight: '700' },
+  checkoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16 },
+  checkoutBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
 
-  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingBottom: 100 },
-  emptyIconContainer: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
-  emptyDesc: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  exploreButton: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16 },
-  exploreText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30, paddingBottom: 80 },
+  emptyIconContainer: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: '900', color: '#0F172A', marginBottom: 6, textAlign: 'center' },
+  emptyDesc: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 18, marginBottom: 20 },
+  exploreButton: { paddingHorizontal: 28, paddingVertical: 12, borderRadius: 14 },
+  exploreText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   footer: {
     alignItems: 'center',
-    marginTop: 28,
+    marginTop: 20,
   },
   versionText: {
     fontSize: 8,
     fontFamily: Typography.fontFamily.bold,
     color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
+    letterSpacing: 2,
+    marginTop: 2,
   },
   taglineText: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: Typography.fontFamily.bold,
     color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
+    letterSpacing: 2,
+    marginTop: 2,
     opacity: 0.6,
     textShadowColor: 'rgba(209, 213, 219, 0.4)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
   },
   footerLogo: {
-    width: 140,
-    height: 60,
+    width: 110,
+    height: 48,
     opacity: 0.25,
   },
   loadingOverlay: {
@@ -989,49 +1191,49 @@ const styles = StyleSheet.create({
   },
   offersSection: {
     backgroundColor: '#ffffff',
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 24,
+    padding: 12,
+    marginBottom: 12,
+    borderRadius: 16,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 6,
+    elevation: 1,
   },
   offersHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   offersHeaderTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   offersSectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#0F172A',
   },
   offersCountBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
   offersCountText: {
-    fontSize: 11,
+    fontSize: 10,
   },
   offerCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#F8FAFC',
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
     borderStyle: 'dashed',
-    padding: 14,
-    marginBottom: 12,
+    padding: 10,
+    marginBottom: 8,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -1039,9 +1241,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     right: 0,
-    borderBottomLeftRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderBottomLeftRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1049,15 +1251,15 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 12,
+    paddingRight: 8,
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   offerDetails: {
     flex: 1,
@@ -1065,39 +1267,39 @@ const styles = StyleSheet.create({
   codeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
+    gap: 6,
+    marginBottom: 4,
   },
   codeBadge: {
     borderWidth: 1,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 6,
+    borderRadius: 4,
   },
   codeText: {
-    fontSize: 12,
+    fontSize: 11,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   saveTag: {
-    fontSize: 12,
+    fontSize: 11,
   },
   offerDescription: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
-    lineHeight: 16,
+    lineHeight: 14,
   },
   offerCardRight: {
     justifyContent: 'center',
     alignItems: 'flex-end',
   },
   actionBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 70,
+    minWidth: 60,
   },
   removeBtn: {
     backgroundColor: '#FEF2F2',
@@ -1105,31 +1307,87 @@ const styles = StyleSheet.create({
     borderColor: '#FCA5A5',
   },
   removeBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#EF4444',
   },
   applyBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#FFFFFF',
   },
   warningContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF3C7',
-    padding: 10,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    padding: 8,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
     borderWidth: 1.5,
     borderColor: '#FDE68A',
     borderStyle: 'dashed',
     borderTopWidth: 0,
-    gap: 8,
+    gap: 6,
   },
   warningText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#92400E',
     fontWeight: '700',
     flex: 1,
-    lineHeight: 16,
+    lineHeight: 15,
+  },
+  addressHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  addressHeaderLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginRight: 8,
+  },
+  addressIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addressSubHeader: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  addressMainText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 1,
+  },
+  changePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  changePillText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
 });

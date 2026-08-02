@@ -65,6 +65,7 @@ const CustomRefreshControl = ({
 
   return (
     <Animated.View
+      pointerEvents="none"
       style={[
         styles.container,
         {

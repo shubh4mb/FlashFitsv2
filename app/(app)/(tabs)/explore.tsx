@@ -3,9 +3,10 @@ import logo from '@/assets/images/logo/logo.png';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import ProductCard from '@/components/common/ProductCard';
+import CompactStoreCard from '@/components/common/CompactStoreCard';
 import MainHeader from '@/components/layout/MainHeader';
 import { GenderThemes, Typography } from '@/constants/theme';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, distanceInMeters } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
 import { Product } from '@/utils/recentlyViewed';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,6 +37,20 @@ interface Merchant {
   logo: {
     url: string;
   };
+  backgroundImage?: {
+    url: string;
+  };
+  isOnline?: boolean;
+  rating?: number;
+  stats?: {
+    totalProducts?: number;
+  };
+  genderCategory?: string[];
+  address?: {
+    location?: {
+      coordinates: number[]; // [lng, lat]
+    };
+  };
 }
 
 export default function ExploreScreen() {
@@ -57,6 +72,19 @@ export default function ExploreScreen() {
 
   const genderMap: Record<string, string> = { Men: 'MEN', Women: 'WOMEN', Kids: 'KIDS', All: 'MEN' };
   const apiGender = genderMap[selectedGender] || 'MEN';
+
+  const getDistanceStr = (merchant: Merchant) => {
+    const mCoords = merchant.address?.location?.coordinates;
+    const userLat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+    const userLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+    if (!mCoords || !userLat || !userLng) return null;
+    const dist = distanceInMeters(userLat, userLng, mCoords[1], mCoords[0]);
+    if (dist > 10000) return null; // Only show if under 10 km
+    if (dist < 1000) {
+      return `${Math.round(dist)}m`;
+    }
+    return `${(dist / 1000).toFixed(1)} km`;
+  };
 
   const loadProducts = useCallback(async (pageNum: number = 1, append: boolean = false) => {
     try {
@@ -122,23 +150,19 @@ export default function ExploreScreen() {
     </View>
   ), [CARD_WIDTH]);
 
-  const renderMerchant = useCallback(({ item }: { item: Merchant }) => (
-    <TouchableOpacity
-      style={styles.merchantItem}
-      activeOpacity={0.7}
-      onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true' } } as any)}
-    >
-      <View style={styles.merchantLogoContainer}>
-        <Image
-          source={{ uri: item.logo?.url }}
-          style={styles.merchantLogo}
-          contentFit="contain"
-          transition={200}
+  const renderMerchant = useCallback(({ item }: { item: Merchant }) => {
+    const distanceStr = getDistanceStr(item);
+    return (
+      <View key={item._id}>
+        <CompactStoreCard
+          merchant={item as any}
+          onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true', isWarehouse: (item as any).isWarehouse ? 'true' : 'false' } } as any)}
+          subInfoText={distanceStr}
+          subInfoIcon="location-outline"
         />
       </View>
-      <Text style={styles.merchantName} numberOfLines={1}>{item.shopName}</Text>
-    </TouchableOpacity>
-  ), [router]);
+    );
+  }, [router, selectedAddress, userLocation]);
 
   return (
     <View style={styles.container}>
@@ -187,7 +211,7 @@ export default function ExploreScreen() {
                 <FlashList
                   data={merchants}
                   horizontal
-                  estimatedItemSize={100}
+                  estimatedItemSize={150}
                   showsHorizontalScrollIndicator={false}
                   keyExtractor={(item: any) => item._id}
                   contentContainerStyle={styles.merchantsList}
@@ -375,39 +399,6 @@ const styles = StyleSheet.create({
   },
   merchantsList: {
     paddingRight: 16,
-  },
-  merchantItem: {
-    alignItems: 'center',
-    marginRight: 20,
-    width: 72,
-  },
-  merchantLogoContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  merchantLogo: {
-    width: '60%',
-    height: '60%',
-  },
-  merchantName: {
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.medium,
-    color: '#475569',
-    textAlign: 'center',
-    width: '100%',
   },
   productCardExplore: {
     marginRight: 0,

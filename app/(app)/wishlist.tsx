@@ -6,6 +6,7 @@ import MainHeader from '@/components/layout/MainHeader';
 import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { useWishlist } from '@/context/WishlistContext';
+import { useAddress } from '@/context/AddressContext';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import Loader from '@/components/common/Loader';
@@ -18,15 +19,18 @@ import {
   Animated,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  TouchableOpacity,
 } from 'react-native';
-import CustomRefreshControl from '@/components/common/CustomRefreshControl';
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 2;
 
-export default function WishlistScreen() {
+export default function StandaloneWishlistScreen() {
+  const router = useRouter();
   const { wishlistIds } = useWishlist();
   const { selectedGender } = useGender();
+  const { userLocation, selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -35,25 +39,18 @@ export default function WishlistScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
-  const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
-      onRefresh();
-    }
-  };
-
   const fetchFullWishlist = async () => {
     try {
-      const response = await getMyWishlist();
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const response = await getMyWishlist(lat, lng);
       const items = response?.wishlist || [];
 
-      // Map to ProductCard expectations using the robust extraction logic
       const mappedProducts = items.map((item: any) => {
         if (!item.product) return null;
-        
         return {
           ...item.product,
-          wishlistItemId: item._id, // Store for removal if needed
-          // The robust ProductCard now handles the rest via .variant or .variants
+          wishlistItemId: item._id,
         };
       }).filter(Boolean);
 
@@ -68,7 +65,7 @@ export default function WishlistScreen() {
 
   useEffect(() => {
     fetchFullWishlist();
-  }, [wishlistIds]); // Refresh when context IDs change (e.g. item removed from another screen)
+  }, [wishlistIds]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -96,41 +93,46 @@ export default function WishlistScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           scrollEventThrottle={16}
-      >
-        {headerHeight > 0 && <View style={{ height: headerHeight }} />}
+        >
+          {headerHeight > 0 && <View style={{ height: headerHeight }} />}
 
-        <View style={styles.header}>
-          <ThemedText type="title" style={styles.title}>My Wishlist</ThemedText>
-          <ThemedText style={styles.count}>{wishlistItems.length} Items</ThemedText>
-        </View>
-
-        {wishlistItems.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
-              <Ionicons name="heart-outline" size={60} color={theme.primary} />
+          <View style={styles.header}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
+                <Ionicons name="chevron-back" size={22} color="#0F172A" />
+              </TouchableOpacity>
+              <ThemedText type="title" style={styles.title}>My Wishlist</ThemedText>
             </View>
-            <ThemedText type="subtitle" style={styles.emptyTitle}>Your wishlist is empty</ThemedText>
-            <ThemedText style={styles.emptyText}>
-              Start adding your favorite items to keep track of them!
-            </ThemedText>
+            <ThemedText style={styles.count}>{wishlistItems.length} Items</ThemedText>
           </View>
-        ) : (
-          <View style={styles.grid}>
-            {wishlistItems.map((product) => (
-              <View key={product._id} style={styles.cardWrapper}>
-                <ProductCard
-                  product={product}
-                  width={COLUMN_WIDTH}
-                  fromExplore={true}
-                  isNearby={product.isInstantBuyable || product.isNearby}
-                  isOnline={product.isOnline !== false}
-                />
+
+          {wishlistItems.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
+                <Ionicons name="heart-outline" size={60} color={theme.primary} />
               </View>
-            ))}
-          </View>
-        )}
-      </Animated.ScrollView>
-    </PremiumRefreshWrapper>
+              <ThemedText type="subtitle" style={styles.emptyTitle}>Your wishlist is empty</ThemedText>
+              <ThemedText style={styles.emptyText}>
+                Start adding your favorite items to keep track of them!
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.grid}>
+              {wishlistItems.map((product) => (
+                <View key={`${product._id}_${product.variantId}`} style={styles.cardWrapper}>
+                  <ProductCard
+                    product={product}
+                    width={COLUMN_WIDTH}
+                    fromExplore={true}
+                    isNearby={product.isInstantBuyable || product.isNearby}
+                    isOnline={product.isOnline !== false}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+        </Animated.ScrollView>
+      </PremiumRefreshWrapper>
     </ThemedView>
   );
 }
@@ -153,12 +155,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     marginBottom: 20,
     paddingHorizontal: 4,
   },
+  backBtn: {
+    padding: 4,
+  },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
   },
@@ -166,7 +171,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
     fontWeight: '600',
-    marginBottom: 4,
   },
   grid: {
     flexDirection: 'row',

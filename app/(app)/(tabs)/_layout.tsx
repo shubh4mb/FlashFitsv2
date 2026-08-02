@@ -59,22 +59,20 @@ const AnimatedIconWrapper = ({ focused, iconName, color, label, isMain }: { focu
       >
         <Ionicons
           name={iconName}
-          size={isMain ? (focused ? 32 : 28) : (focused ? 24 : 22)}
+          size={isMain ? (focused ? 30 : 25) : (focused ? 24 : 22)}
           color={color}
         />
-        {(!isMain || focused) && (
-          <Text
-            style={{
-              fontSize: isMain ? 8 : 10,
-              marginTop: 1,
-              color: color,
-              fontWeight: 'bold',
-            }}
-            numberOfLines={1}
-          >
-            {label}
-          </Text>
-        )}
+        <Text
+          style={{
+            fontSize: isMain ? (focused ? 8.5 : 7) : 10,
+            marginTop: 1,
+            color: color,
+            fontWeight: 'bold',
+          }}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
       </View>
     </Animated.View>
   );
@@ -129,6 +127,9 @@ function TabsContainer() {
             if (route.name === 'index') {
               iconName = focused ? 'flash' : 'flash-outline';
               label = 'Try & Buy';
+            } else if (route.name === 'flashmart') {
+              iconName = focused ? 'cube' : 'cube-outline';
+              label = 'FlashMart';
             } else if (route.name === 'explore') {
               iconName = focused ? 'compass' : 'compass-outline';
               label = 'Explore';
@@ -138,9 +139,6 @@ function TabsContainer() {
             } else if (route.name === 'stores') {
               iconName = focused ? 'storefront' : 'storefront-outline';
               label = 'Stores';
-            } else if (route.name === 'wishlist') {
-              iconName = focused ? 'heart' : 'heart-outline';
-              label = 'Wishlist';
             }
 
             return (
@@ -158,10 +156,10 @@ function TabsContainer() {
         })}
       >
         <Tabs.Screen name="explore" />
-        <Tabs.Screen name="categories" />
+        <Tabs.Screen name="flashmart" />
         <Tabs.Screen name="index" />
         <Tabs.Screen name="stores" />
-        <Tabs.Screen name="wishlist" />
+        <Tabs.Screen name="categories" />
       </Tabs>
       <ActiveOrderBanner />
     </View>

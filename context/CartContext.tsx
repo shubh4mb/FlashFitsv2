@@ -87,13 +87,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [deliveryTip, setDeliveryTip] = useState(0);
   const { isAuthenticated } = useAuth();
 
-  const fetchCart = useCallback(async () => {
+  const fetchCart = useCallback(async (isSilent = false) => {
     if (!isAuthenticated) {
       setLoading(false);
       return;
     }
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const addressId = selectedAddress?._id || (selectedAddress as any)?.id;
       
       const latitude = selectedAddress?.location?.coordinates?.[1] || 
@@ -113,7 +113,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error('Failed to fetch cart:', error);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [isAuthenticated, selectedAddress, userLocation, deliveryTip]);
 
@@ -136,8 +136,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       await addToCartApi(params);
       await fetchCart();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      console.error('Add to cart failed:', error);
+    } catch (error: any) {
+      console.error('Add to cart failed:', error?.response?.data?.message || error?.message || error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error;
     }
@@ -145,53 +145,69 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   const updateQuantity = useCallback(async (cartId: string, quantity: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      // Optimistic update
-      if (cart) {
-        setCart({
-          ...cart,
-          items: cart.items.map(item => 
+    let previousCart: CartData | null = null;
+    
+    setCart(prevCart => {
+      previousCart = prevCart;
+      if (!prevCart) return null;
+      return {
+        ...prevCart,
+        items: prevCart.items.map(item => 
+          item._id === cartId ? { ...item, quantity } : item
+        ),
+        merchantCarts: prevCart.merchantCarts.map(mc => ({
+          ...mc,
+          items: mc.items.map(item =>
             item._id === cartId ? { ...item, quantity } : item
           ),
-          merchantCarts: cart.merchantCarts.map(mc => ({
-            ...mc,
-            items: mc.items.map(item =>
-              item._id === cartId ? { ...item, quantity } : item
-            ),
-          })),
-        });
-      }
+        })),
+      };
+    });
 
+    try {
       await updateQtyApi(cartId, quantity);
-      await fetchCart(); // Re-fetch to get accurate delivery/totals
+      await fetchCart(true); // Silent background fetch without loader overlay
     } catch (error) {
       console.error('Update quantity failed:', error);
-      await fetchCart(); // Revert on error
+      if (previousCart) {
+        setCart(previousCart);
+      }
+      await fetchCart(true);
+      throw error;
     }
-  }, [cart, fetchCart]);
+  }, [fetchCart]);
 
   const removeItem = useCallback(async (itemId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      // Optimistic update
-      if (cart) {
-        setCart({
-          ...cart,
-          items: cart.items.filter(item => item._id !== itemId),
-          merchantCarts: cart.merchantCarts.map(mc => ({
+    let previousCart: CartData | null = null;
+
+    setCart(prevCart => {
+      previousCart = prevCart;
+      if (!prevCart) return null;
+      return {
+        ...prevCart,
+        items: prevCart.items.filter(item => item._id !== itemId),
+        merchantCarts: prevCart.merchantCarts
+          .map(mc => ({
             ...mc,
             items: mc.items.filter(item => item._id !== itemId),
-          })).filter(mc => mc.items.length > 0),
-        });
-      }
+          }))
+          .filter(mc => mc.items.length > 0),
+      };
+    });
 
+    try {
       await removeItemApi(itemId);
-      await fetchCart();
+      await fetchCart(true); // Silent background fetch
     } catch (error) {
       console.error('Remove item failed:', error);
-      await fetchCart();
+      if (previousCart) {
+        setCart(previousCart);
+      }
+      await fetchCart(true);
+      throw error;
     }
-  }, [cart, fetchCart]);
+  }, [fetchCart]);
 
   const clearCart = useCallback(async (merchantId?: string) => {
     try {

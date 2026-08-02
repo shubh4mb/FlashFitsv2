@@ -23,9 +23,11 @@ export const removeFromWishlist = async (wishlistItemId: string) => {
     }
 };
 
-export const getMyWishlist = async () => {
+export const getMyWishlist = async (lat?: number, lng?: number) => {
     try {
-        const res = await api.get('user/wishlist/my');
+        const res = await api.get('user/wishlist/my', {
+            params: { lat, lng }
+        });
         return res.data;
     } catch (error) {
     // Auth errors are ignored gracefully

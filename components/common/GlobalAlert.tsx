@@ -1,21 +1,14 @@
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, Dimensions, StyleSheet, Pressable } from 'react-native';
 import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring, 
-  withTiming, 
   FadeIn, 
   FadeOut, 
-  SlideInUp, 
-  SlideOutUp,
   SlideInDown,
-  SlideOutDown,
-  runOnJS
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAlertInternal } from '@/context/AlertContext';
 import { Palette, Typography } from '@/constants/theme';
 
@@ -23,6 +16,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const GlobalAlert: React.FC = () => {
   const { alertState, toastState, hideAlert, hideToast } = useAlertInternal();
+  const insets = useSafeAreaInsets();
 
   // Toast auto-hide
   useEffect(() => {
@@ -37,7 +31,7 @@ const GlobalAlert: React.FC = () => {
       
       const timer = setTimeout(() => {
         hideToast();
-      }, toastState.options?.duration || 3000);
+      }, toastState.options?.duration || 2800);
       return () => clearTimeout(timer);
     }
   }, [toastState.visible, toastState.options?.duration, hideToast]);
@@ -52,34 +46,60 @@ const GlobalAlert: React.FC = () => {
   const renderToast = () => {
     if (!toastState.visible || !toastState.options) return null;
 
-    const { message, type = 'info' } = toastState.options;
+    const { title, message, type = 'info', action } = toastState.options;
     
-    let icon: any = 'information-circle';
-    let color = Palette.primary;
+    let iconName: keyof typeof Ionicons.glyphMap = 'information-circle';
+    let iconColor = '#3B82F6';
     
     if (type === 'success') {
-      icon = 'checkmark-circle';
-      color = Palette.success;
+      iconName = 'checkmark-circle';
+      iconColor = '#10B981';
     } else if (type === 'error') {
-      icon = 'alert-circle';
-      color = Palette.error;
+      iconName = 'alert-circle';
+      iconColor = '#F43F5E';
     } else if (type === 'warning') {
-      icon = 'warning';
-      color = Palette.warning;
+      iconName = 'warning';
+      iconColor = '#F59E0B';
     }
+
+    const topPosition = (insets.top || 36) + 8;
 
     return (
       <Animated.View 
-        entering={SlideInDown.springify().damping(15).stiffness(100)}
-        exiting={SlideOutUp.duration(300)}
-        style={[styles.toastContainer, { top: 60 }]}
+        entering={FadeIn.duration(180)}
+        exiting={FadeOut.duration(180)}
+        style={[styles.toastWrapper, { top: topPosition }]}
       >
-        <BlurView intensity={80} tint="light" style={styles.toastBlur}>
-          <View style={[styles.toastContent, { borderLeftColor: color }]}>
-            <Ionicons name={icon} size={24} color={color} />
-            <Text style={styles.toastText}>{message}</Text>
+        <TouchableOpacity 
+          activeOpacity={0.9} 
+          onPress={hideToast}
+          style={styles.toastCard}
+        >
+          <View style={[styles.toastAccentBar, { backgroundColor: iconColor }]} />
+          
+          <Ionicons name={iconName} size={18} color={iconColor} style={styles.toastIcon} />
+          
+          <View style={styles.toastTextContainer}>
+            {title ? <Text style={styles.toastTitle}>{title}</Text> : null}
+            <Text style={styles.toastMessage} numberOfLines={2}>{message}</Text>
           </View>
-        </BlurView>
+
+          {action ? (
+            <TouchableOpacity 
+              onPress={() => {
+                hideToast();
+                action.onPress();
+              }}
+              style={styles.toastActionBtn}
+            >
+              <Text style={[styles.toastActionText, { color: iconColor }]}>{action.label}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={hideToast} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={16} color="#64748B" />
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
       </Animated.View>
     );
   };
@@ -157,34 +177,68 @@ const GlobalAlert: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  toastContainer: {
+  toastWrapper: {
     position: 'absolute',
-    left: 20,
-    right: 20,
+    left: 16,
+    right: 16,
     zIndex: 9999,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    alignItems: 'center',
   },
-  toastBlur: {
-    padding: 16,
-  },
-  toastContent: {
+  toastCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderLeftWidth: 4,
-    paddingLeft: 12,
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
   },
-  toastText: {
-    marginLeft: 12,
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.medium,
-    color: Palette.text.primary,
+  toastAccentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3.5,
+  },
+  toastIcon: {
+    marginLeft: 4,
+    marginRight: 10,
+  },
+  toastTextContainer: {
     flex: 1,
+    marginRight: 8,
+  },
+  toastTitle: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  toastMessage: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#F8FAFC',
+    lineHeight: 18,
+  },
+  toastActionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  toastActionText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
   },
   alertOverlay: {
     ...StyleSheet.absoluteFillObject,

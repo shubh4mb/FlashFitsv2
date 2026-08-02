@@ -38,7 +38,7 @@ const SubCategorySkeleton = () => (
 );
 
 export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: number }) {
-  const { selectedGender } = useGender();
+  const { selectedGender, selectedSubGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [categories, setCategories] = useState<any[]>([]);
@@ -64,16 +64,33 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
 
   const filteredSubCategories = useMemo(() => {
     const normalizedGender = selectedGender.toUpperCase();
-    return categories.filter((item) =>
-      item.level === 1 &&
-      item.allowedGenders?.includes(normalizedGender) &&
-      item.isActive !== false
-    );
-  }, [selectedGender, categories]);
+    return categories.filter((item) => {
+      if (item.level !== 1 || item.isActive === false) return false;
+
+      if (selectedGender === 'Kids') {
+        const normalizedSubGender = selectedSubGender.toUpperCase();
+        if (normalizedSubGender === 'ALL') {
+          return item.allowedGenders?.includes('KIDS') || 
+                 item.allowedGenders?.includes('BOYS') || 
+                 item.allowedGenders?.includes('GIRLS');
+        }
+        return item.allowedGenders?.includes(normalizedSubGender) || 
+               item.allowedGenders?.includes('KIDS');
+      }
+
+      return item.allowedGenders?.includes(normalizedGender);
+    });
+  }, [selectedGender, selectedSubGender, categories]);
 
   const renderItem = useCallback(({ item }: { item: any }) => {
-    const normalizedGender = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
-    const logoUrl = item.logos?.[normalizedGender]?.url || item.logo?.url || item.image?.url;
+    const genderKey = (selectedGender === 'Kids' && selectedSubGender !== 'All' 
+      ? selectedSubGender.toUpperCase() 
+      : selectedGender.toUpperCase());
+
+    const logoUrl = item.logos?.[genderKey]?.url || 
+                    (selectedGender === 'Kids' ? item.logos?.KIDS?.url : null) || 
+                    item.logo?.url || 
+                    item.image?.url;
 
     return (
       <TouchableOpacity
@@ -101,7 +118,7 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
         </Text>
       </TouchableOpacity>
     );
-  }, [selectedGender, theme]);
+  }, [selectedGender, selectedSubGender, theme]);
 
   if (loading) {
     return <SubCategorySkeleton />;
@@ -116,7 +133,9 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
           <Text style={[styles.title, { color: theme.text }]}>
             Shop by Category
           </Text>
-          <Text style={styles.subtitle}>Curated for {selectedGender}</Text>
+          <Text style={styles.subtitle}>
+            Curated for {selectedGender === 'Kids' && selectedSubGender !== 'All' ? selectedSubGender : selectedGender}
+          </Text>
         </View>
         <TouchableOpacity>
           <Text style={[styles.seeAll, { color: theme.primary }]}>See All</Text>

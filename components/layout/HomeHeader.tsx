@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "@/context/CartContext";
 import { useCourierCart } from "@/context/CourierCartContext";
+import * as Haptics from "expo-haptics";
 
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
 
@@ -21,9 +22,9 @@ interface HomeHeaderProps {
   wishlistCount?: number;
 }
 
-export default function HomeHeader({ 
-  address = "Select Location", 
-  wishlistCount = 0 
+export default function HomeHeader({
+  address = "Select Location",
+  wishlistCount = 0
 }: HomeHeaderProps) {
   const { cart } = useCart();
   const { courierCart } = useCourierCart();
@@ -31,7 +32,7 @@ export default function HomeHeader({
   const instantCartCount = cart?.merchantCarts?.length || 0;
   const courierCartCount = courierCart?.items?.length || 0;
   const insets = useSafeAreaInsets();
-  
+
   // Search bar animation
   const [keywordIndex, setKeywordIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -58,77 +59,114 @@ export default function HomeHeader({
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       {/* ── Top Row: Location & Icons ── */}
       <View style={styles.topRow}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.locationContainer}
-          activeOpacity={0.7}
-          onPress={() => {/* TODO: Open Address Picker */}}
+          activeOpacity={0.6}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/(app)/select-location" as any);
+          }}
+          hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
         >
-          <View style={styles.locationPin}>
+          <View style={styles.locationPin} pointerEvents="none">
             <Ionicons name="location" size={20} color="#000" />
           </View>
-          <View style={styles.addressInfo}>
-            <View style={styles.addressRow}>
-              <Text style={styles.addressText} numberOfLines={1}>{address}</Text>
-              <AntDesign name="down" size={12} color="#666" style={styles.chevron} />
+          <View style={styles.addressInfo} pointerEvents="none">
+            <View style={styles.addressRow} pointerEvents="none">
+              <Text style={styles.addressText} numberOfLines={1} pointerEvents="none">{address}</Text>
+              <AntDesign name="down" size={12} color="#666" style={styles.chevron} pointerEvents="none" />
             </View>
-            <Text style={styles.subText}>Try in 60 mins</Text>
+            <Text style={styles.subText} pointerEvents="none">Try in 60 mins</Text>
           </View>
         </TouchableOpacity>
 
         <View style={styles.actionIcons}>
-          <TouchableOpacity 
-            style={styles.iconButton} 
-            onPress={() => router.push("/(app)/(tabs)/wishlist" as any)}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          {/* Wishlist Button */}
+          <TouchableOpacity
+            style={styles.iconButton}
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/wishlist" as any);
+            }}
+            hitSlop={{ top: 18, bottom: 18, left: 10, right: 10 }}
           >
-            <Ionicons name="heart-outline" size={24} color="#000" />
-            {wishlistCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{wishlistCount}</Text></View>}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.iconButton} 
-            onPress={() => router.push("/cart" as any)}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          >
-            <Ionicons name="bag-handle-outline" size={24} color="#000" />
-            
-            {/* Instant Cart Badge (Top Right) */}
-            {instantCartCount > 0 && (
-              <View style={[styles.badge, styles.instantBadge, { backgroundColor: '#F59E0B' }]}>
-                <View style={styles.badgeContent}>
-                  <Ionicons name="flash" size={7} color="#fff" style={{ marginRight: 1 }} />
-                  <Text style={styles.badgeText}>{instantCartCount > 9 ? '9+' : instantCartCount}</Text>
+            <View style={styles.iconWrapper} pointerEvents="none">
+              <MaterialCommunityIcons name="heart-outline" size={20} color="#1C1917" />
+              {wishlistCount > 0 && (
+                <View style={[styles.badgeContainer, styles.topRightBadge]} pointerEvents="none">
+                  <Text style={styles.badgeText}>
+                    {wishlistCount > 99 ? '99+' : wishlistCount}
+                  </Text>
                 </View>
-              </View>
-            )}
-
-            {/* Courier Cart Badge (Bottom Right) */}
-            {courierCartCount > 0 && (
-              <View style={[styles.badge, styles.courierBadge, { backgroundColor: '#000' }]}>
-                <Text style={styles.badgeText}>{courierCartCount > 9 ? '9+' : courierCartCount}</Text>
-              </View>
-            )}
+              )}
+            </View>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.profileButton} 
-            onPress={() => router.push("/(app)/profile" as any)}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+          {/* Cart Button */}
+          <TouchableOpacity
+            style={styles.iconButton}
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/cart" as any);
+            }}
+            hitSlop={{ top: 18, bottom: 18, left: 10, right: 10 }}
           >
-             <View style={styles.profileCircle}>
-                <Ionicons name="person-outline" size={18} color="#000" />
-             </View>
+            <View style={styles.iconWrapper} pointerEvents="none">
+              <MaterialCommunityIcons name="shopping-outline" size={20} color="#1C1917" />
+
+              {/* Instant Cart Badge (Top Right) */}
+              {instantCartCount > 0 && (
+                <View style={[styles.badgeContainer, styles.topRightBadge, { right:-8,paddingLeft: 2 }]} pointerEvents="none">
+                  <Text style={styles.badgeText}>
+                    {instantCartCount > 99 ? '99+' : instantCartCount}
+                  </Text>
+                  <Ionicons name="flash" size={8} color="#1C1917" style={{ marginLeft: 0.5 }} />
+                </View>
+              )}
+
+              {/* Courier Cart Badge (Top Right if instant is 0, Bottom Right if both exist) */}
+              {courierCartCount > 0 && (
+                <View
+                  style={[
+                    styles.badgeContainer,
+                    instantCartCount > 0 ? styles.bottomRightBadge : styles.topRightBadge,
+                  ]}
+                  pointerEvents="none"
+                >
+                  <Text style={styles.badgeText}>
+                    {courierCartCount > 99 ? '99+' : courierCartCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* Menu Button */}
+          <TouchableOpacity
+            style={styles.profileButton}
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/profile" as any);
+            }}
+            hitSlop={{ top: 18, bottom: 18, left: 10, right: 14 }}
+          >
+            <View style={styles.iconWrapper} pointerEvents="none">
+              <MaterialCommunityIcons name="menu" size={22} color="#1C1917" />
+            </View>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* ── Bottom Row: Search Bar ── */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.searchBar}
         activeOpacity={0.9}
-        onPress={() => {/* TODO: Search Screen */}}
+        onPress={() => {/* TODO: Search Screen */ }}
       >
-        <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+        <Ionicons name="search" size={16} color="#999" style={styles.searchIcon} />
         <View style={styles.searchTextContainer}>
           <Text style={styles.staticSearchText}>Search </Text>
           <Animated.Text style={[styles.animatedSearchText, { opacity: fadeAnim }]}>
@@ -136,7 +174,7 @@ export default function HomeHeader({
           </Animated.Text>
         </View>
         <View style={styles.micButton}>
-            <MaterialCommunityIcons name="microphone-outline" size={20} color="#666" />
+          <MaterialCommunityIcons name="microphone-outline" size={16} color="#666" />
         </View>
       </TouchableOpacity>
     </View>
@@ -201,66 +239,47 @@ const styles = StyleSheet.create({
   actionIcons: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 16,
   },
   iconButton: {
+    padding: 2,
+  },
+  iconWrapper: {
     position: "relative",
-    padding: 4,
-  },
-  badge: {
-    position: "absolute",
-    minWidth: 14,
-    height: 14,
-    borderRadius: 7,
-    alignItems: "center",
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-    borderWidth: 1,
-    borderColor: '#fff',
-  },
-  instantBadge: {
-    top: 0,
-    right: 0,
-    zIndex: 2,
-  },
-  courierBadge: {
-    bottom: -2,
-    right: 0,
-    zIndex: 1,
-  },
-  badgeContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 7.5,
-    fontWeight: "bold",
-  },
-  profileButton: {
-    marginLeft: 4,
-  },
-  profileCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#f5f5f5",
-    borderWidth: 1,
-    borderColor: "#eee",
     alignItems: "center",
     justifyContent: "center",
+    padding: 2,
+  },
+  badgeContainer: {
+    position: "absolute",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  badgeText: {
+    color: "#1C1917",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    lineHeight: 11,
+  },
+  topRightBadge: {
+    top: -3,
+    right: -6,
+  },
+  bottomRightBadge: {
+    bottom: -3,
+    right: -6,
   },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f7f7f7",
-    borderRadius: 15,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    height: 48,
+    height: 40,
   },
   searchIcon: {
-    marginRight: 8,
+    marginRight: 6,
   },
   searchTextContainer: {
     flex: 1,
@@ -268,15 +287,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   staticSearchText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#999",
   },
   animatedSearchText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#333",
     fontWeight: "600",
   },
   micButton: {
-    padding: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

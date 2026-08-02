@@ -144,8 +144,34 @@ export const fetchProductsByMerchant = async (merchantId: string, lat?: number, 
             params: { lat, lng }
         });
         return res.data;
+    } catch (error: any) {
+        if (error?.response?.status !== 404) {
+            console.error('Error fetching merchant products:', error);
+        }
+        throw error;
+    }
+};
+
+export const fetchWarehouseProducts = async (gender?: string, page: number = 1, lat?: number, lng?: number) => {
+    try {
+        const res = await api.get('user/warehouse/products', {
+            params: { gender, page, limit: 30, lat, lng }
+        });
+        return res.data;
     } catch (error) {
-        console.error('Error fetching merchant products:', error);
+        console.error('Error fetching warehouse products:', error);
+        throw error;
+    }
+};
+
+export const fetchWarehouseMerchants = async (lat?: number, lng?: number) => {
+    try {
+        const res = await api.get('user/warehouse/merchants', {
+            params: { lat, lng }
+        });
+        return res.data;
+    } catch (error) {
+        console.error('Error fetching warehouse merchants:', error);
         throw error;
     }
 };

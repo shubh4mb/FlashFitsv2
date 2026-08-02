@@ -31,7 +31,7 @@ import {
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
-  const { selectedGender } = useGender();
+  const { selectedGender, selectedSubGender } = useGender();
   const { userLocation, selectedAddress, tbAvailable, tbOffline } = useAddress();
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -49,8 +49,9 @@ export default function HomeScreen() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const genderMap: Record<string, string> = { Men: 'MEN', Women: 'WOMEN', Kids: 'KIDS', All: 'MEN' };
-      const apiGender = genderMap[selectedGender] || 'MEN';
+      const apiGender = selectedGender === 'Kids' && selectedSubGender !== 'All'
+        ? selectedSubGender.toUpperCase()
+        : (selectedGender === 'Kids' ? 'KIDS' : selectedGender.toUpperCase());
 
       const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
@@ -79,7 +80,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedGender, userLocation, selectedAddress]);
+  }, [selectedGender, selectedSubGender, userLocation, selectedAddress]);
 
   useEffect(() => {
     loadData();
