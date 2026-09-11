@@ -1,4 +1,4 @@
-import { Typography } from '@/constants/theme';
+import { BrandColors, Typography } from '@/constants/theme';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect } from 'react';
@@ -69,10 +69,10 @@ const FloatingAsset = ({ source, index, isLowSpec }: { source: any; index: numbe
     const delay = 600;
 
     // Near-instantaneous explosive burst to sides
-    x.value = withDelay(delay, withTiming(targetX, { duration: 250, easing: Easing.out(Easing.expo) }));
-    y.value = withDelay(delay, withTiming(targetY, { duration: 250, easing: Easing.out(Easing.expo) }));
+    x.value = withDelay(delay, withTiming(targetX, { duration: 250, easing: Easing.out(Easing.exp) }));
+    y.value = withDelay(delay, withTiming(targetY, { duration: 250, easing: Easing.out(Easing.exp) }));
     scale.value = withDelay(delay, withTiming(targetScale, { duration: 250, easing: Easing.out(Easing.back(1)) }));
-    opacity.value = withDelay(delay, withTiming(0.8, { duration: 150 }));
+    opacity.value = withDelay(delay, withTiming(1, { duration: 250 }));
     rotation.value = withDelay(delay, withTiming(targetRotation, { duration: 250 }));
 
     // Rapid floating oscillation after the burst (only on high-spec devices)
@@ -100,31 +100,27 @@ const FloatingAsset = ({ source, index, isLowSpec }: { source: any; index: numbe
     <Animated.View style={animatedStyle}>
       <Image
         source={source}
-        style={{ width: 120, height: 120 }}
+        style={{ width: 140, height: 140 }}
         contentFit="contain"
-        priority="high"
       />
     </Animated.View>
   );
 };
 
-export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
-
-  // Animation shared values
-  const containerScale = useSharedValue(0.95);
+export default function SplashScreen({ onFinish }: SplashScreenProps) {
+  const containerY = useSharedValue(0);
   const containerOpacity = useSharedValue(0);
-  const containerY = useSharedValue(50);
+  const containerScale = useSharedValue(0.96);
 
   const logoOpacity = useSharedValue(0);
-  const logoScale = useSharedValue(0.9);
+  const logoScale = useSharedValue(0.85);
 
-  const shineTranslateX = useSharedValue(-100);
+  const shineTranslateX = useSharedValue(-250);
 
   const taglineOpacity = useSharedValue(0);
-  const taglineScale = useSharedValue(0.95);
+  const taglineScale = useSharedValue(0.9);
 
   const dotScale = useSharedValue(0);
-
   const mainExitOpacity = useSharedValue(1);
 
   const handleFinish = () => {
@@ -191,6 +187,7 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
 
   const dotStyle = useAnimatedStyle(() => ({
     transform: [{ scale: dotScale.value }],
+    opacity: dotScale.value,
   }));
 
   const mainWrapperStyle = useAnimatedStyle(() => ({
@@ -199,6 +196,14 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
 
   return (
     <Animated.View style={[styles.fullScreen, mainWrapperStyle]}>
+      {/* Brand Cyan Signature Gradient */}
+      <LinearGradient
+        colors={[BrandColors.primary, BrandColors.secondary]}
+        style={StyleSheet.absoluteFillObject}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.3, y: 1 }}
+      />
+
       {/* Vertical Hero Splash Container */}
       <Animated.View style={[styles.mockupContainer, containerStyle]}>
         <View style={styles.contentWrapper}>
@@ -221,7 +226,7 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
                 <LinearGradient
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  colors={['transparent', 'rgba(255,255,255,0.5)', 'transparent']}
+                  colors={['transparent', 'rgba(255,255,255,0.6)', 'transparent']}
                   style={styles.shineGradient}
                 />
               </Animated.View>
@@ -232,9 +237,17 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
               <Text style={styles.subTaglineText}>TRY & BUY</Text>
             </Animated.View>
           </View>
-
-
         </View>
+      </Animated.View>
+
+      {/* Bottom Loading Section Matching Design Mockup */}
+      <Animated.View style={[styles.bottomLoader, dotStyle]}>
+        <View style={styles.dotsRow}>
+          <View style={[styles.dot, { opacity: 0.9 }]} />
+          <View style={[styles.dot, { opacity: 0.6 }]} />
+          <View style={[styles.dot, { opacity: 0.3 }]} />
+        </View>
+        <Text style={styles.loadingText}>Loading your style...</Text>
       </Animated.View>
     </Animated.View>
   );
@@ -243,7 +256,7 @@ export default function CustomSplashScreen({ onFinish }: SplashScreenProps) {
 const styles = StyleSheet.create({
   fullScreen: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: BrandColors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 9999,
@@ -270,8 +283,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logo: {
-    height: 100,
-    width: 280,
+    height: 110,
+    width: 290,
   },
   shineContainer: {
     position: 'absolute',
@@ -283,36 +296,49 @@ const styles = StyleSheet.create({
   shineGradient: {
     flex: 1,
   },
-  reflectionWrapper: {
-    marginTop: -4,
-    height: 64,
-    opacity: 0.05,
-    transform: [{ scaleY: -1 }],
-  },
-  reflectionLogo: {
-    height: 64,
-    width: 200,
-  },
   taglineWrapper: {
     alignItems: 'center',
   },
   taglineText: {
     fontSize: 16,
     fontFamily: Typography.fontFamily.bold,
-    color: '#000000ff',
+    color: BrandColors.matteBlack,
     letterSpacing: 2.5,
-    marginTop: 4,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    marginTop: 6,
     textAlign: 'center',
   },
   subTaglineText: {
     fontSize: 12,
-    fontFamily: Typography.fontFamily.medium,
-    color: '#000000ff',
-    letterSpacing: 4,
-    marginTop: 8,
-    opacity: 0.4,
+    fontFamily: Typography.fontFamily.bold,
+    color: BrandColors.matteBlack,
+    letterSpacing: 3.5,
+    marginTop: 6,
+    opacity: 0.7,
     textAlign: 'center',
+  },
+  bottomLoader: {
+    position: 'absolute',
+    bottom: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: BrandColors.matteBlack,
+  },
+  loadingText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+    color: BrandColors.matteBlack,
+    letterSpacing: 0.2,
+    opacity: 0.85,
   },
 });

@@ -56,6 +56,7 @@ interface Merchant {
   shipsWithinHours: number;
   isOnline: boolean;
   isNearby: boolean;
+  isWarehouse?: boolean;
   rating?: number;
   address?: {
     location?: {

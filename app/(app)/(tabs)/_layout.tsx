@@ -1,79 +1,119 @@
-import { GenderThemes } from '@/constants/theme';
+import { BrandColors, GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Tabs } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import ActiveOrderBanner from '@/components/common/ActiveOrderBanner';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Animated,
   Platform,
   Text,
-  View
+  View,
+  useWindowDimensions,
 } from 'react-native';
 
-const AnimatedIconWrapper = ({ focused, iconName, color, label, isMain }: { focused: boolean, iconName: any, color: string, label: string, isMain?: boolean }) => {
+const AnimatedIconWrapper = ({
+  focused,
+  iconName,
+  color,
+  label,
+  isMain,
+  isSmallScreen,
+}: {
+  focused: boolean;
+  iconName: any;
+  color: string;
+  label: string;
+  isMain?: boolean;
+  isSmallScreen?: boolean;
+}) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.spring(scaleAnim, {
-      toValue: focused ? 1.15 : 1,
+      toValue: focused ? 1.06 : 1,
       friction: 8,
       tension: 100,
       useNativeDriver: true,
     }).start();
   }, [focused]);
 
-  const size = isMain ? 68 : 72;
-
-  return (
-    <Animated.View
-      style={{
-        width: isMain ? 75 : 85,
-        height: isMain ? 75 : 60,
-        alignItems: 'center',
-        justifyContent: 'center',
-        transform: [{ scale: scaleAnim }],
-        ...(isMain && { marginTop: -35 })
-      }}
-    >
-      <View
+  if (isMain) {
+    const size = isSmallScreen ? 58 : 62;
+    return (
+      <Animated.View
         style={{
           width: size,
           height: size,
-          borderRadius: 100, // Large value ensures perfect circle
-          backgroundColor: isMain ? '#FFFFFF' : (focused ? '#F1F5F9' : 'transparent'),
+          borderRadius: size / 2,
+          backgroundColor: '#FFFFFF',
           alignItems: 'center',
           justifyContent: 'center',
-          ...(isMain && {
-            // Standard shadow/elevation for center buttons
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: focused ? 0.25 : 0.12,
-            shadowRadius: 12,
-            elevation: focused ? 12 : 6,
-            borderWidth: 2,
-            borderColor: focused ? '#F1F5F9' : '#FFFFFF',
-          })
+          transform: [{ scale: scaleAnim }],
+          marginTop: isSmallScreen ? -20 : -24,
+          borderWidth: 1.5,
+          borderColor: '#E2E8F0',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 6,
+          elevation: 5,
         }}
       >
         <Ionicons
           name={iconName}
-          size={isMain ? (focused ? 30 : 25) : (focused ? 24 : 22)}
+          size={focused ? (isSmallScreen ? 25 : 27) : (isSmallScreen ? 22 : 24)}
           color={color}
         />
         <Text
+          allowFontScaling={false}
           style={{
-            fontSize: isMain ? (focused ? 8.5 : 7) : 10,
+            fontSize: focused ? (isSmallScreen ? 7.5 : 8) : (isSmallScreen ? 7 : 7.5),
             marginTop: 1,
             color: color,
             fontWeight: 'bold',
+            textAlign: 'center',
           }}
           numberOfLines={1}
+          ellipsizeMode="tail"
         >
           {label}
         </Text>
-      </View>
+      </Animated.View>
+    );
+  }
+
+  return (
+    <Animated.View
+      style={{
+        width: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+        transform: [{ scale: scaleAnim }],
+        paddingVertical: 2,
+        overflow: 'visible',
+      }}
+    >
+      <Ionicons
+        name={iconName}
+        size={focused ? (isSmallScreen ? 22 : 23) : (isSmallScreen ? 20 : 21)}
+        color={color}
+      />
+      <Text
+        allowFontScaling={false}
+        style={{
+          fontSize: isSmallScreen ? 9.5 : 10,
+          marginTop: 2,
+          color: color,
+          fontWeight: focused ? '700' : '500',
+          textAlign: 'center',
+        }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
     </Animated.View>
   );
 };
@@ -81,9 +121,17 @@ const AnimatedIconWrapper = ({ focused, iconName, color, label, isMain }: { focu
 function TabsContainer() {
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const isSmallScreen = screenWidth < 360;
+
+  // Responsive bottom padding adapting to Android gestures / 3-button and iOS home bar
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'ios' ? 14 : 10);
+  const contentHeight = Platform.OS === 'ios' ? 52 : 54;
+  const tabHeight = contentHeight + bottomPadding;
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff' }}>
+    <View style={{ flex: 1, backgroundColor: BrandColors.offWhite }}>
       <Tabs
         initialRouteName="index"
         backBehavior="initialRoute"
@@ -94,16 +142,28 @@ function TabsContainer() {
           tabBarShowLabel: false,
           tabBarStyle: {
             position: 'absolute',
-            height: Platform.OS === 'ios' ? 85 : 90,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: tabHeight,
             backgroundColor: 'transparent',
-            paddingTop: 22, // Increased to move icons down
-            borderRadius: 30,
-            paddingBottom: Platform.OS === 'ios' ? 18 : 10, // Reduced bottom space
-            elevation: 4, // Reduced elevation for better blending
+            paddingTop: 6,
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            paddingBottom: bottomPadding,
+            elevation: 8,
             shadowColor: '#000',
-            shadowOpacity: 0.08, // Subtle shadow for a seamless feel
-            shadowRadius: 8,
+            shadowOpacity: 0.08,
+            shadowRadius: 10,
             shadowOffset: { width: 0, height: -3 },
+            borderTopWidth: 0,
+          },
+          tabBarItemStyle: {
+            flex: 1,
+            paddingHorizontal: 0,
+            justifyContent: 'center',
+            alignItems: 'center',
+            overflow: 'visible',
           },
           tabBarBackground: () => {
             return (
@@ -111,15 +171,19 @@ function TabsContainer() {
                 colors={['#FFFFFF', '#FFFFFF']} // Solid White
                 style={{
                   flex: 1,
+                  borderTopLeftRadius: 28,
+                  borderTopRightRadius: 28,
                   overflow: 'hidden',
+                  borderTopWidth: 1,
+                  borderColor: '#F1F5F9',
                 }}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
               />
             );
           },
-          tabBarActiveTintColor: '#000000',
-          tabBarInactiveTintColor: '#64748B',
+          tabBarActiveTintColor: BrandColors.matteBlack,
+          tabBarInactiveTintColor: '#94A3B8',
           tabBarIcon: ({ color, focused }) => {
             let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'flash-outline';
             let label = '⚡ Try';
@@ -142,13 +206,14 @@ function TabsContainer() {
             }
 
             return (
-              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 80, alignItems: 'center', justifyContent: 'center', overflow: 'visible' }}>
                 <AnimatedIconWrapper
                   focused={focused}
                   iconName={iconName}
                   color={color}
                   label={label}
                   isMain={route.name === 'index'}
+                  isSmallScreen={isSmallScreen}
                 />
               </View>
             );

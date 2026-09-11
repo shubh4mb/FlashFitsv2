@@ -2,10 +2,10 @@ import { getAllOrders, getCourierOrders } from "@/api/orders";
 import logo from "@/assets/images/logo/logo.png";
 import Loader from "@/components/common/Loader";
 import PremiumRefreshWrapper from "@/components/common/PremiumRefreshWrapper";
-import { GenderThemes, Typography } from "@/constants/theme";
-import { useGender } from "@/context/GenderContext";
+import { BrandColors, GenderThemes, Typography } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useGender } from "@/context/GenderContext";
 import React, { useEffect, useState } from "react";
 import {
   Animated,
@@ -24,7 +24,9 @@ import {
 import CustomRefreshControl from "@/components/common/CustomRefreshControl";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type OrderTab = 'trybuy' | 'courier';
+type FilterTab = 'All' | 'Processing' | 'Shipped' | 'Delivered' | 'Return';
+
+const FILTER_TABS: FilterTab[] = ['All', 'Processing', 'Shipped', 'Delivered', 'Return'];
 
 const OrdersScreen = () => {
   const router = useRouter();
@@ -32,9 +34,8 @@ const OrdersScreen = () => {
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
 
-  const [activeTab, setActiveTab] = useState<OrderTab>('trybuy');
-  const [tbOrders, setTbOrders] = useState<any[]>([]);
-  const [courierOrders, setCourierOrders] = useState<any[]>([]);
+  const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('All');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -54,14 +55,40 @@ const OrdersScreen = () => {
         getCourierOrders(),
       ]);
 
+      let tbList: any[] = [];
+      let courierList: any[] = [];
+
       if (tbRes.status === 'fulfilled') {
-        const data = tbRes.value;
-        setTbOrders(Array.isArray(data) ? data : data?.orders || []);
+        const data: any = tbRes.value;
+        const list = Array.isArray(data) ? data : data?.orders || [];
+        tbList = list.map((o: any) => ({
+          ...o,
+          _isCourier: Boolean(o.isCourier || o.deliveryMode === 'courier' || o.fulfillmentType === 'courier'),
+        }));
       }
       if (courierRes.status === 'fulfilled') {
-        const data = courierRes.value;
-        setCourierOrders(Array.isArray(data) ? data : data?.orders || []);
+        const data: any = courierRes.value;
+        const list = Array.isArray(data) ? data : data?.orders || [];
+        courierList = list.map((o: any) => ({
+          ...o,
+          _isCourier: true,
+        }));
       }
+
+      const orderMap = new Map<string, any>();
+      [...tbList, ...courierList].forEach(order => {
+        if (order?._id) {
+          orderMap.set(String(order._id), order);
+        }
+      });
+
+      const combined = Array.from(orderMap.values()).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+
+      setAllOrders(combined);
 
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -85,29 +112,31 @@ const OrdersScreen = () => {
     fetchOrders();
   }, []);
 
-  const orders = activeTab === 'trybuy' ? tbOrders : courierOrders;
-
   const getStatusColor = (status: string) => {
-    const statusColors: Record<string, string> = {
-      pending: "#FF9800",
-      placed: "#FF9800",
-      accepted: "#2196F3",
-      packed: "#673AB7",
-      in_transit: "#00BCD4",
-      try_phase: "#9C27B0",
-      selection_made: "#FF5722",
-      return_in_progress: "#FF9800",
-      completed: "#4CAF50",
-      cancelled: "#F44336",
-      rejected: "#F44336",
-    };
-    return statusColors[status?.toLowerCase()] || "#666";
+    const s = status?.toLowerCase() || '';
+    if (s === 'completed' || s === 'delivered') return '#10B981';
+    if (s === 'in_transit' || s === 'shipped' || s === 'accepted') return BrandColors.primary;
+    if (s === 'pending' || s === 'placed' || s === 'packed') return '#F59E0B';
+    if (s === 'return_in_progress' || s === 'returned') return '#8B5CF6';
+    if (s === 'cancelled' || s === 'rejected') return '#EF4444';
+    return '#64748B';
   };
+
+  const filteredOrders = allOrders.filter(order => {
+    if (activeFilter === 'All') return true;
+    const s = order.orderStatus?.toLowerCase() || '';
+    if (activeFilter === 'Processing') return ['pending', 'placed', 'packed', 'accepted'].includes(s);
+    if (activeFilter === 'Shipped') return ['in_transit', 'shipped', 'try_phase'].includes(s);
+    if (activeFilter === 'Delivered') return ['completed', 'delivered'].includes(s);
+    if (activeFilter === 'Return') return ['return_in_progress', 'returned'].includes(s);
+    return true;
+  });
 
   const openWhatsAppSupport = async (orderId: string, orderStatus: string) => {
     try {
+      const shortId = orderId ? String(orderId).slice(-5).toUpperCase() : 'ORDER';
       const message = encodeURIComponent(
-        `Hi FlashFits Support! 👋\n\nI need help regarding my order: #FF_${orderId.slice(-5).toUpperCase()}\nOrder Status: ${orderStatus?.toUpperCase()}\n\nMy concern is: `
+        `Hi FlashFits Support! 👋\n\nI need help regarding my order: #FF_${shortId}\nOrder Status: ${orderStatus?.toUpperCase()}\n\nMy concern is: `
       );
       const url = `whatsapp://send?phone=918383823813&text=${message}`;
       const canOpen = await Linking.canOpenURL(url);
@@ -126,22 +155,20 @@ const OrdersScreen = () => {
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconContainer}>
         <Ionicons
-          name={activeTab === 'trybuy' ? "receipt-outline" : "cube-outline"}
+          name="receipt-outline"
           size={80}
-          color="#E0E0E0"
+          color="#CBD5E1"
         />
       </View>
       <Text style={styles.emptyTitle}>
-        No {activeTab === 'trybuy' ? 'Try & Buy' : 'Courier'} Orders
+        No Orders Yet
       </Text>
       <Text style={styles.emptySubtitle}>
-        {activeTab === 'trybuy'
-          ? 'Try before you buy — browse products from nearby merchants.'
-          : 'Order from merchants across India via courier delivery.'}
+        Your past and current orders will appear here.
       </Text>
       <TouchableOpacity
-        style={[styles.shopNowButton, { backgroundColor: theme.primary }]}
-        onPress={() => router.push(activeTab === 'trybuy' ? "/(app)/(tabs)" : "/(app)/(tabs)/explore" as any)}
+        style={[styles.shopNowButton, { backgroundColor: BrandColors.primary }]}
+        onPress={() => router.push("/(app)/(tabs)" as any)}
       >
         <Text style={styles.shopNowText}>Start Shopping</Text>
         <Ionicons name="arrow-forward" size={20} color="#fff" />
@@ -153,52 +180,39 @@ const OrdersScreen = () => {
     <View style={styles.safeArea}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={24} color="#1A1A1A" />
+          <Ionicons name="chevron-back" size={24} color={BrandColors.matteBlack} />
         </TouchableOpacity>
-        <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
+        <Text style={styles.headerTitle}>My Orders</Text>
         <View style={{ width: 32 }} />
       </View>
 
-
-      {/* Tab Switcher */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'trybuy' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
-          onPress={() => setActiveTab('trybuy')}
-        >
-          <Ionicons
-            name={activeTab === 'trybuy' ? 'home' : 'home-outline'}
-            size={16}
-            color={activeTab === 'trybuy' ? theme.primary : '#94A3B8'}
-          />
-          <Text style={[styles.tabText, activeTab === 'trybuy' && { color: theme.primary, fontWeight: '800' }]}>
-            Try & Buy
-          </Text>
-          {tbOrders.length > 0 && (
-            <View style={[styles.badge, { backgroundColor: activeTab === 'trybuy' ? theme.primary : '#CBD5E1' }]}>
-              <Text style={styles.badgeText}>{tbOrders.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'courier' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
-          onPress={() => setActiveTab('courier')}
-        >
-          <Ionicons
-            name={activeTab === 'courier' ? 'cube' : 'cube-outline'}
-            size={16}
-            color={activeTab === 'courier' ? theme.primary : '#94A3B8'}
-          />
-          <Text style={[styles.tabText, activeTab === 'courier' && { color: theme.primary, fontWeight: '800' }]}>
-            Explore
-          </Text>
-          {courierOrders.length > 0 && (
-            <View style={[styles.badge, { backgroundColor: activeTab === 'courier' ? theme.primary : '#CBD5E1' }]}>
-              <Text style={styles.badgeText}>{courierOrders.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+      {/* Filter Tabs matching Design Mockup */}
+      <View style={styles.filterTabsContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabsContent}>
+          {FILTER_TABS.map((tab) => {
+            const isActive = activeFilter === tab;
+            return (
+              <TouchableOpacity
+                key={tab}
+                onPress={() => setActiveFilter(tab)}
+                style={[
+                  styles.filterTab,
+                  isActive && { backgroundColor: BrandColors.primary, borderColor: BrandColors.primary }
+                ]}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.filterTabText,
+                    isActive && { color: '#FFFFFF', fontWeight: '700' }
+                  ]}
+                >
+                  {tab}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {loading && !refreshing ? (
@@ -206,7 +220,7 @@ const OrdersScreen = () => {
           <Loader size={60} />
           <Text style={styles.loadingText}>Loading your orders...</Text>
         </View>
-      ) : orders.length === 0 ? (
+      ) : filteredOrders.length === 0 ? (
         renderEmptyState()
       ) : (
         <PremiumRefreshWrapper
@@ -219,125 +233,86 @@ const OrdersScreen = () => {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
             scrollEventThrottle={16}
-        >
-          <Animated.View style={{ opacity: fadeAnim }}>
-            <Text style={styles.orderCount}>
-              {orders.length} {orders.length === 1 ? "Order" : "Orders"}
-            </Text>
+          >
+            <Animated.View style={{ opacity: fadeAnim }}>
+              {filteredOrders.map((order) => {
+                const isCourier = order._isCourier;
+                const totalPayable = isCourier
+                  ? ((order.totalAmount || 0) + (order.deliveryCharge || 40))
+                  : (order.finalBilling?.totalPayable || order.totalAmount || 0);
 
-            {orders.map((order) => (
-              <TouchableOpacity
-                key={order._id}
-                style={[
-                  styles.orderCard,
-                  {
-                    borderLeftColor: getStatusColor(order.orderStatus),
-                    borderColor: selectedGender === 'Men' ? '#F1F5F9' : theme.primary + '10',
-                    shadowColor: theme.primary,
-                  }
-                ]}
-                activeOpacity={0.7}
-                onPress={() => {
-                  if (activeTab === 'trybuy') {
-                    router.push({ pathname: '/order-tracking' as any, params: { orderId: order._id } });
-                  } else {
-                    router.push({ pathname: '/courier-tracking' as any, params: { orderId: order._id } });
-                  }
-                }}
-              >
-                <View style={styles.orderHeader}>
-                  <View style={styles.orderIdSection}>
-                    <Ionicons name="receipt" size={18} color="#64748B" />
-                    <Text style={styles.orderId} numberOfLines={1}>
-                      #FF_{order._id.slice(-5).toUpperCase()}
-                    </Text>
-                    {/* Type Badge */}
-                    <View style={[
-                      styles.orderTypeBadge,
-                      { backgroundColor: activeTab === 'trybuy' ? '#DCFCE7' : '#F3E8FF' },
-                    ]}>
-                      <Text style={[
-                        styles.orderTypeBadgeText,
-                        { color: activeTab === 'trybuy' ? '#166534' : '#7C3AED' },
-                      ]}>
-                        {activeTab === 'trybuy' ? 'T&B' : 'COURIER'}
-                      </Text>
+                return (
+                  <TouchableOpacity
+                    key={order._id}
+                    style={styles.orderCard}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (isCourier) {
+                        router.push({ pathname: '/courier-tracking' as any, params: { orderId: order._id } });
+                      } else {
+                        router.push({ pathname: '/order-tracking' as any, params: { orderId: order._id } });
+                      }
+                    }}
+                  >
+                    <View style={styles.orderHeader}>
+                      <View style={styles.orderIdSection}>
+                        <Text style={styles.orderId} numberOfLines={1}>
+                          Order ID #{order?._id ? String(order._id).slice(-6).toUpperCase() : '------'}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.orderStatus) + '15' }]}>
+                          <Text style={[styles.statusText, { color: getStatusColor(order.orderStatus) }]}>
+                            {order.orderStatus?.toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <TouchableOpacity 
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        openWhatsAppSupport(order._id, order.orderStatus);
-                      }}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Ionicons name="headset-outline" size={20} color="#64748B" />
-                    </TouchableOpacity>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.orderStatus) + '15' }]}>
-                      <Text style={[styles.statusText, { color: getStatusColor(order.orderStatus) }]}>
-                        {order.orderStatus?.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
 
-                <View style={styles.orderMeta}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="calendar-outline" size={14} color="#94A3B8" />
-                    <Text style={styles.metaText}>
-                      {new Date(order.createdAt).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </Text>
-                  </View>
-                  <View style={styles.metaDivider} />
-                  <View style={styles.metaItem}>
-                    <Ionicons name="cube-outline" size={14} color="#94A3B8" />
-                    <Text style={styles.metaText}>
-                      {order.items?.length || 0} {order.items?.length === 1 ? "Item" : "Items"}
-                    </Text>
-                  </View>
-                  {activeTab === 'courier' && (
-                    <>
+                    <View style={styles.orderMeta}>
+                      <View style={styles.metaItem}>
+                        <Ionicons name="calendar-outline" size={14} color="#94A3B8" />
+                        <Text style={styles.metaText}>
+                          {new Date(order.createdAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </Text>
+                      </View>
                       <View style={styles.metaDivider} />
                       <View style={styles.metaItem}>
-                        <Ionicons name="car-outline" size={14} color="#94A3B8" />
-                        <Text style={styles.metaText}>₹{order.deliveryCharge || 40} Delivery</Text>
+                        <Ionicons name="cube-outline" size={14} color="#94A3B8" />
+                        <Text style={styles.metaText}>
+                          {order.items?.length || 0} {order.items?.length === 1 ? "Item" : "Items"}
+                        </Text>
                       </View>
-                    </>
-                  )}
-                </View>
+                    </View>
 
-                <View style={styles.orderFooter}>
-                  <View style={styles.priceContainer}>
-                    <Text style={styles.totalLabel}>Total Payable</Text>
-                    <Text style={[styles.totalAmount, { color: theme.primary }]}>
-                      ₹{
-                        activeTab === 'trybuy'
-                          ? (order.finalBilling?.totalPayable || order.totalAmount)
-                          : ((order.totalAmount || 0) + (order.deliveryCharge || 40))
-                      }
-                    </Text>
-                  </View>
-                  <View style={styles.trackArrow}>
-                    <Text style={styles.trackText}>View Details</Text>
-                    <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </Animated.View>
-        </Animated.ScrollView>
-      </PremiumRefreshWrapper>
+                    <View style={styles.orderFooter}>
+                      <View style={styles.priceContainer}>
+                        <Text style={styles.totalLabel}>Total</Text>
+                        <Text style={styles.totalAmount}>
+                          ₹{totalPayable}
+                        </Text>
+                      </View>
+                      <View style={styles.trackArrow}>
+                        <Text style={styles.trackText}>Track Order</Text>
+                        <Ionicons name="chevron-forward" size={16} color={BrandColors.primary} />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </Animated.View>
+          </Animated.ScrollView>
+        </PremiumRefreshWrapper>
       )}
 
       <View style={styles.footer}>
         <Image source={logo} style={styles.footerLogo} blurRadius={3} resizeMode="contain" />
         <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-        <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+        <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
       </View>
     </View>
   );
@@ -346,56 +321,67 @@ const OrdersScreen = () => {
 export default OrdersScreen;
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F8FAFC" },
+  safeArea: { flex: 1, backgroundColor: BrandColors.offWhite },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#fff',
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
   backButton: { padding: 4 },
+  headerTitle: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
+    color: BrandColors.matteBlack,
+  },
   headerLogo: { width: 100, height: 30 },
 
-  // Tab Switcher
-  tabContainer: {
-    flexDirection: 'row', backgroundColor: '#fff', paddingHorizontal: 16,
-    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  filterTabsContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  tab: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 12, gap: 6, borderBottomWidth: 3, borderBottomColor: 'transparent',
+  filterTabsContent: {
+    paddingHorizontal: 16,
+    gap: 8,
   },
-  activeTab: { borderBottomWidth: 3 },
-  tabText: { fontSize: 14, fontWeight: '600', color: '#94A3B8' },
-  badge: {
-    minWidth: 20, height: 20, borderRadius: 10, alignItems: 'center',
-    justifyContent: 'center', paddingHorizontal: 6,
+  filterTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: BrandColors.offWhite,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  filterTabText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: BrandColors.textSecondary,
+  },
 
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 32 },
+  scrollContent: { paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 32 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: {
     marginTop: 12, fontSize: 14, fontFamily: Typography.fontFamily.medium, color: "#64748B",
   },
   orderCount: {
     fontSize: 14, fontFamily: Typography.fontFamily.bold, color: "#94A3B8",
-    marginTop: 20, marginBottom: 12, letterSpacing: 0.5,
+    marginTop: 10, marginBottom: 12, letterSpacing: 0.5,
   },
   orderCard: {
-    backgroundColor: "#fff", borderRadius: 20, padding: 16, marginBottom: 16,
-    borderLeftWidth: 4, borderWidth: 1,
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+    backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 14,
+    borderWidth: 1, borderColor: '#F1F5F9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
   },
   orderHeader: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12,
   },
   orderIdSection: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
-  orderId: { fontSize: 15, fontFamily: Typography.fontFamily.bold, color: "#1E293B" },
-  orderTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  orderTypeBadgeText: { fontSize: 9, fontWeight: '700' },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  statusText: { fontSize: 10, fontFamily: Typography.fontFamily.extraBold },
+  orderId: { fontSize: 14, fontFamily: Typography.fontFamily.bold, color: BrandColors.matteBlack },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusText: { fontSize: 10, fontFamily: Typography.fontFamily.bold },
   orderMeta: {
     flexDirection: "row", alignItems: "center", marginBottom: 16,
     backgroundColor: '#F8FAFC', padding: 10, borderRadius: 10,
@@ -450,3 +436,4 @@ const styles = StyleSheet.create({
   },
   footerLogo: { width: 140, height: 60, opacity: 0.25 },
 });
+

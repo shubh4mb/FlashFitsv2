@@ -316,7 +316,7 @@ export default function FlashMartScreen() {
             <View style={styles.footer}>
               <Image source={logo} style={styles.footerLogo} contentFit="contain" />
               <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-              <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+              <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
             </View>
           </View>
 

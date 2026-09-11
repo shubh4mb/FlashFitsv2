@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import {
     Animated,
     Dimensions,
+    Easing,
     Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -23,14 +25,20 @@ const LOGO_SIZE = CATEGORY_ITEM_WIDTH * 0.95; // Slightly smaller than container
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
 
 import { useCart } from "@/context/CartContext";
+import { useCampaign } from "@/context/CampaignContext";
 import { useCourierCart } from "@/context/CourierCartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { fetchCategories } from "../../api/categories";
-import { GenderThemes, Typography } from "../../constants/theme";
+import { BrandColors, GenderThemes, Typography } from "../../constants/theme";
 import { useAddress } from "../../context/AddressContext";
 import { Gender, useGender } from "../../context/GenderContext";
-import AddressSelectorModal from "../common/AddressSelectorModal";
 import Skeleton from "../common/Skeleton";
+
+const GENDER_CONFIG: Record<Gender, { icon: React.ComponentProps<typeof Ionicons>['name']; label: string }> = {
+    Men: { icon: 'male', label: 'Men' },
+    Women: { icon: 'female', label: 'Women' },
+    Kids: { icon: 'sparkles', label: 'Kids' },
+};
 
 interface MainHeaderProps {
     cartCount?: number;
@@ -67,6 +75,8 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
         locationPermission,
         selectedAddress,
         tbAvailable,
+        isLocationOff,
+        openAddressModal,
     } = useAddress();
 
     const insets = useSafeAreaInsets();
@@ -75,18 +85,37 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const slideAnim = useRef(new Animated.Value(0)).current;
     const { selectedGender, setSelectedGender, selectedSubGender, setSelectedSubGender } = useGender();
+    const { activeCampaign, hasCampaign, campaignTheme } = useCampaign();
     const genders: Gender[] = ['Men', 'Women', 'Kids'];
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
     const [categories, setCategories] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-    const [addressModalVisible, setAddressModalVisible] = useState(false);
 
-    // 3D Gender Switcher animations
-    const genderAnim = useRef(new Animated.Value(0)).current;
-    const scaleAnims = useRef(genders.map((g) => new Animated.Value(g === selectedGender ? 1.05 : 0.98))).current;
-    const activeOpacities = useRef(genders.map((g) => new Animated.Value(g === selectedGender ? 1 : 0))).current;
+    // Category Continuous Glide + Manual Swipe
+    const categoryScrollRef = useRef<ScrollView>(null);
+    const scrollPosRef = useRef(0);
+    const isInteractingRef = useRef(false);
+    const resumeTimeoutRef = useRef<any>(null);
+    const categoryFadeAnim = useRef(new Animated.Value(1)).current;
+
+    const visibleCategories = categories.filter((cat) => {
+        const genderKey = selectedGender.toUpperCase();
+        return cat.allowedGenders ? cat.allowedGenders.includes(genderKey) : true;
+    });
+
+    const scheduleResume = (delay = 1500) => {
+        if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = setTimeout(() => {
+            isInteractingRef.current = false;
+        }, delay);
+    };
+
+    const handleUserInteractionStart = () => {
+        isInteractingRef.current = true;
+        if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+    };
 
     useEffect(() => {
         const loadCategories = async () => {
@@ -112,24 +141,43 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
     }, [refreshKey]);
 
     useEffect(() => {
-        // Animate the scale and opacity of the buttons smoothly
-        genders.forEach((g, i) => {
-            const isActive = selectedGender === g;
-            Animated.parallel([
-                Animated.spring(scaleAnims[i], {
-                    toValue: isActive ? 1.05 : 0.98,
-                    friction: 7,
-                    tension: 80,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(activeOpacities[i], {
-                    toValue: isActive ? 1 : 0,
-                    duration: 200,
-                    useNativeDriver: true,
-                })
-            ]).start();
-        });
+        // Reset scroll position on gender switch
+        scrollPosRef.current = 0;
+        categoryScrollRef.current?.scrollTo({ x: 0, animated: false });
+
+        categoryFadeAnim.setValue(0);
+        Animated.timing(categoryFadeAnim, {
+            toValue: 1,
+            duration: 350,
+            useNativeDriver: true,
+        }).start();
     }, [selectedGender]);
+
+    // Continuous auto-glide that seamlessly pauses during manual swipe and resumes
+    useEffect(() => {
+        if (loading || visibleCategories.length === 0) return;
+
+        const singleSetWidth = visibleCategories.length * (CATEGORY_ITEM_WIDTH + CATEGORY_GAP);
+        if (singleSetWidth <= 0) return;
+
+        const interval = setInterval(() => {
+            if (isInteractingRef.current) return;
+
+            let nextX = scrollPosRef.current + 0.65; // ~26px per second smooth flow
+            if (nextX >= singleSetWidth * 2) {
+                nextX = nextX - singleSetWidth;
+            } else if (nextX < 0) {
+                nextX = nextX + singleSetWidth;
+            }
+            scrollPosRef.current = nextX;
+            categoryScrollRef.current?.scrollTo({ x: nextX, animated: false });
+        }, 25);
+
+        return () => {
+            clearInterval(interval);
+            if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+        };
+    }, [loading, visibleCategories.length, selectedGender]);
 
     // Gradient transition
     const gradientAnim = useRef(new Animated.Value(0)).current;
@@ -221,7 +269,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
             onLayout={(e) => onHeaderLayout?.(e.nativeEvent.layout.height)}
         >
             <LinearGradient
-                colors={[theme?.primary || '#011441', '#FFFFFF', '#FFFFFF',]} // Fade to white
+                colors={[theme?.primary || '#011441', '#FFFFFF', '#FFFFFF']} // Fade to white
                 locations={[0, 0.7, 1]} // Reaches white by approx 70% height
                 start={{ x: 0, y: 0 }}
                 end={{ x: 0, y: 1 }}
@@ -237,7 +285,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                         activeOpacity={0.6}
                         onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            setAddressModalVisible(true);
+                            openAddressModal();
                         }}
                         hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                     >
@@ -267,8 +315,8 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     ? `${capitalize(selectedAddress.addressType)} - ${selectedAddress.addressLine1}`
                                     : locationLoading
                                         ? 'Fetching your location...'
-                                        : locationPermission !== 'granted'
-                                            ? 'Enable location permission'
+                                        : isLocationOff || locationPermission !== 'granted'
+                                            ? 'Select delivery location'
                                             : (locationAddress || 'Tap to select delivery location')}
                             </Text>
                         </View>
@@ -408,152 +456,146 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                             <Text style={styles.staticSearchText}> at your Home! </Text>
 
                         </View>
-                        <View style={styles.micButton}>
-                            <MaterialCommunityIcons name="microphone-outline" size={16} color="#64748B" />
-                        </View>
+                        {hasCampaign && activeCampaign?.badgeText ? (
+                            <View style={[styles.campaignSearchBadge, { backgroundColor: campaignTheme?.bgGradientEnd || '#FEF3C7' }]}>
+                                <Text style={[styles.campaignSearchBadgeText, { color: campaignTheme?.textColor || '#78350F' }]}>
+                                    {activeCampaign.badgeText}
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.micButton}>
+                                <MaterialCommunityIcons name="microphone-outline" size={16} color="#64748B" />
+                            </View>
+                        )}
                     </TouchableOpacity>
 
+                    {/* ── Compact & Professional Gender Switcher ── */}
                     <View style={styles.genderContainer}>
-                        {genders.map((g, i) => {
-                            const isActive = selectedGender === g;
-                            const gTheme = GenderThemes[g] || GenderThemes.Men;
-
-                            const inactiveOpacity = activeOpacities[i].interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [1, 0]
-                            });
-
-                            return (
-                                <Animated.View
-                                    key={g}
-                                    style={[
-                                        styles.genderButtonWrapper,
-                                        { transform: [{ scale: scaleAnims[i] }] }
-                                    ]}
-                                >
+                        {/* Primary Segments: MEN | WOMEN | KIDS */}
+                        <View style={styles.mainGenderTrack}>
+                            {genders.map((g) => {
+                                const isActive = selectedGender === g;
+                                return (
                                     <TouchableOpacity
-                                        onPress={() => setSelectedGender(g)}
-                                        style={styles.genderButton}
-                                        activeOpacity={0.9}
+                                        key={g}
+                                        onPress={() => {
+                                            Haptics.selectionAsync();
+                                            setSelectedGender(g);
+                                        }}
+                                        style={[
+                                            styles.genderButton,
+                                            isActive && styles.genderButtonActive,
+                                        ]}
+                                        activeOpacity={0.75}
                                     >
-                                        {/* Active Background Pill */}
-                                        <Animated.View style={[
-                                            StyleSheet.absoluteFill,
-                                            {
-                                                backgroundColor: '#FFFFFF',
-                                                borderRadius: 10,
-                                                opacity: activeOpacities[i],
-                                                ...Platform.select({
-                                                    ios: {
-                                                        shadowColor: gTheme.primary,
-                                                        shadowOffset: { width: 0, height: 2 },
-                                                        shadowOpacity: 0.15,
-                                                        shadowRadius: 4,
-                                                    },
-                                                    android: {
-                                                        elevation: 2,
-                                                    },
-                                                }),
-                                            }
-                                        ]} />
-
-                                        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                                            <Animated.Text
-                                                style={[
-                                                    styles.genderText,
-                                                    {
-                                                        color: 'rgba(255,255,255,0.7)',
-                                                        fontFamily: Typography.fontFamily.extraBold,
-                                                        opacity: inactiveOpacity,
-                                                    }
-                                                ]}
-                                            >
-                                                {g}
-                                            </Animated.Text>
-                                            <Animated.Text
-                                                style={[
-                                                    styles.genderText,
-                                                    {
-                                                        position: 'absolute',
-                                                        color: gTheme.primary,
-                                                        fontFamily: Typography.fontFamily.extraBold,
-                                                        opacity: activeOpacities[i],
-                                                    }
-                                                ]}
-                                            >
-                                                {g}
-                                            </Animated.Text>
-                                        </View>
+                                        <Text
+                                            style={[
+                                                styles.genderText,
+                                                isActive ? styles.genderTextActive : styles.genderTextInactive,
+                                            ]}
+                                        >
+                                            {g.toUpperCase()}
+                                        </Text>
                                     </TouchableOpacity>
-                                </Animated.View>
-                            );
-                        })}
+                                );
+                            })}
+                        </View>
+
+                        {/* Integrated Sub-Selector for Kids: ALL | BOYS | GIRLS */}
+                        {selectedGender === 'Kids' && (
+                            <View style={styles.subGenderTrack}>
+                                <View style={styles.subGenderDivider} />
+                                <View style={styles.subGenderPillRow}>
+                                    {(['All', 'Boys', 'Girls'] as const).map((sg) => {
+                                        const isSgActive = selectedSubGender === sg;
+                                        return (
+                                            <TouchableOpacity
+                                                key={sg}
+                                                onPress={() => {
+                                                    Haptics.selectionAsync();
+                                                    setSelectedSubGender(sg);
+                                                }}
+                                                style={[
+                                                    styles.subGenderPill,
+                                                    isSgActive && styles.subGenderPillActive,
+                                                ]}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text
+                                                    style={[
+                                                        styles.subGenderText,
+                                                        isSgActive && styles.subGenderTextActive,
+                                                    ]}
+                                                >
+                                                    {sg === 'All' ? 'ALL KIDS' : sg.toUpperCase()}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                            </View>
+                        )}
                     </View>
                 </Animated.View>
 
-                {/* Sub-Gender Switcher for Kids */}
-                {selectedGender === 'Kids' && (
-                    <View style={styles.subGenderContainer}>
-                        {['All', 'Boys', 'Girls'].map((sg) => {
-                            const isSgActive = selectedSubGender === sg;
-                            return (
-                                <TouchableOpacity
-                                    key={sg}
-                                    onPress={() => setSelectedSubGender(sg as any)}
-                                    style={[
-                                        styles.subGenderButton,
-                                        isSgActive && { backgroundColor: theme.primary }
-                                    ]}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={[
-                                        styles.subGenderText,
-                                        { color: isSgActive ? '#FFFFFF' : '#64748B' }
-                                    ]}>
-                                        {sg}
-                                    </Text>
-                                </TouchableOpacity>
-                            );
-                        })}
-                    </View>
-                )}
-
-                {/* ── Category List ── */}
+                {/* ── Category List with Smooth Continuous Glide + Manual Swipe ── */}
                 {!hideCategories && (
-                    <Animated.ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.categoriesContainer}
-                        style={{ marginTop: 10 }}
+                    <Animated.View
+                        style={{
+                            opacity: categoryFadeAnim,
+                            marginTop: 10,
+                        }}
                     >
-                        {loading
-                            ? [1, 2, 3, 4, 5].map((i) => (
-                                <View key={i} style={styles.categoryItem}>
-                                    <Skeleton width={LOGO_SIZE} height={LOGO_SIZE} borderRadius={16} style={{ marginBottom: 4 }} />
-                                    <Skeleton width={CATEGORY_ITEM_WIDTH * 0.7} height={10} />
-                                </View>
-                            ))
-                            : categories
-                                .filter((cat) => {
-                                    const genderKey = selectedGender.toUpperCase();
-                                    return cat.allowedGenders ? cat.allowedGenders.includes(genderKey) : true;
-                                })
-                                .map((cat) => {
+                        <ScrollView
+                            ref={categoryScrollRef}
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.categoriesContainer}
+                            scrollEventThrottle={16}
+                            onScroll={(e) => {
+                                scrollPosRef.current = e.nativeEvent.contentOffset.x;
+                            }}
+                            onTouchStart={handleUserInteractionStart}
+                            onTouchEnd={() => scheduleResume(1500)}
+                            onTouchCancel={() => scheduleResume(1500)}
+                            onScrollBeginDrag={handleUserInteractionStart}
+                            onScrollEndDrag={(e) => {
+                                scrollPosRef.current = e.nativeEvent.contentOffset.x;
+                                scheduleResume(1500);
+                            }}
+                            onMomentumScrollBegin={handleUserInteractionStart}
+                            onMomentumScrollEnd={(e) => {
+                                scrollPosRef.current = e.nativeEvent.contentOffset.x;
+                                scheduleResume(1500);
+                            }}
+                        >
+                            {loading
+                                ? [1, 2, 3, 4, 5].map((i) => (
+                                    <View key={i} style={styles.categoryItem}>
+                                        <Skeleton width={LOGO_SIZE} height={LOGO_SIZE} borderRadius={16} style={{ marginBottom: 4 }} />
+                                        <Skeleton width={CATEGORY_ITEM_WIDTH * 0.7} height={10} />
+                                    </View>
+                                ))
+                                : [...visibleCategories, ...visibleCategories, ...visibleCategories].map((cat, idx) => {
                                     const isActive = selectedCategoryId === cat._id;
                                     const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
                                     const logoUrl = cat.logos?.[genderKey]?.url || cat.logo?.url || cat.image?.url;
 
                                     return (
                                         <TouchableOpacity
-                                            key={cat._id}
+                                            key={`${cat._id}-${idx}`}
                                             style={styles.categoryItem}
-                                            onPress={() => router.push({
-                                                pathname: '/search-results' as any,
-                                                params: {
-                                                    categoryId: cat._id,
-                                                    gender: selectedGender.toUpperCase(),
-                                                }
-                                            })}
+                                            activeOpacity={0.7}
+                                            onPress={() => {
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                router.push({
+                                                    pathname: '/search-results' as any,
+                                                    params: {
+                                                        categoryId: cat._id,
+                                                        gender: selectedGender.toUpperCase(),
+                                                    }
+                                                });
+                                            }}
                                         >
                                             <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
                                                 {logoUrl ? (
@@ -574,16 +616,11 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                         </TouchableOpacity>
                                     );
                                 })
-                        }
-                    </Animated.ScrollView>
+                            }
+                        </ScrollView>
+                    </Animated.View>
                 )}
             </LinearGradient>
-
-            {/* Address Selector Modal */}
-            <AddressSelectorModal
-                visible={addressModalVisible}
-                onClose={() => setAddressModalVisible(false)}
-            />
         </Animated.View>
     );
 }
@@ -743,57 +780,112 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    genderContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.06)',
-        padding: 4,
-        borderRadius: 14,
-        marginTop: 12,
-        gap: 2,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-    },
-    subGenderContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.03)',
-        padding: 3,
-        borderRadius: 10,
-        marginTop: 8,
-        alignSelf: 'center',
-        gap: 4,
-        width: '90%',
-    },
-    subGenderButton: {
-        flex: 1,
-        paddingVertical: 5,
+    campaignSearchBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
         borderRadius: 8,
+    },
+    campaignSearchBadgeText: {
+        fontSize: 8,
+        fontFamily: Typography.fontFamily.extraBold,
+        letterSpacing: 0.3,
+    },
+    genderContainer: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 3,
+        marginTop: 8,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 3,
+            },
+            android: {
+                elevation: 1.5,
+            },
+        }),
+    },
+    mainGenderTrack: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    genderButton: {
+        flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        paddingVertical: 6,
+        borderRadius: 8,
+    },
+    genderButtonActive: {
+        backgroundColor: BrandColors.matteBlack,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.15,
+                shadowRadius: 2,
+            },
+            android: {
+                elevation: 1,
+            },
+        }),
+    },
+    genderText: {
+        fontSize: 11.5,
+        letterSpacing: 0.8,
+    },
+    genderTextActive: {
+        color: '#FFFFFF',
+        fontFamily: Typography.fontFamily.extraBold,
+    },
+    genderTextInactive: {
+        color: '#64748B',
+        fontFamily: Typography.fontFamily.semiBold,
+    },
+    subGenderTrack: {
+        paddingTop: 4,
+        paddingBottom: 2,
+    },
+    subGenderDivider: {
+        height: 1,
+        backgroundColor: '#F1F5F9',
+        marginBottom: 4,
+        marginHorizontal: 2,
+    },
+    subGenderPillRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 2,
+    },
+    subGenderPill: {
+        flex: 1,
+        paddingVertical: 4.5,
+        borderRadius: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    subGenderPillActive: {
+        backgroundColor: BrandColors.matteBlack,
+        borderColor: BrandColors.matteBlack,
     },
     subGenderText: {
         fontSize: 10,
-        fontFamily: Typography.fontFamily.extraBold,
-        textTransform: 'uppercase',
+        fontFamily: Typography.fontFamily.bold,
+        color: '#64748B',
         letterSpacing: 0.5,
+        textAlign: 'center',
     },
-    genderButtonWrapper: {
-        flex: 1,
-    },
-    genderButton: {
-        paddingVertical: 6,
-        borderRadius: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-    },
-
-    genderText: {
-        fontSize: 11.5,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
+    subGenderTextActive: {
+        color: '#FFFFFF',
     },
     categoriesContainer: {
         paddingRight: 16,

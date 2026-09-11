@@ -3,6 +3,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   TouchableOpacity,
   View,
+  Text,
+  ScrollView,
+  StyleSheet,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { fetchnewArrivalsProductsData } from '../../api/products';
@@ -11,7 +14,6 @@ import { useGender } from '../../context/GenderContext';
 import { Product } from '../../utils/recentlyViewed';
 import ProductCard from '../common/ProductCard';
 import Skeleton from '../common/Skeleton';
-import { ScrollView } from 'react-native';
 
 const ProductSectionSkeleton = () => (
   <View style={styles.container}>
@@ -102,7 +104,6 @@ const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         renderItem={renderItem}
         keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
         horizontal
-        estimatedItemSize={171}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"

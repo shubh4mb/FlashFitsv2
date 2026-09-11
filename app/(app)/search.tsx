@@ -6,7 +6,6 @@ import { useGender } from '@/context/GenderContext';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -244,19 +243,7 @@ export default function SearchScreen() {
           </View>
 
           <RecentlyViewedSection />
-
-          <View style={styles.trendingBanner}>
-            <LinearGradient
-              colors={['#F8FAFC', '#F1F5F9']}
-              style={styles.bannerContent}
-            >
-              <View>
-                <Text style={styles.bannerLabel}>TRENDING NOW</Text>
-                <Text style={styles.bannerTitle}>Summer Essentials</Text>
-              </View>
-              <Ionicons name="flash" size={24} color={theme.primary} />
-            </LinearGradient>
-          </View>
+          <View style={{ height: 40 }} />
         </ScrollView>
       )}
     </View>
@@ -389,28 +376,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: Typography.fontFamily.medium,
     color: '#475569',
-  },
-  trendingBanner: {
-    marginTop: 40,
-    marginBottom: 40,
-  },
-  bannerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 24,
-    borderRadius: 24,
-  },
-  bannerLabel: {
-    fontSize: 10,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#94A3B8',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  bannerTitle: {
-    fontSize: 18,
-    fontFamily: Typography.fontFamily.serifBold,
-    color: '#0F172A',
   },
 });

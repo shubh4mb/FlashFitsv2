@@ -69,6 +69,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (isNewUser) {
                 setHasSeenOnboarding(false);
                 await SecureStore.setItemAsync('hasSeenOnboarding', 'false');
+            } else {
+                setHasSeenOnboarding(true);
+                await SecureStore.setItemAsync('hasSeenOnboarding', 'true');
             }
 
             updateAuthToken(token);
@@ -79,10 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             setTimeout(() => {
-                if (isNewUser || !hasSeenOnboarding) {
+                if (isNewUser) {
                     router.replace('/(auth)/onboarding');
                 } else {
-                    router.replace('/(tabs)');
+                    router.replace('/(app)/(tabs)');
                 }
             }, 0);
         } catch (error) {

@@ -152,8 +152,10 @@ export default function PhoneLogin() {
   const { signIn } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [isReferralFocused, setIsReferralFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [referralCode, setReferralCode] = useState("");
 
   const randomAssets = useRef(
     (() => {
@@ -261,8 +263,8 @@ export default function PhoneLogin() {
       setErrorMessage("");
 
       let idToken;
-      const clientId = "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com";
-      if (clientId === "" || clientId.includes("PLACEHOLDER")) {
+      const clientId: string = "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com";
+      if (!clientId || clientId.includes("PLACEHOLDER")) {
         console.warn("Using mock token because GOOGLE_WEB_CLIENT_ID is a placeholder.");
         idToken = `mock-google-token-${Date.now()}-mockgoogleid-testuser@example.com`;
       } else {
@@ -280,7 +282,7 @@ export default function PhoneLogin() {
         throw new Error("No ID Token received from Google");
       }
 
-      const res = await googleLogin(idToken);
+      const res = await googleLogin(idToken, referralCode);
       if (res && res.token) {
         const { token, refreshToken, userId, isNewUser } = res;
         await signIn(token, userId, refreshToken, isNewUser);
@@ -356,6 +358,13 @@ export default function PhoneLogin() {
     Animated.spring(inputScale, { toValue: 1, tension: 80, friction: 7, useNativeDriver: true }).start();
   };
 
+  const handleReferralFocus = () => {
+    setIsReferralFocused(true);
+  };
+  const handleReferralBlur = () => {
+    setIsReferralFocused(false);
+  };
+
   const progressPct = progressWidth.interpolate({
     inputRange: [0, 1],
     outputRange: ["0%", "100%"],
@@ -409,6 +418,29 @@ export default function PhoneLogin() {
                 <Text style={styles.welcomeTitle}>Welcome Back</Text>
                 <Text style={styles.welcomeSubtitle}>Sign in to continue to FlashFits</Text>
 
+                {/* Referral Code Input */}
+                <View
+                  style={[
+                    styles.inputBox,
+                    {
+                      borderColor: isReferralFocused ? "#78787cff" : "#e2e8f0",
+                      backgroundColor: isReferralFocused ? "#ffffff" : "#f8fafc",
+                    },
+                  ]}
+                >
+                  <TextInput
+                    style={styles.phoneInput}
+                    placeholder="Referral Code (Optional)"
+                    placeholderTextColor="#94a3b8"
+                    value={referralCode}
+                    onChangeText={setReferralCode}
+                    onFocus={handleReferralFocus}
+                    onBlur={handleReferralBlur}
+                    editable={!isLoading}
+                    autoCapitalize="characters"
+                  />
+                </View>
+
                 {/* Google Sign-In Button */}
                 <Animated.View style={{ transform: [{ scale: buttonScale }], marginVertical: 12 }}>
                   <TouchableOpacity
@@ -427,7 +459,7 @@ export default function PhoneLogin() {
                 {/* Error Message */}
                 {errorMessage ? (
                   <Animated.View style={[styles.errorBox, { opacity: errorOpacity }]}>
-                    <AntDesign name="exclamationcircleo" size={14} color="#EF4444" />
+                    <AntDesign name="exclamation-circle" size={14} color="#EF4444" />
                     <Text style={styles.errorText}>{errorMessage}</Text>
                   </Animated.View>
                 ) : null}

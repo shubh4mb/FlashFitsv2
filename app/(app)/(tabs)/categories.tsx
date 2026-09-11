@@ -15,13 +15,14 @@ import { useGender } from '@/context/GenderContext';
 import { fetchCategories } from '@/api/categories';
 import MainHeader from '@/components/layout/MainHeader';
 import { ThemedView } from '@/components/common/themed-view';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
 import Skeleton from '@/components/common/Skeleton';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { Animated, NativeSyntheticEvent, NativeScrollEvent, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
 
@@ -193,7 +194,14 @@ export default function CategoriesScreen() {
                 key={cat._id}
                 style={[
                   styles.sidebarItem,
-                  isActive && { backgroundColor: theme.primary.slice(0, 7) + '15' } // strips 'ff' suffix from Men theme
+                  isActive && {
+                    backgroundColor: BrandColors.softCyan,
+                    borderWidth: 1,
+                    borderLeftWidth: 1,
+                    borderColor: BrandColors.softCyanBorder,
+                    borderRadius: 12,
+                    marginHorizontal: 6,
+                  },
                 ]}
                 onPress={() => handleSidebarPress(cat._id)}
               >
@@ -205,7 +213,7 @@ export default function CategoriesScreen() {
                 <Text 
                   style={[
                     styles.sidebarText, 
-                    isActive && { color: theme.primary, fontFamily: Typography.fontFamily.serifBold }
+                    isActive && { color: BrandColors.matteBlack, fontFamily: Typography.fontFamily.bold, fontWeight: '700' }
                   ]} 
                   numberOfLines={2}
                 >
@@ -230,11 +238,39 @@ export default function CategoriesScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
             scrollEventThrottle={16}
-            estimatedItemSize={cardSize + 40 + 16}
             ListHeaderComponent={() => (
-              <Text style={styles.sectionTitle}>
-                {mainCategories.find(c => c._id === selectedMainId)?.name || 'Categories'}
-              </Text>
+              <View style={{ marginBottom: 14 }}>
+                {/* Promo Card matching design mockup */}
+                <LinearGradient
+                  colors={[BrandColors.softCyan, '#DDF8FB']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.bannerCard}
+                >
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.bannerTitle}>Upgrade Your Everyday Style</Text>
+                    <TouchableOpacity
+                      style={styles.bannerBtn}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        const currentCat = mainCategories.find(c => c._id === selectedMainId);
+                        if (currentCat) {
+                          router.push({
+                            pathname: '/search-results' as any,
+                            params: { q: currentCat.name, gender: selectedGender.toUpperCase() },
+                          });
+                        }
+                      }}
+                    >
+                      <Text style={styles.bannerBtnText}>EXPLORE NOW</Text>
+                    </TouchableOpacity>
+                  </View>
+                </LinearGradient>
+
+                <Text style={styles.sectionTitle}>
+                  {mainCategories.find(c => c._id === selectedMainId)?.name || 'Categories'}
+                </Text>
+              </View>
             )}
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
@@ -361,6 +397,33 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.serifSemiBold
   },
 
+  bannerCard: {
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: BrandColors.softCyanBorder,
+  },
+  bannerTitle: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: BrandColors.matteBlack,
+    marginBottom: 10,
+    letterSpacing: -0.2,
+  },
+  bannerBtn: {
+    backgroundColor: BrandColors.matteBlack,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  bannerBtnText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.5,
+  },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',

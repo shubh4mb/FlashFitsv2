@@ -6,13 +6,45 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllOrders } from '@/api/orders';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes } from '@/constants/theme';
+import { joinOrderRoom, listenOrderUpdates, removeOrderListeners } from '@/sockets/order.socket';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const ACTIVE_STATUSES = ['placed', 'accepted', 'packed', 'in_transit', 'try_phase', 'selection_made'];
+const ACTIVE_TB_STATUSES = ['placed', 'accepted', 'packed', 'in_transit', 'try_phase'];
+const ACTIVE_COURIER_STATUSES = ['placed', 'accepted', 'packed', 'confirmed', 'shipped'];
+
+const TERMINAL_STATUSES = [
+  'completed',
+  'delivered',
+  'return_in_progress',
+  'returned',
+  'cancelled',
+  'rejected',
+  'failed',
+  'payment_failed',
+  'selection_made',
+];
+
+const isOrderActive = (order: any) => {
+  // If customer delivery has already ended or completed, never show tracking banner
+  if (order.customerDeliveryStatus === 'completed' || order.customerDeliveryStatus === 'delivered') {
+    return false;
+  }
+
+  const status = (order.orderStatus || '').toLowerCase();
+  if (TERMINAL_STATUSES.includes(status)) {
+    return false;
+  }
+
+  const isCourier = order.isCourier || order._isCourier || order.deliveryMode === 'courier' || order.fulfillmentType === 'courier';
+  if (isCourier) {
+    return ACTIVE_COURIER_STATUSES.includes(status);
+  }
+  return ACTIVE_TB_STATUSES.includes(status);
+};
 
 export default function ActiveOrderBanner() {
   const [activeOrders, setActiveOrders] = useState<any[]>([]);
@@ -22,16 +54,28 @@ export default function ActiveOrderBanner() {
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
 
+  const handleOrderPress = (order: any) => {
+    const isCourier = order.isCourier || order._isCourier || order.deliveryMode === 'courier' || order.fulfillmentType === 'courier';
+    if (isCourier) {
+      router.push({ pathname: '/courier-tracking' as any, params: { orderId: order._id } });
+    } else {
+      router.push({ pathname: '/order-tracking' as any, params: { orderId: order._id } });
+    }
+  };
+
   const fetchOrders = async () => {
     try {
-      const ordersRes = await getAllOrders();
+      const ordersRes: any = await getAllOrders();
       const orders = Array.isArray(ordersRes) ? ordersRes : ordersRes?.orders || [];
-      const activeList = orders.filter((o: any) => {
-        // Exclude courier orders (which have deliveryMode === 'courier' or isCourier flag)
-        const isCourier = o.isCourier || o.deliveryMode === 'courier';
-        return !isCourier && ACTIVE_STATUSES.includes(o.orderStatus?.toLowerCase());
-      });
+      const activeList = orders.filter(isOrderActive);
       setActiveOrders(activeList);
+
+      // Join socket rooms for live updates
+      activeList.forEach((o: any) => {
+        if (o._id) {
+          joinOrderRoom(o._id);
+        }
+      });
     } catch (err) {
       console.log('Error fetching active orders for banner', err);
     }
@@ -40,8 +84,14 @@ export default function ActiveOrderBanner() {
   useFocusEffect(
     useCallback(() => {
       fetchOrders();
-      const interval = setInterval(fetchOrders, 15000); // Poll every 15s
-      return () => clearInterval(interval);
+      const interval = setInterval(fetchOrders, 30000); // Poll every 30s as safety fallback (sockets handle live updates)
+      listenOrderUpdates(() => {
+        fetchOrders();
+      });
+      return () => {
+        clearInterval(interval);
+        removeOrderListeners();
+      };
     }, [])
   );
 
@@ -62,7 +112,7 @@ export default function ActiveOrderBanner() {
         <TouchableOpacity
           activeOpacity={0.9}
           style={[styles.container, { backgroundColor: theme.primary }]}
-          onPress={() => router.push({ pathname: '/order-tracking' as any, params: { orderId: singleOrder._id } })}
+          onPress={() => handleOrderPress(singleOrder)}
         >
           <View style={styles.leftContent}>
             <View style={styles.iconContainer}>
@@ -71,7 +121,7 @@ export default function ActiveOrderBanner() {
             <View style={styles.textContainer}>
               <Text style={styles.title}>Track Order</Text>
               <Text style={styles.subtitle}>
-                #{singleOrder._id.slice(-5).toUpperCase()} • {singleOrder.orderStatus?.toUpperCase().replace('_', ' ')}
+                #{singleOrder?._id ? String(singleOrder._id).slice(-5).toUpperCase() : '------'} • {singleOrder.orderStatus?.toUpperCase().replace('_', ' ')}
               </Text>
             </View>
           </View>
@@ -121,15 +171,13 @@ export default function ActiveOrderBanner() {
                 styles.orderItem,
                 idx === activeOrders.length - 1 && { borderBottomWidth: 0 }
               ]}
-              onPress={() => {
-                router.push({ pathname: '/order-tracking' as any, params: { orderId: order._id } });
-              }}
+              onPress={() => handleOrderPress(order)}
             >
               <View style={styles.orderItemLeft}>
                 <Ionicons name="cube-outline" size={16} color="#fff" style={{ opacity: 0.8 }} />
                 <View>
                   <Text style={styles.orderItemTitle}>
-                    Order #{order._id.slice(-5).toUpperCase()}
+                    Order #{order?._id ? String(order._id).slice(-5).toUpperCase() : '------'}
                   </Text>
                   <Text style={styles.orderItemSub}>
                     {order.orderStatus?.toUpperCase().replace('_', ' ')}

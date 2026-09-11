@@ -9,7 +9,7 @@ import RazorpayWebView from '@/components/common/RazorpayWebView';
 import SwipeToBuy from '@/components/common/SwipeToBuy';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
 import { useAlert, useToast } from '@/context/AlertContext';
 import { useCart } from '@/context/CartContext';
@@ -193,9 +193,10 @@ export default function CartScreen() {
     setPlacingOrder(true);
     try {
       const addressId = selectedAddress._id || (selectedAddress as any)?.id;
+      const tipToApply = Number(deliveryTip) > 0 ? Number(deliveryTip) : (Number(merchantCart?.totals?.deliveryTip) || 0);
       const result = await createRazorpayOrder(
         addressId,
-        deliveryTip,
+        tipToApply,
         couponCode || undefined,
         merchantId,
         'online'
@@ -225,7 +226,7 @@ export default function CartScreen() {
       }
 
       const options = {
-        description: 'Try & Buy Delivery Fee',
+        description: tipToApply > 0 ? `Try & Buy Delivery Fee + ₹${tipToApply} Tip` : 'Try & Buy Delivery Fee',
         currency: 'INR',
         key: result.key_id,
         amount: result.amount,
@@ -355,21 +356,21 @@ export default function CartScreen() {
         {/* Tab Switcher */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'instant' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
+            style={[styles.tab, activeTab === 'instant' && { ...styles.activeTab, borderBottomColor: BrandColors.matteBlack }]}
             onPress={() => setActiveTab('instant')}
           >
-            <Ionicons name="flash" size={16} color={activeTab === 'instant' ? theme.primary : '#94A3B8'} />
-            <Text style={[styles.tabText, activeTab === 'instant' && { color: theme.primary, fontWeight: '800' }]}>Try & Buy</Text>
-            {merchantCarts.length > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'instant' ? theme.primary : '#CBD5E1' }]}><Text style={styles.badgeText}>{merchantCarts.length}</Text></View>}
+            <Ionicons name="flash" size={16} color={activeTab === 'instant' ? BrandColors.matteBlack : '#94A3B8'} />
+            <Text style={[styles.tabText, activeTab === 'instant' && { color: BrandColors.matteBlack, fontWeight: '800' }]}>Try & Buy</Text>
+            {merchantCarts.length > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'instant' ? BrandColors.matteBlack : '#CBD5E1' }]}><Text style={styles.badgeText}>{merchantCarts.length}</Text></View>}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'standard' && { ...styles.activeTab, borderBottomColor: theme.primary }]}
+            style={[styles.tab, activeTab === 'standard' && { ...styles.activeTab, borderBottomColor: BrandColors.matteBlack }]}
             onPress={() => setActiveTab('standard')}
           >
-            <Ionicons name="cart" size={18} color={activeTab === 'standard' ? theme.primary : '#94A3B8'} />
-            <Text style={[styles.tabText, activeTab === 'standard' && { color: theme.primary, fontWeight: '800' }]}>Cart</Text>
-            {courierItems.length > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'standard' ? theme.primary : '#CBD5E1' }]}><Text style={styles.badgeText}>{courierItems.length}</Text></View>}
+            <Ionicons name="cart" size={18} color={activeTab === 'standard' ? BrandColors.matteBlack : '#94A3B8'} />
+            <Text style={[styles.tabText, activeTab === 'standard' && { color: BrandColors.matteBlack, fontWeight: '800' }]}>Cart</Text>
+            {courierItems.length > 0 && <View style={[styles.badge, { backgroundColor: activeTab === 'standard' ? BrandColors.matteBlack : '#CBD5E1' }]}><Text style={styles.badgeText}>{courierItems.length}</Text></View>}
           </TouchableOpacity>
         </View>
 
@@ -441,6 +442,18 @@ export default function CartScreen() {
                 const isOffline = mc.merchantDetails?.isOnline === false;
                 const isEligible = mc.deliveryDetails?.isEligibleForTryBuy !== false;
 
+                const itemSubtotal = Math.round(Number(mTotals?.subtotal || 0));
+                const itemMrpTotal = Math.round(Number(mTotals?.mrpTotal || 0));
+                const productDiscount = Math.round(Number(mTotals?.discount || Math.max(0, itemMrpTotal - itemSubtotal)));
+                const offerDiscount = Math.round(Number(mOffers?.totalDiscount || 0));
+                const discountedItemsTotal = Math.max(0, itemSubtotal - offerDiscount);
+                const rawDeliveryCharge = Math.round(Number(mTotals?.totalDeliveryCharge || 0));
+                const deliveryFee = mOffers?.freeDelivery ? 0 : rawDeliveryCharge;
+                const returnFee = Math.round(Number(mTotals?.totalReturnCharge || 0));
+                const tipAmount = Math.round(Number(deliveryTip || 0));
+                const estimatedMaxTotal = discountedItemsTotal + deliveryFee + returnFee + tipAmount;
+                const totalSavings = (itemMrpTotal > itemSubtotal ? productDiscount : 0) + offerDiscount + (mOffers?.freeDelivery ? rawDeliveryCharge : 0);
+
                 return (
                   <View key={mc.merchantId} style={{ width: SCREEN_WIDTH, flex: 1 }}>
                     <PremiumRefreshWrapper
@@ -461,21 +474,21 @@ export default function CartScreen() {
                           onPress={() => setModalVisible(true)}
                         >
                           <View style={styles.addressHeaderLeft}>
-                            <View style={[styles.addressIconCircle, { backgroundColor: theme.primary + '15' }]}>
-                              <Ionicons name="location" size={18} color={theme.primary} />
+                            <View style={[styles.addressIconCircle, { backgroundColor: '#F1F5F9' }]}>
+                              <Ionicons name="location" size={18} color="#0F172A" />
                             </View>
                             <View style={{ flex: 1 }}>
                               <Text style={styles.addressSubHeader}>Delivering Try & Buy to</Text>
                               <Text style={styles.addressMainText} numberOfLines={1}>
                                 {selectedAddress
-                                  ? `${selectedAddress.addressType ? selectedAddress.addressType.toUpperCase() + ': ' : ''}${selectedAddress.addressLine1 || selectedAddress.street || selectedAddress.city || 'Saved Address'}`
+                                  ? `${selectedAddress.addressType ? selectedAddress.addressType.toUpperCase() + ': ' : ''}${selectedAddress.addressLine1 || (selectedAddress as any)?.street || selectedAddress.city || 'Saved Address'}`
                                   : 'Tap to select delivery address'}
                               </Text>
                             </View>
                           </View>
-                          <View style={[styles.changePill, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
-                            <Text style={[styles.changePillText, { color: theme.primary }]}>Change</Text>
-                            <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+                          <View style={[styles.changePill, { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' }]}>
+                            <Text style={[styles.changePillText, { color: '#0F172A', fontWeight: '700' }]}>Change</Text>
+                            <Ionicons name="chevron-forward" size={14} color="#64748B" />
                           </View>
                         </TouchableOpacity>
 
@@ -526,7 +539,7 @@ export default function CartScreen() {
                                 <Text style={[styles.warningActionButtonText, { fontFamily: Typography.fontFamily.bold }]}>Change Address</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={[styles.warningActionButton, styles.moveToCourierButton, { backgroundColor: theme.primary }]}
+                                style={[styles.warningActionButton, styles.moveToCourierButton, { backgroundColor: BrandColors.matteBlack }]}
                                 onPress={() => handleMoveToCourier(mc.merchantId)}
                               >
                                 <Ionicons name="swap-horizontal-outline" size={16} color="#fff" />
@@ -552,116 +565,12 @@ export default function CartScreen() {
 
                         {/* Items */}
                         <View style={styles.itemsContainer}>
-                          {mc.items.map((item) => (
+                          {mc.items.map((item: any) => (
                             <CartItem key={item._id} item={item} />
                           ))}
                         </View>
 
-                        {/* Offers Section */}
-                        {mOffers?.availableOffers?.length > 0 && (
-                          <View style={styles.offersSection}>
-                            <View style={styles.offersHeaderRow}>
-                              <View style={styles.offersHeaderTitleContainer}>
-                                <MaterialCommunityIcons name="ticket-percent-outline" size={22} color={theme.primary} />
-                                <Text style={[styles.offersSectionTitle, { fontFamily: Typography.fontFamily.bold }]}>Offers & Benefits</Text>
-                              </View>
-                              <View style={[styles.offersCountBadge, { backgroundColor: theme.primary + '10' }]}>
-                                <Text style={[styles.offersCountText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
-                                  {mOffers.availableOffers.length} {mOffers.availableOffers.length === 1 ? 'Offer' : 'Offers'}
-                                </Text>
-                              </View>
-                            </View>
-
-                            {mOffers.availableOffers.map((offer: any) => {
-                              const isApplied = mOffers.appliedOffers?.some((o: any) => (o._id?.toString() || o.offerId?.toString()) === (offer._id?.toString() || offer.offerId?.toString()));
-
-                              const minCartValue = offer.conditions?.minCartValue || 0;
-                              const minOrderValue = offer.conditions?.minOrderValue || 0;
-                              const threshold = Math.max(minCartValue, minOrderValue);
-                              const showTryAndBuyWarning = threshold > 0;
-
-                              return (
-                                <View key={offer._id} style={{ marginBottom: 12 }}>
-                                  <View
-                                    style={[
-                                      styles.offerCard,
-                                      { marginBottom: 0 },
-                                      isApplied && {
-                                        borderColor: theme.primary,
-                                        backgroundColor: theme.primary + '05',
-                                      },
-                                      showTryAndBuyWarning && {
-                                        borderBottomLeftRadius: 0,
-                                        borderBottomRightRadius: 0,
-                                        borderBottomWidth: 0,
-                                      }
-                                    ]}
-                                  >
-                                    {isApplied && (
-                                      <View style={[styles.appliedBadge, { backgroundColor: theme.primary }]}>
-                                        <Ionicons name="checkmark" size={10} color="#fff" />
-                                      </View>
-                                    )}
-
-                                    <View style={styles.offerCardLeft}>
-                                      <View style={[styles.iconContainer, { backgroundColor: theme.primary + '12' }]}>
-                                        <MaterialCommunityIcons name="ticket-percent" size={22} color={theme.primary} />
-                                      </View>
-                                      <View style={styles.offerDetails}>
-                                        <View style={styles.codeRow}>
-                                          <View style={[styles.codeBadge, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
-                                            <Text style={[styles.codeText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
-                                              {offer.couponCode || offer.title}
-                                            </Text>
-                                          </View>
-                                          {!!offer.discountAmount && (
-                                            <Text style={[styles.saveTag, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
-                                              Save ₹{offer.discountAmount}
-                                            </Text>
-                                          )}
-                                        </View>
-                                        <Text style={[styles.offerDescription, { fontFamily: Typography.fontFamily.medium }]} numberOfLines={2}>
-                                          {offer.description || `Get ₹${offer.discountAmount} off on your order`}
-                                        </Text>
-                                      </View>
-                                    </View>
-
-                                    <View style={styles.offerCardRight}>
-                                      {isApplied ? (
-                                        <TouchableOpacity
-                                          onPress={() => removeOffer(offer._id)}
-                                          activeOpacity={0.7}
-                                          style={[styles.actionBtn, styles.removeBtn]}
-                                        >
-                                          <Text style={[styles.removeBtnText, { fontFamily: Typography.fontFamily.bold }]}>Remove</Text>
-                                        </TouchableOpacity>
-                                      ) : (
-                                        <TouchableOpacity
-                                          onPress={() => applyOffer(offer._id)}
-                                          activeOpacity={0.7}
-                                          style={[styles.actionBtn, { backgroundColor: theme.primary }]}
-                                        >
-                                          <Text style={[styles.applyBtnText, { fontFamily: Typography.fontFamily.bold }]}>Apply</Text>
-                                        </TouchableOpacity>
-                                      )}
-                                    </View>
-                                  </View>
-
-                                  {showTryAndBuyWarning && (
-                                    <View style={styles.warningContainer}>
-                                      <Ionicons name="warning" size={14} color="#D97706" />
-                                      <Text style={styles.warningText}>
-                                        Try & Buy Note: You must keep items worth at least ₹{threshold} during final payment to claim this offer.
-                                      </Text>
-                                    </View>
-                                  )}
-                                </View>
-                              );
-                            })}
-                          </View>
-                        )}
-
-                        {/* Coupon Input */}
+                        {/* Coupon & Offers Section */}
                         <CouponInput
                           cartContext={{
                             items: mc.items,
@@ -670,7 +579,7 @@ export default function CartScreen() {
                               [mc.merchantId]: mTotals?.subtotal,
                             },
                           }}
-                          themeColor={theme.primary}
+                          themeColor={BrandColors.matteBlack}
                           orderType="try_and_buy"
                           appliedOffersData={mc.appliedOffers}
                         />
@@ -683,71 +592,177 @@ export default function CartScreen() {
                             {[10, 20, 50].map((amount) => (
                               <TouchableOpacity
                                 key={amount}
-                                style={[styles.tipPill, deliveryTip === amount && { borderColor: theme.primary, backgroundColor: theme.primary + '10' }]}
+                                style={[
+                                  styles.tipPill,
+                                  deliveryTip === amount && { borderColor: BrandColors.matteBlack, backgroundColor: BrandColors.matteBlack }
+                                ]}
                                 onPress={() => setDeliveryTip(deliveryTip === amount ? 0 : amount)}
                               >
-                                <Text style={[styles.tipPillText, deliveryTip === amount && { color: theme.primary }]}>₹{amount}</Text>
+                                <Text style={[styles.tipPillText, deliveryTip === amount && { color: '#FFFFFF', fontWeight: '800' }]}>₹{amount}</Text>
                               </TouchableOpacity>
                             ))}
                           </View>
                         </View>
 
 
-                        {/* Bill Summary */}
+                        {/* Detailed Bill Summary */}
                         <View style={styles.premiumBill}>
-                          <Text style={styles.billTitle}>Bill Summary</Text>
-                          <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{mTotals?.subtotal}</Text></View>
-                          {mOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{mOffers.totalDiscount}</Text></View>}
+                          <View style={styles.billHeaderRow}>
+                            <Text style={styles.billTitle}>Bill Summary</Text>
+                            <View style={styles.tbTagBadge}>
+                              <Ionicons name="flash" size={10} color="#6366F1" />
+                              <Text style={styles.tbTagBadgeText}>TRY & BUY</Text>
+                            </View>
+                          </View>
 
-                          {mOffers?.totalDiscount > 0 && (
-                            <View style={[styles.billRow, { marginTop: 4, paddingTop: 4, borderTopWidth: 0.5, borderTopColor: '#F1F5F9' }]}>
-                              <Text style={[styles.billLabel, { fontWeight: '700', color: '#0F172A' }]}>Total after offer</Text>
-                              <Text style={[styles.billValue, { fontWeight: '800' }]}>₹{Math.max(0, (mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)}</Text>
+                          {/* MRP & Product Discount (if available) */}
+                          {itemMrpTotal > itemSubtotal && (
+                            <>
+                              <View style={styles.billRow}>
+                                <Text style={styles.billLabel}>Total MRP</Text>
+                                <Text style={styles.billMrpValue}>₹{itemMrpTotal}</Text>
+                              </View>
+                              <View style={styles.billRow}>
+                                <Text style={[styles.billLabel, { color: '#10B981', fontWeight: '600' }]}>Product Discount</Text>
+                                <Text style={[styles.billValue, { color: '#10B981', fontWeight: '700' }]}>- ₹{productDiscount}</Text>
+                              </View>
+                            </>
+                          )}
+
+                          {/* Item Subtotal */}
+                          <View style={styles.billRow}>
+                            <Text style={styles.billLabel}>Item Total</Text>
+                            <Text style={styles.billValue}>₹{itemSubtotal}</Text>
+                          </View>
+
+                          {/* Coupon / Offer Discount */}
+                          {offerDiscount > 0 && (
+                            <View style={styles.billRow}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <Ionicons name="pricetag" size={12} color="#10B981" />
+                                <Text style={[styles.billLabel, { color: '#10B981', fontWeight: '600' }]}>Offer Applied</Text>
+                              </View>
+                              <Text style={[styles.billValue, { color: '#10B981', fontWeight: '700' }]}>- ₹{offerDiscount}</Text>
+                            </View>
+                          )}
+
+                          {offerDiscount > 0 && (
+                            <View style={[styles.billRow, styles.subtotalAfterOfferRow]}>
+                              <Text style={[styles.billLabel, { fontWeight: '700', color: '#0F172A' }]}>Items Subtotal</Text>
+                              <Text style={[styles.billValue, { fontWeight: '800' }]}>₹{discountedItemsTotal}</Text>
                             </View>
                           )}
 
                           <View style={styles.billDivider} />
 
-                          <View style={styles.payLaterSection}>
-                            <Ionicons name="time-outline" size={14} color="#64748B" />
-                            <Text style={styles.payLaterText}>Keep what you love, pay only for those after trying, return the rest (Max: ₹{Math.max(0, (mTotals?.subtotal || 0) - (mOffers?.totalDiscount || 0)).toFixed(0)})</Text>
-                          </View>
-
+                          {/* Logistics / Delivery Breakdown */}
                           {isEligible && (
                             <>
-                              <Text style={styles.upfrontTitle}>Payable Now</Text>
+                              {/* Delivery Partner Fee */}
                               <View style={styles.billRow}>
-                                <Text style={styles.billLabel}>Delivery Charge (Partial refundable)</Text>
-                                <Text style={[styles.billValue, mOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
-                                  {mOffers?.freeDelivery ? 'FREE' : `₹${mTotals?.totalDeliveryCharge + mTotals?.totalReturnCharge}`}
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={styles.billLabel}>Delivery Partner Fee</Text>
+                                  {mOffers?.freeDelivery && (
+                                    <View style={styles.freeBadge}>
+                                      <Text style={styles.freeBadgeText}>OFFER</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  {mOffers?.freeDelivery && rawDeliveryCharge > 0 && (
+                                    <Text style={styles.strikethroughPrice}>₹{rawDeliveryCharge}</Text>
+                                  )}
+                                  <Text style={[styles.billValue, mOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
+                                    {mOffers?.freeDelivery ? 'FREE' : `₹${deliveryFee}`}
+                                  </Text>
+                                </View>
                               </View>
-                              {mOffers?.freeDelivery ? (
-                                <Text style={[styles.billSubText, { color: '#10B981', fontWeight: '700', marginTop: -6, marginBottom: 10 }]}>
-                                  Free Delivery applied via Offer!
-                                </Text>
-                              ) : (
-                                mTotals?.totalReturnCharge > 0 && (
-                                  <Text style={styles.billSubText}>₹{mTotals.totalReturnCharge} will be deducted from total, if nothing is returned</Text>
-                                )
-                              )}
-                              {mTotals?.serviceGST > 0 && (
-                                <View style={styles.billRow}><Text style={styles.billLabel}>Platform GST</Text><Text style={styles.billValue}>₹{Math.round(mTotals?.serviceGST || 0)}</Text></View>
-                              )}
-                              {deliveryTip > 0 && <View style={styles.billRow}><Text style={styles.billLabel}>Rider Tip</Text><Text style={styles.billValue}>₹{deliveryTip}</Text></View>}
 
-                              <View style={[styles.billRow, { marginTop: 12 }]}>
-                                <Text style={styles.grandTotalLabel}>Total Payable Now</Text>
-                                <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Math.max(0, Math.round(mTotals?.totalUpfrontPayable || 0))}</Text>
-                              </View>
+                              {/* Return Handling Fee */}
+                              {returnFee > 0 && (
+                                <>
+                                  <View style={styles.billRow}>
+                                    <Text style={styles.billLabel}>Doorstep Return Handling</Text>
+                                    <Text style={styles.billValue}>₹{returnFee}</Text>
+                                  </View>
+                                  <Text style={styles.billSubText}>* 100% waived if all items are kept</Text>
+                                </>
+                              )}
+
+                              {/* Rider Tip */}
+                              {tipAmount > 0 && (
+                                <View style={styles.billRow}>
+                                  <Text style={styles.billLabel}>Rider Tip</Text>
+                                  <Text style={styles.billValue}>₹{tipAmount}</Text>
+                                </View>
+                              )}
+
+                              <View style={styles.billDivider} />
                             </>
                           )}
+
+                          {/* Total Payable Summary (Zero upfront confusion) */}
+                          <View style={[styles.billRow, { alignItems: 'flex-start', marginTop: 4 }]}>
+                            <View style={{ flex: 1, paddingRight: 8 }}>
+                              <Text style={styles.grandTotalLabel}>Estimated Total</Text>
+                              <Text style={styles.grandTotalSubtext}>
+                                Pay after trial for items you decide to keep
+                              </Text>
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={[styles.grandTotalValue, { color: BrandColors.textPrimary }]}>
+                                ₹{estimatedMaxTotal}
+                              </Text>
+                              <Text style={styles.maxCapText}>Max order value</Text>
+                            </View>
+                          </View>
+
+                          {/* Savings Banner */}
+                          {totalSavings > 0 && (
+                            <View style={styles.savingsBanner}>
+                              <Ionicons name="sparkles" size={14} color="#059669" />
+                              <Text style={styles.savingsBannerText}>
+                                You are saving ₹{totalSavings} on this order!
+                              </Text>
+                            </View>
+                          )}
+
+                          {/* Try & Buy Experience Cards */}
+                          <View style={styles.tbExperienceCard}>
+                            <View style={styles.tbStepItem}>
+                              <View style={styles.tbStepIcon}>
+                                <Ionicons name="shirt-outline" size={13} color="#6366F1" />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.tbStepTitle}>Try at Home</Text>
+                                <Text style={styles.tbStepDesc}>15-20 min doorstep trial before paying</Text>
+                              </View>
+                            </View>
+                            <View style={styles.tbStepItem}>
+                              <View style={styles.tbStepIcon}>
+                                <Ionicons name="card-outline" size={13} color="#10B981" />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.tbStepTitle}>Pay Post-Trial</Text>
+                                <Text style={styles.tbStepDesc}>UPI, Card, or Cash only for what you keep</Text>
+                              </View>
+                            </View>
+                            <View style={[styles.tbStepItem, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+                              <View style={styles.tbStepIcon}>
+                                <Ionicons name="repeat-outline" size={13} color="#F59E0B" />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.tbStepTitle}>Instant Return</Text>
+                                <Text style={styles.tbStepDesc}>Hand unwanted items back to rider immediately</Text>
+                              </View>
+                            </View>
+                          </View>
                         </View>
 
                         <View style={styles.footer}>
                           <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
                           <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-                          <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                          <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
                         </View>
                       </Animated.ScrollView>
                     </PremiumRefreshWrapper>
@@ -792,89 +807,7 @@ export default function CartScreen() {
                   ))}
                 </View>
 
-                {/* Courier Offers Section */}
-                {courierAppliedOffers?.availableOffers?.length > 0 && (
-                  <View style={styles.offersSection}>
-                    <View style={styles.offersHeaderRow}>
-                      <View style={styles.offersHeaderTitleContainer}>
-                        <MaterialCommunityIcons name="ticket-percent-outline" size={22} color={theme.primary} />
-                        <Text style={[styles.offersSectionTitle, { fontFamily: Typography.fontFamily.bold }]}>Offers & Benefits</Text>
-                      </View>
-                      <View style={[styles.offersCountBadge, { backgroundColor: theme.primary + '10' }]}>
-                        <Text style={[styles.offersCountText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
-                          {courierAppliedOffers.availableOffers.length} {courierAppliedOffers.availableOffers.length === 1 ? 'Offer' : 'Offers'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {courierAppliedOffers.availableOffers.map((offer: any) => {
-                      const isApplied = courierAppliedOffers.appliedOffers?.some((o: any) => (o._id?.toString() || o.offerId?.toString()) === (offer._id?.toString() || offer.offerId?.toString()));
-                      return (
-                        <View
-                          key={offer._id}
-                          style={[
-                            styles.offerCard,
-                            isApplied && {
-                              borderColor: theme.primary,
-                              backgroundColor: theme.primary + '05',
-                            }
-                          ]}
-                        >
-                          {isApplied && (
-                            <View style={[styles.appliedBadge, { backgroundColor: theme.primary }]}>
-                              <Ionicons name="checkmark" size={10} color="#fff" />
-                            </View>
-                          )}
-
-                          <View style={styles.offerCardLeft}>
-                            <View style={[styles.iconContainer, { backgroundColor: theme.primary + '12' }]}>
-                              <MaterialCommunityIcons name="ticket-percent" size={22} color={theme.primary} />
-                            </View>
-                            <View style={styles.offerDetails}>
-                              <View style={styles.codeRow}>
-                                <View style={[styles.codeBadge, { borderColor: theme.primary + '30', backgroundColor: theme.primary + '08' }]}>
-                                  <Text style={[styles.codeText, { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
-                                    {offer.couponCode || offer.title}
-                                  </Text>
-                                </View>
-                                {!!offer.discountAmount && (
-                                  <Text style={[styles.saveTag, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
-                                    Save ₹{offer.discountAmount}
-                                  </Text>
-                                )}
-                              </View>
-                              <Text style={[styles.offerDescription, { fontFamily: Typography.fontFamily.medium }]} numberOfLines={2}>
-                                {offer.description || `Get ₹${offer.discountAmount} off on your order`}
-                              </Text>
-                            </View>
-                          </View>
-
-                          <View style={styles.offerCardRight}>
-                            {isApplied ? (
-                              <TouchableOpacity
-                                onPress={() => removeOfferCourier(offer._id)}
-                                activeOpacity={0.7}
-                                style={[styles.actionBtn, styles.removeBtn]}
-                              >
-                                <Text style={[styles.removeBtnText, { fontFamily: Typography.fontFamily.bold }]}>Remove</Text>
-                              </TouchableOpacity>
-                            ) : (
-                              <TouchableOpacity
-                                onPress={() => applyOfferCourier(offer._id)}
-                                activeOpacity={0.7}
-                                style={[styles.actionBtn, { backgroundColor: theme.primary }]}
-                              >
-                                <Text style={[styles.applyBtnText, { fontFamily: Typography.fontFamily.bold }]}>Apply</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-
-                {/* Coupon Input */}
+                {/* Coupon & Offers Section */}
                 <CouponInput
                   cartContext={{
                     items: courierItems,
@@ -885,7 +818,7 @@ export default function CartScreen() {
                       return acc;
                     }, {}),
                   }}
-                  themeColor={theme.primary}
+                  themeColor={BrandColors.matteBlack}
                   orderType="courier"
                   appliedOffersData={courierAppliedOffers}
                 />
@@ -900,7 +833,7 @@ export default function CartScreen() {
                 <View style={styles.summaryCard}>
                   <Text style={styles.billTitle}>Order Summary</Text>
                   <View style={styles.billRow}><Text style={styles.billLabel}>Item Total</Text><Text style={styles.billValue}>₹{courierTotals?.subtotal || 0}</Text></View>
-                  {courierAppliedOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: theme.primary, fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: theme.primary, fontWeight: '700' }]}>- ₹{courierAppliedOffers.totalDiscount}</Text></View>}
+                  {courierAppliedOffers?.totalDiscount > 0 && <View style={styles.billRow}><Text style={[styles.billLabel, { color: '#10B981', fontWeight: '700' }]}>Offer Applied</Text><Text style={[styles.billValue, { color: '#10B981', fontWeight: '700' }]}>- ₹{courierAppliedOffers.totalDiscount}</Text></View>}
                   <View style={styles.billRow}>
                     <Text style={styles.billLabel}>Delivery Fee</Text>
                     <Text style={[styles.billValue, courierAppliedOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
@@ -915,14 +848,14 @@ export default function CartScreen() {
                   <View style={styles.billDivider} />
                   <View style={styles.billRow}>
                     <Text style={styles.grandTotalLabel}>Total Amount</Text>
-                    <Text style={[styles.grandTotalValue, { color: theme.primary }]}>₹{Math.max(0, Number(courierTotal)).toFixed(0)}</Text>
+                    <Text style={[styles.grandTotalValue, { color: BrandColors.textPrimary }]}>₹{Math.max(0, Number(courierTotal)).toFixed(0)}</Text>
                   </View>
                 </View>
 
                 <View style={styles.footer}>
                   <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
                   <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-                  <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                  <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
                 </View>
               </Animated.ScrollView>
             </PremiumRefreshWrapper>
@@ -941,7 +874,7 @@ export default function CartScreen() {
                 <TouchableOpacity
                   style={[
                     styles.checkoutBtn,
-                    { backgroundColor: theme.primary, flex: 1, justifyContent: 'center' }
+                    { backgroundColor: BrandColors.matteBlack, flex: 1, justifyContent: 'center' }
                   ]}
                   onPress={() => setModalVisible(true)}
                 >
@@ -961,7 +894,7 @@ export default function CartScreen() {
                   text={
                     currentMerchantCart?.merchantDetails?.isOnline === false
                       ? 'Shop Closed Now'
-                      : `Swipe to Try & Buy • Pay ₹${Math.round(currentMerchantCart?.totals?.totalUpfrontPayable || 0)}`
+                      : 'Swipe to Try & Buy • Pay After Trial'
                   }
                 />
               )}
@@ -1095,20 +1028,35 @@ const styles = StyleSheet.create({
 
   itemsContainer: { gap: 8, marginBottom: 14 },
 
-  premiumBill: { backgroundColor: '#fff', borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 6, elevation: 1 },
-  billTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
-  billRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  billLabel: { fontSize: 12.5, color: '#64748B' },
-  billValue: { fontSize: 12.5, fontWeight: '700', color: '#0F172A' },
-  billSubText: { fontSize: 8, color: '#64748B', marginTop: -4, marginBottom: 6, fontWeight: '500', marginLeft: 0 },
-  billDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 8 },
+  premiumBill: { backgroundColor: '#fff', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8, elevation: 2, borderWidth: 1, borderColor: '#F1F5F9' },
+  billHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  billTitle: { fontSize: 15, fontFamily: Typography.fontFamily.extraBold, color: '#0F172A' },
+  tbTagBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EEF2FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: '#C7D2FE' },
+  tbTagBadgeText: { fontSize: 9, fontFamily: Typography.fontFamily.extraBold, color: '#4F46E5', letterSpacing: 0.5 },
+  billRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  billLabel: { fontSize: 13, fontFamily: Typography.fontFamily.medium, color: '#64748B' },
+  billValue: { fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#0F172A' },
+  billMrpValue: { fontSize: 13, fontFamily: Typography.fontFamily.medium, color: '#94A3B8', textDecorationLine: 'line-through' },
+  subtotalAfterOfferRow: { marginTop: 4, paddingTop: 6, borderTopWidth: 0.5, borderTopColor: '#F1F5F9' },
+  freeBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
+  freeBadgeText: { fontSize: 8, fontFamily: Typography.fontFamily.extraBold, color: '#15803D' },
+  strikethroughPrice: { fontSize: 11, color: '#94A3B8', textDecorationLine: 'line-through' },
+  billSubText: { fontSize: 10, color: '#64748B', marginTop: -4, marginBottom: 8, fontFamily: Typography.fontFamily.medium },
+  billDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
 
-  payLaterSection: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 10, marginBottom: 12 },
-  payLaterText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  grandTotalLabel: { fontSize: 15, fontFamily: Typography.fontFamily.bold, color: '#0F172A' },
+  grandTotalSubtext: { fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#64748B', marginTop: 1 },
+  grandTotalValue: { fontSize: 18, fontFamily: Typography.fontFamily.extraBold },
+  maxCapText: { fontSize: 9, fontFamily: Typography.fontFamily.bold, color: '#94A3B8', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.3 },
 
-  upfrontTitle: { fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
-  grandTotalLabel: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  grandTotalValue: { fontSize: 17, fontWeight: '900' },
+  savingsBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginTop: 12, borderWidth: 1, borderColor: '#A7F3D0' },
+  savingsBannerText: { fontSize: 11.5, fontFamily: Typography.fontFamily.bold, color: '#047857' },
+
+  tbExperienceCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, marginTop: 14, borderWidth: 1, borderColor: '#E2E8F0', gap: 10 },
+  tbStepItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#EDF2F7' },
+  tbStepIcon: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  tbStepTitle: { fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#1E293B' },
+  tbStepDesc: { fontSize: 9.5, fontFamily: Typography.fontFamily.medium, color: '#64748B', marginTop: 0.5 },
 
   slideTipSection: { marginTop: 12, padding: 12, backgroundColor: '#fff', borderRadius: 16 },
   tipSectionTitle: { fontSize: 13, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
@@ -1327,7 +1275,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     gap: 6,
   },
-  warningText: {
+  bottomWarningText: {
     fontSize: 11,
     color: '#92400E',
     fontWeight: '700',

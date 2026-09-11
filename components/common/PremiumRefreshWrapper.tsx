@@ -18,10 +18,12 @@ const PremiumRefreshWrapper = ({
   threshold = 80
 }: PremiumRefreshWrapperProps) => {
 
-  const handleScroll = Animated.event(
-    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-    { useNativeDriver: true }
-  );
+  const handleScroll = React.useMemo(() => {
+    return Animated.event(
+      [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+      { useNativeDriver: true }
+    );
+  }, [scrollY]);
 
   return (
     <View style={styles.container}>
@@ -32,7 +34,7 @@ const PremiumRefreshWrapper = ({
         threshold={threshold}
       />
 
-      {React.cloneElement(children as React.ReactElement, {
+      {React.cloneElement(children as React.ReactElement<any>, {
         onScroll: handleScroll,
         scrollEventThrottle: 16,
         refreshControl: (

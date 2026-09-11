@@ -1,15 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
+import { useAddress } from '@/context/AddressContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 
 const TryComingSoonSection = () => {
     const { selectedGender } = useGender();
+    const { selectedAddress, openAddressModal } = useAddress();
     const router = useRouter();
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
     const primaryColor = '#000000';
@@ -33,19 +36,48 @@ const TryComingSoonSection = () => {
                     <Text style={styles.message}>
                         Your current location is not serviceable for Try & Buy.
                     </Text>
+
+                    {selectedAddress ? (
+                        <View style={styles.currentAddressContainer}>
+                            <Ionicons name="location-sharp" size={13} color="#64748B" />
+                            <Text style={styles.currentAddressText} numberOfLines={1}>
+                                {selectedAddress.addressType ? `${selectedAddress.addressType}: ` : ''}
+                                {selectedAddress.addressLine1}, {selectedAddress.city}
+                            </Text>
+                        </View>
+                    ) : null}
+
                     <Text style={styles.subMessage}>
-                        Continue with normal delivery option to explore products available for your area.
+                        Select another delivery address or explore standard delivery options available for your area.
                     </Text>
                 </View>
 
-                <TouchableOpacity 
-                    style={[styles.exploreButton, { backgroundColor: primaryColor }]}
-                    onPress={() => router.push('/explore')}
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.exploreButtonText}>Explore Products</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
-                </TouchableOpacity>
+                <View style={styles.buttonsContainer}>
+                    {/* Option to change address */}
+                    <TouchableOpacity 
+                        style={[styles.changeAddressButton, { borderColor: primaryColor }]}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            openAddressModal();
+                        }}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons name="location-outline" size={18} color={primaryColor} />
+                        <Text style={[styles.changeAddressButtonText, { color: primaryColor }]}>
+                            Change Delivery Address
+                        </Text>
+                    </TouchableOpacity>
+
+                    {/* Option to explore products */}
+                    <TouchableOpacity 
+                        style={[styles.exploreButton, { backgroundColor: primaryColor }]}
+                        onPress={() => router.push('/explore')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.exploreButtonText}>Explore Products</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                    </TouchableOpacity>
+                </View>
             </View>
         </View>
     );
@@ -56,45 +88,45 @@ export default TryComingSoonSection;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        paddingHorizontal: 30,
+        paddingHorizontal: 28,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingVertical: 100,
+        paddingVertical: 80,
     },
     content: {
         alignItems: 'center',
         width: '100%',
     },
     iconContainer: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
+        width: 100,
+        height: 100,
+        borderRadius: 50,
         borderWidth: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 32,
+        marginBottom: 24,
         position: 'relative',
     },
     iconGradient: {
         width: '100%',
         height: '100%',
-        borderRadius: 60,
+        borderRadius: 50,
         justifyContent: 'center',
         alignItems: 'center',
     },
     pulseCircle: {
         position: 'absolute',
-        width: 140,
-        height: 140,
-        borderRadius: 70,
+        width: 120,
+        height: 120,
+        borderRadius: 60,
         zIndex: -1,
     },
     title: {
-        fontSize: 24,
+        fontSize: 22,
         fontFamily: Typography.fontFamily.bold,
         color: '#0F172A',
-        marginBottom: 16,
-        letterSpacing: -0.5,
+        marginBottom: 12,
+        letterSpacing: -0.4,
         textAlign: 'center',
     },
     messageContainer: {
@@ -102,50 +134,77 @@ const styles = StyleSheet.create({
         marginBottom: 32,
     },
     message: {
-        fontSize: 16,
+        fontSize: 15,
         fontFamily: Typography.fontFamily.semiBold,
         color: '#475569',
         textAlign: 'center',
-        lineHeight: 24,
+        lineHeight: 22,
+    },
+    currentAddressContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F1F5F9',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        marginTop: 10,
+        maxWidth: '92%',
+    },
+    currentAddressText: {
+        fontSize: 12,
+        fontFamily: Typography.fontFamily.medium,
+        color: '#475569',
+        marginLeft: 5,
     },
     subMessage: {
-        fontSize: 14,
+        fontSize: 13,
         fontFamily: Typography.fontFamily.medium,
         color: '#94A3B8',
         textAlign: 'center',
         marginTop: 12,
-        lineHeight: 20,
+        lineHeight: 19,
+        paddingHorizontal: 8,
+    },
+    buttonsContainer: {
+        width: '100%',
+        gap: 12,
+    },
+    changeAddressButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        backgroundColor: '#FFFFFF',
+        gap: 8,
+        width: '100%',
+    },
+    changeAddressButtonText: {
+        fontSize: 14,
+        fontFamily: Typography.fontFamily.bold,
+        letterSpacing: 0.2,
     },
     exploreButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 24,
+        justifyContent: 'center',
         paddingVertical: 14,
-        borderRadius: 16,
-        gap: 10,
+        paddingHorizontal: 20,
+        borderRadius: 14,
+        gap: 8,
+        width: '100%',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
     },
     exploreButtonText: {
         color: '#FFF',
-        fontSize: 16,
+        fontSize: 14,
         fontFamily: Typography.fontFamily.bold,
-    },
-    badge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#F8FAFC',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 100,
-        gap: 8,
-    },
-    badgeText: {
-        fontSize: 10,
-        fontFamily: Typography.fontFamily.bold,
-        letterSpacing: 1.5,
+        letterSpacing: 0.2,
     },
 });

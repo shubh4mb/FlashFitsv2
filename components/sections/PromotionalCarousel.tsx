@@ -33,7 +33,7 @@ export default function PromotionalCarousel() {
   }, [activeIndex, promotionalBanners.length]);
 
   const handleBannerPress = (offer: any) => {
-    // If it's a collection offer, navigate to search with collection filter
+    // If it's a collection / campaign offer, navigate to search results page with collection filter
     if (offer.conditions?.collectionId) {
       router.push({
         pathname: '/(app)/search-results',
@@ -41,9 +41,9 @@ export default function PromotionalCarousel() {
           collectionId: offer.conditions.collectionId,
           title: offer.title 
         }
-      });
+      } as any);
     } else if (offer.scope === 'merchant' && offer.merchantId) {
-        router.push(`/(app)/merchant/${offer.merchantId}`);
+      router.push(`/(app)/merchant/${offer.merchantId}`);
     }
   };
 

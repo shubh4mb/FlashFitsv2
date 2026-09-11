@@ -1,24 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useOffers } from '../../context/OffersContext';
 import { useCart } from '../../context/CartContext';
 import { useCourierCart } from '../../context/CourierCartContext';
+import CouponOffersModal, { OfferItem } from '../modals/CouponOffersModal';
+import { Typography } from '@/constants/theme';
 
 interface CouponInputProps {
   cartContext: any;
   themeColor?: string;
   orderType?: 'try_and_buy' | 'courier';
   appliedOffersData?: any;
+  onOffersUpdated?: () => void;
 }
 
 /**
- * CouponInput — Coupon code input with apply/remove,
- * showing applied offer details and stacked discounts.
+ * CouponInput / CouponOffersSection
+ * Shows a compact input bar and "View all offers" trigger when unapplied,
+ * or ONLY the applied coupons and offers with distinct badges when applied.
  */
-export default function CouponInput({ cartContext, themeColor = '#0F172A', orderType, appliedOffersData }: CouponInputProps) {
-  const { refreshCart, applyOffer } = useCart();
-  const { refreshCart: refreshCourierCart, applyOfferCourier } = useCourierCart();
+export default function CouponInput({
+  cartContext,
+  themeColor = '#0F172A',
+  orderType = 'try_and_buy',
+  appliedOffersData,
+  onOffersUpdated,
+}: CouponInputProps) {
+  const { refreshCart, applyOffer, removeOffer } = useCart();
+  const { refreshCart: refreshCourierCart, applyOfferCourier, removeOfferCourier } = useCourierCart();
 
   const {
     offers,
@@ -31,7 +42,8 @@ export default function CouponInput({ cartContext, themeColor = '#0F172A', order
   } = useOffers();
 
   const [inputCode, setInputCode] = useState('');
-  const [localLoadingOfferId, setLocalLoadingOfferId] = useState<string | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
 
   const cartContextString = JSON.stringify(cartContext);
 
@@ -41,28 +53,86 @@ export default function CouponInput({ cartContext, themeColor = '#0F172A', order
     }
   }, [couponCode, cartContextString, computeBestOffers]);
 
-  const handleApply = async () => {
-    if (!inputCode.trim()) return;
-    const success = await applyCoupon(inputCode.trim(), cartContext, orderType);
-    if (success) {
-      setInputCode('');
-      try {
-        await Promise.all([refreshCart(), refreshCourierCart()]);
-      } catch (err) {
-        console.error('Failed to refresh carts after applying coupon:', err);
+  // 1. Get current merchantId (if Try & Buy)
+  const merchantId = orderType === 'try_and_buy'
+    ? Object.keys(cartContext?.merchantTotals || {})[0]
+    : undefined;
+
+  // 2. Filter global offers matching scope & order type
+  const applicableGlobalOffers = useMemo(() => {
+    return offers.filter((offer) => {
+      // Scope check
+      if (offer.scope === 'merchant') {
+        const offerMid = offer.merchantId?.toString() || (offer.merchantId as any)?._id?.toString();
+        if (!offerMid || offerMid !== merchantId) {
+          return false;
+        }
       }
+
+      // Order type check
+      if (offer.applicableTo && offer.applicableTo !== 'both') {
+        if (offer.applicableTo !== orderType) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [offers, merchantId, orderType]);
+
+  // 3. Combine with backend availableOffers
+  const backendAvailableOffers = appliedOffersData?.availableOffers || [];
+
+  const combinedOffers: OfferItem[] = useMemo(() => {
+    const allMap = new Map<string, OfferItem>();
+
+    applicableGlobalOffers.forEach((o: any) => {
+      allMap.set(o._id.toString(), o);
+    });
+
+    backendAvailableOffers.forEach((o: any) => {
+      allMap.set(o._id.toString(), o);
+    });
+
+    return Array.from(allMap.values()).filter((o) => o.reason !== 'You have already used this offer');
+  }, [applicableGlobalOffers, backendAvailableOffers]);
+
+  // Applied list
+  const appliedList = appliedOffersData?.appliedOffers || [];
+  const hasAppliedOffers = appliedList.length > 0 || !!couponCode;
+  const totalSavings = (appliedOffersData?.totalDiscount || 0);
+
+  const handleApplyCode = async (codeOverride?: string) => {
+    const code = (codeOverride || inputCode).trim().toUpperCase();
+    if (!code) return false;
+
+    setLocalLoading(true);
+    try {
+      const success = await applyCoupon(code, cartContext, orderType);
+      if (success) {
+        setInputCode('');
+        if (orderType === 'try_and_buy') {
+          await refreshCart();
+        } else {
+          await refreshCourierCart();
+        }
+        if (onOffersUpdated) onOffersUpdated();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to apply coupon:', err);
+      return false;
+    } finally {
+      setLocalLoading(false);
     }
   };
 
-  const handleApplyOffer = async (offer: any) => {
-    if (localLoadingOfferId) return;
-    setLocalLoadingOfferId(offer._id);
+  const handleApplyOfferItem = async (offer: OfferItem) => {
+    setLocalLoading(true);
     try {
       if (offer.requiresCoupon && offer.couponCode) {
-        const success = await applyCoupon(offer.couponCode, cartContext, orderType);
-        if (success) {
-          await Promise.all([refreshCart(), refreshCourierCart()]);
-        }
+        return await handleApplyCode(offer.couponCode);
       } else {
         if (orderType === 'try_and_buy') {
           await applyOffer(offer._id);
@@ -71,182 +141,258 @@ export default function CouponInput({ cartContext, themeColor = '#0F172A', order
           await applyOfferCourier(offer._id);
           await refreshCourierCart();
         }
+        if (onOffersUpdated) onOffersUpdated();
+        return true;
       }
     } catch (err) {
       console.error('Failed to apply offer:', err);
+      return false;
     } finally {
-      setLocalLoadingOfferId(null);
+      setLocalLoading(false);
     }
   };
 
-  // 1. Get current merchantId (if Try & Buy)
-  const merchantId = orderType === 'try_and_buy'
-    ? Object.keys(cartContext?.merchantTotals || {})[0]
-    : undefined;
-
-  // 2. Filter global offers that match the scope and order type, and require a coupon code
-  const couponOffers = offers.filter(offer => {
-    if (!offer.couponCode) return false;
-    
-    // Check scope
-    if (offer.scope === 'merchant') {
-      const offerMid = offer.merchantId?.toString() || (offer.merchantId as any)?._id?.toString();
-      if (!offerMid || offerMid !== merchantId) {
-        return false;
+  const handleRemoveOfferItem = async (offerId: string) => {
+    setLocalLoading(true);
+    try {
+      if (orderType === 'try_and_buy') {
+        await removeOffer(offerId);
+        await refreshCart();
+      } else {
+        await removeOfferCourier(offerId);
+        await refreshCourierCart();
       }
+      if (onOffersUpdated) onOffersUpdated();
+    } catch (err) {
+      console.error('Failed to remove offer:', err);
+    } finally {
+      setLocalLoading(false);
     }
-    
-    // Check order type applicability
-    if (offer.applicableTo && offer.applicableTo !== 'both') {
-      if (offer.applicableTo !== orderType) {
-        return false;
+  };
+
+  const handleRemoveCouponCode = async () => {
+    setLocalLoading(true);
+    try {
+      await removeCoupon();
+      if (orderType === 'try_and_buy') {
+        await refreshCart();
+      } else {
+        await refreshCourierCart();
       }
+      if (onOffersUpdated) onOffersUpdated();
+    } catch (err) {
+      console.error('Failed to remove coupon:', err);
+    } finally {
+      setLocalLoading(false);
     }
-    
-    return true;
-  });
-
-  // 3. Combine with appliedOffersData.availableOffers
-  const backendAvailableOffers = appliedOffersData?.availableOffers || [];
-  
-  const allOffersMap = new Map<string, any>();
-  
-  // Add global coupon offers
-  couponOffers.forEach(o => {
-    allOffersMap.set(o._id.toString(), o);
-  });
-  
-  // Add/overwrite backend available offers
-  backendAvailableOffers.forEach((o: any) => {
-    allOffersMap.set(o._id.toString(), o);
-  });
-  
-  // Convert to array
-  const combinedOffers = Array.from(allOffersMap.values());
-
-  // 4. Filter out any offers that are already applied or fully used up
-  const applicableOffers = combinedOffers.filter(offer => {
-    if (offer.reason === 'You have already used this offer') {
-      return false;
-    }
-
-    const isApplied = appliedOffersData?.appliedOffers?.some(
-      (o: any) => (o._id?.toString() || o.offerId?.toString()) === offer._id.toString()
-    );
-    return !isApplied;
-  });
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Ionicons name="pricetags" size={16} color={themeColor} />
-        <Text style={styles.headerTitle}>Coupons & Offers</Text>
-      </View>
+      {/* ─── WHEN OFFERS/COUPONS ARE APPLIED: SHOW ONLY APPLIED ITEMS ─── */}
+      {hasAppliedOffers ? (
+        <View style={styles.appliedCard}>
+          <View style={styles.appliedHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <MaterialCommunityIcons name="tag-check" size={20} color="#10B981" />
+              <Text style={styles.appliedHeaderTitle}>Applied Discounts</Text>
+            </View>
+            {totalSavings > 0 && (
+              <View style={styles.savingsBadge}>
+                <Text style={styles.savingsBadgeText}>Saved ₹{totalSavings}</Text>
+              </View>
+            )}
+          </View>
 
-      {/* Coupon Input - Always shown */}
-      <View style={styles.inputRow}>
-        <View style={styles.inputWrapper}>
-          <Ionicons name="ticket-outline" size={16} color="#94A3B8" />
-          <TextInput
-            style={styles.input}
-            placeholder="Enter coupon code"
-            placeholderTextColor="#94A3B8"
-            value={inputCode}
-            onChangeText={(text) => {
-              setInputCode(text.toUpperCase());
-            }}
-            autoCapitalize="characters"
-            editable={!couponLoading}
-          />
-        </View>
-        <TouchableOpacity
-          style={[styles.applyBtn, { backgroundColor: inputCode.trim() ? themeColor : '#E2E8F0' }]}
-          onPress={handleApply}
-          disabled={!inputCode.trim() || couponLoading}
-        >
-          {couponLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={[styles.applyText, { color: inputCode.trim() ? '#fff' : '#94A3B8' }]}>
-              Apply
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
+          {/* List of Applied Items */}
+          <View style={styles.appliedListContainer}>
+            {/* Applied Coupon (if active) */}
+            {couponCode && (
+              <View style={styles.appliedItemRow}>
+                <View style={styles.appliedItemLeft}>
+                  <View style={[styles.typeBadge, styles.couponTypeBadge]}>
+                    <Text style={styles.couponTypeBadgeText}>🎟️ COUPON</Text>
+                  </View>
+                  <Text style={styles.appliedCodeText}>{couponCode}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleRemoveCouponCode}
+                  style={styles.inlineRemoveBtn}
+                  disabled={localLoading || couponLoading}
+                >
+                  <Text style={styles.inlineRemoveText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-      {/* Error */}
-      {couponError && (
-        <View style={styles.errorRow}>
-          <Ionicons name="alert-circle" size={14} color="#EF4444" />
-          <Text style={styles.errorText}>{couponError}</Text>
-        </View>
-      )}
+            {/* Applied Offers / Deals */}
+            {appliedList.map((appliedItem: any) => {
+              const id = appliedItem._id || appliedItem.offerId;
+              const isCouponItem = appliedItem.couponCode || appliedItem.requiresCoupon;
+              if (isCouponItem && appliedItem.couponCode === couponCode) {
+                // Already rendered above
+                return null;
+              }
 
-      {/* Applicable Offers List */}
-      {applicableOffers.length > 0 && (
-        <View style={styles.offersList}>
-          {applicableOffers.map((offer) => {
-            const isOfferLoading = localLoadingOfferId === offer._id;
-            const minCartValue = offer.conditions?.minCartValue || 0;
-            const minOrderValue = offer.conditions?.minOrderValue || 0;
-            const threshold = Math.max(minCartValue, minOrderValue);
-            const showTryAndBuyWarning = orderType === 'try_and_buy' && threshold > 0;
-
-            return (
-              <View key={offer._id} style={styles.offerCardWrapper}>
-                <View style={[styles.offerCard, showTryAndBuyWarning && styles.offerCardWithWarning]}>
-                  <View style={styles.offerCardLeft}>
-                    <View style={[styles.iconContainer, { backgroundColor: themeColor + '12' }]}>
-                      <MaterialCommunityIcons name="ticket-percent" size={20} color={themeColor} />
-                    </View>
-                    <View style={styles.offerDetails}>
-                      <View style={styles.codeRow}>
-                        <View style={[styles.codeBadge, { borderColor: themeColor + '30', backgroundColor: themeColor + '08' }]}>
-                          <Text style={[styles.codeText, { color: themeColor }]}>
-                            {offer.couponCode || offer.title}
-                          </Text>
-                        </View>
-                        {!!offer.discountAmount && (
-                          <Text style={[styles.saveTag, { color: '#10B981' }]}>
-                            Save ₹{offer.discountAmount}
-                          </Text>
-                        )}
-                      </View>
-                      <Text style={styles.offerDescription} numberOfLines={2}>
-                        {offer.description || `Get discount on your order`}
+              return (
+                <View key={id} style={styles.appliedItemRow}>
+                  <View style={styles.appliedItemLeft}>
+                    <View
+                      style={[
+                        styles.typeBadge,
+                        isCouponItem ? styles.couponTypeBadge : styles.offerTypeBadge,
+                      ]}
+                    >
+                      <Text
+                        style={
+                          isCouponItem
+                            ? styles.couponTypeBadgeText
+                            : styles.offerTypeBadgeText
+                        }
+                      >
+                        {isCouponItem ? '🎟️ COUPON' : '🏷️ STORE OFFER (Auto-applied)'}
                       </Text>
                     </View>
-                  </View>
-
-                  <View style={styles.offerCardRight}>
-                    <TouchableOpacity
-                      onPress={() => handleApplyOffer(offer)}
-                      activeOpacity={0.7}
-                      style={[styles.actionBtn, { backgroundColor: themeColor }]}
-                      disabled={isOfferLoading}
-                    >
-                      {isOfferLoading ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={styles.applyBtnText}>Apply</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.appliedTitleText} numberOfLines={1}>
+                        {appliedItem.title || appliedItem.couponCode}
+                      </Text>
+                      {!!appliedItem.discountApplied && (
+                        <Text style={styles.appliedDiscountSub}>
+                          - ₹{appliedItem.discountApplied} off
+                        </Text>
                       )}
-                    </TouchableOpacity>
+                    </View>
                   </View>
+                  <TouchableOpacity
+                    onPress={() =>
+                      isCouponItem
+                        ? handleRemoveCouponCode()
+                        : handleRemoveOfferItem(id)
+                    }
+                    style={styles.inlineRemoveBtn}
+                    disabled={localLoading}
+                  >
+                    <Text style={styles.inlineRemoveText}>Remove</Text>
+                  </TouchableOpacity>
                 </View>
-                
-                {showTryAndBuyWarning && (
-                  <View style={styles.warningContainer}>
-                    <Ionicons name="warning" size={14} color="#D97706" />
-                    <Text style={styles.warningText}>
-                      Try & Buy Note: You must keep items worth at least ₹{threshold} during final payment to claim this offer.
-                    </Text>
-                  </View>
-                )}
+              );
+            })}
+          </View>
+
+          {/* Change or View Other Offers Button */}
+          <TouchableOpacity
+            style={styles.changeOffersBtn}
+            onPress={() => setModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.changeOffersText, { color: themeColor }]}>
+              View or change coupons & offers ›
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        /* ─── WHEN NO COUPON/OFFER APPLIED: CLEAN INPUT + VIEW OFFERS POPUP TRIGGER ─── */
+        <View style={styles.unappliedSection}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Ionicons name="pricetags" size={16} color={themeColor} />
+            <Text style={styles.headerTitle}>Coupons & Offers</Text>
+          </View>
+
+          {/* Sleek Input Bar */}
+          <View style={styles.inputRow}>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="ticket-outline" size={16} color="#94A3B8" />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter coupon code"
+                placeholderTextColor="#94A3B8"
+                value={inputCode}
+                onChangeText={(text) => setInputCode(text.toUpperCase())}
+                autoCapitalize="characters"
+                editable={!couponLoading && !localLoading}
+              />
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.applyBtn,
+                { backgroundColor: inputCode.trim() ? themeColor : '#E2E8F0' },
+              ]}
+              onPress={() => handleApplyCode()}
+              disabled={!inputCode.trim() || couponLoading || localLoading}
+            >
+              {couponLoading || localLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text
+                  style={[
+                    styles.applyText,
+                    { color: inputCode.trim() ? '#fff' : '#94A3B8' },
+                  ]}
+                >
+                  Apply
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Error Row */}
+          {couponError && (
+            <View style={styles.errorRow}>
+              <Ionicons name="alert-circle" size={14} color="#EF4444" />
+              <Text style={styles.errorText}>{couponError}</Text>
+            </View>
+          )}
+
+          {/* Pop-up Modal Trigger Banner */}
+          <TouchableOpacity
+            style={styles.viewOffersTrigger}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setModalVisible(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.triggerLeft}>
+              <View style={[styles.triggerIconCircle, { backgroundColor: themeColor + '12' }]}>
+                <MaterialCommunityIcons name="ticket-percent" size={18} color={themeColor} />
               </View>
-            );
-          })}
+              <View>
+                <Text style={styles.triggerTitle}>View Available Offers & Coupons</Text>
+                <Text style={styles.triggerSub}>
+                  {combinedOffers.length > 0
+                    ? `${combinedOffers.length} offers available to save more`
+                    : 'Tap to browse exclusive discounts'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.triggerArrowCircle}>
+              <Ionicons name="chevron-forward" size={16} color="#64748B" />
+            </View>
+          </TouchableOpacity>
         </View>
       )}
+
+      {/* Pop-up Full Modal */}
+      <CouponOffersModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        offers={combinedOffers}
+        appliedOffers={appliedList}
+        appliedCouponCode={couponCode}
+        onApplyCoupon={async (code) => {
+          return await handleApplyCode(code);
+        }}
+        onApplyOffer={async (offer) => {
+          return await handleApplyOfferItem(offer);
+        }}
+        onRemoveOffer={handleRemoveOfferItem}
+        onRemoveCoupon={handleRemoveCouponCode}
+        themeColor={themeColor}
+        orderType={orderType}
+        cartTotal={cartContext?.subtotal || 0}
+      />
     </View>
   );
 }
@@ -255,75 +401,22 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#F1F5F9',
     marginBottom: 16,
   },
+  unappliedSection: {},
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   headerTitle: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
     color: '#0F172A',
-  },
-  appliedSection: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-  },
-  appliedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  appliedDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  appliedDetails: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  appliedTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1E293B',
-    flex: 1,
-    marginRight: 8,
-  },
-  appliedDiscount: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#16A34A',
-  },
-  removeBtn: {
-    padding: 2,
-  },
-  savingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#BBF7D0',
-  },
-  savingsText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#16A34A',
   },
   inputRow: {
     flexDirection: 'row',
@@ -339,172 +432,194 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
     paddingHorizontal: 12,
-    height: 44,
+    height: 42,
   },
   input: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
     color: '#0F172A',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   applyBtn: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    height: 44,
+    height: 42,
   },
   applyText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  couponBadge: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderStyle: 'dashed',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  couponBadgeLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  couponBadgeCode: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#166534',
-    letterSpacing: 0.5,
-  },
-  couponBadgeLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#16A34A',
-  },
-  removeText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#EF4444',
+    fontFamily: Typography.fontFamily.bold,
   },
   errorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 8,
+    marginTop: 6,
   },
   errorText: {
     fontSize: 12,
-    fontWeight: '500',
+    fontFamily: Typography.fontFamily.medium,
     color: '#EF4444',
   },
-  offersList: {
-    marginTop: 4,
-  },
-  offerCard: {
+  viewOffersTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    borderStyle: 'dashed',
-    padding: 12,
-  },
-  offerCardLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: 10,
-  },
-  iconContainer: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  offerDetails: {
-    flex: 1,
-  },
-  codeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  codeBadge: {
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    borderColor: '#E2E8F0',
+    padding: 10,
+    marginTop: 10,
   },
-  codeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+  triggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
   },
-  saveTag: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  offerDescription: {
-    fontSize: 11,
-    color: '#64748B',
-    lineHeight: 14,
-    fontWeight: '600',
-  },
-  offerCardRight: {
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-  },
-  actionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  triggerIconCircle: {
+    width: 32,
+    height: 32,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 60,
   },
-  applyBtnText: {
+  triggerTitle: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+  },
+  triggerSub: {
     fontSize: 11,
-    color: '#FFFFFF',
-    fontWeight: '800',
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
+    marginTop: 1,
   },
-  offerCardWrapper: {
-    marginTop: 10,
+  triggerArrowCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  offerCardWithWarning: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderBottomWidth: 0,
+  // Applied State Styles
+  appliedCard: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    padding: 12,
   },
-  warningContainer: {
+  appliedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    padding: 10,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#FDE68A',
-    borderStyle: 'dashed',
-    borderTopWidth: 0,
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DCFCE7',
+    marginBottom: 8,
+  },
+  appliedHeaderTitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#166534',
+  },
+  savingsBadge: {
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  savingsBadgeText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#FFFFFF',
+  },
+  appliedListContainer: {
     gap: 8,
   },
-  warningText: {
-    fontSize: 11,
-    color: '#92400E',
-    fontWeight: '700',
+  appliedItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  appliedItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flex: 1,
-    lineHeight: 16,
+    marginRight: 8,
+  },
+  typeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  couponTypeBadge: {
+    backgroundColor: '#EDE9FE',
+    borderColor: '#DDD6FE',
+  },
+  couponTypeBadgeText: {
+    fontSize: 9,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#6D28D9',
+  },
+  offerTypeBadge: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  offerTypeBadgeText: {
+    fontSize: 9,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#B45309',
+  },
+  appliedCodeText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    letterSpacing: 0.5,
+  },
+  appliedTitleText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+  },
+  appliedDiscountSub: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#16A34A',
+  },
+  inlineRemoveBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#FEF2F2',
+  },
+  inlineRemoveText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#EF4444',
+  },
+  changeOffersBtn: {
+    marginTop: 8,
+    paddingTop: 6,
+    alignItems: 'center',
+  },
+  changeOffersText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
   },
 });

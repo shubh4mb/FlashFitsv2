@@ -42,6 +42,7 @@ interface Merchant {
   shipsWithinHours: number;
   isOnline: boolean;
   isNearby: boolean;
+  isWarehouse?: boolean;
   address?: {
     location?: {
       coordinates: number[]; // [lng, lat]

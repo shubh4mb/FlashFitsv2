@@ -189,7 +189,6 @@ export default function AvailableBrandsSection({
       <FlashList
         data={merchants}
         horizontal
-        estimatedItemSize={96}
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item: any) => item._id}
         contentContainerStyle={styles.merchantsList}

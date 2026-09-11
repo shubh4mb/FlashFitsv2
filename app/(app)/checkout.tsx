@@ -123,17 +123,22 @@ export default function CheckoutScreen() {
   const returnCharge = isTB ? (merchantTotals?.totalReturnCharge || 0) : 0;
   const baseServiceGST = isTB ? (merchantTotals?.serviceGST || 0) : 0;
   const serviceGST = isTB ? Math.round(baseServiceGST) : 0;
-  const upfrontPayable = isTB ? Math.round(merchantTotals?.totalUpfrontPayable || 0) : Math.round(deliveryCharge);
-  const totalPayableNow = isTB
-    ? upfrontPayable
-    : Math.round(
-        courierTotals?.totalPayable !== undefined
-          ? (courierTotals.totalPayable + deliveryTip)
-          : (subtotal - courierOfferDiscount + deliveryCharge + deliveryTip)
-      );
-  const payLaterAmount = isTB ? subtotal : 0;
   const merchantOffers = merchantCart?.appliedOffers;
   const tbOfferDiscount = merchantOffers?.totalDiscount || 0;
+  const tipToApply = Number(deliveryTip) > 0 ? Number(deliveryTip) : (Number(merchantTotals?.deliveryTip) || 0);
+
+  const upfrontPayable = isTB
+    ? 0
+    : Math.round((courierFreeDelivery ? 0 : deliveryCharge) + tipToApply);
+  const totalPayableNow = isTB
+    ? 0
+    : Math.round(
+        courierTotals?.totalPayable !== undefined
+          ? (courierTotals.totalPayable + tipToApply)
+          : (subtotal - courierOfferDiscount + (courierFreeDelivery ? 0 : deliveryCharge) + tipToApply)
+      );
+  const estimatedDeliveryAndTip = (merchantOffers?.freeDelivery ? 0 : (deliveryCharge + returnCharge)) + tipToApply;
+  const payLaterAmount = isTB ? Math.round(subtotal + estimatedDeliveryAndTip) : 0;
   const finalPayable = totalPayableNow;
 
   // Sync local chosenAddress with global selectedAddress if it changes
@@ -221,7 +226,7 @@ export default function CheckoutScreen() {
         }
 
         // === REAL RAZORPAY FLOW: Try & Buy ===
-        const result = await createRazorpayOrder(chosenAddress._id, deliveryTip, couponCode || undefined, checkoutMerchantId, paymentMethod);
+        const result = await createRazorpayOrder(chosenAddress._id, tipToApply, couponCode || undefined, checkoutMerchantId, paymentMethod);
 
         if (result.isFreeOrder) {
           // Free order — already placed, no payment needed
@@ -249,7 +254,7 @@ export default function CheckoutScreen() {
 
         // Open Razorpay Checkout WebView
         const options = {
-          description: 'Try & Buy Delivery Fee',
+          description: tipToApply > 0 ? `Try & Buy Delivery Fee + ₹${tipToApply} Tip` : 'Try & Buy Delivery Fee',
           currency: 'INR',
           key: result.key_id,
           amount: result.amount,
@@ -298,7 +303,7 @@ export default function CheckoutScreen() {
         // === REAL RAZORPAY FLOW: Courier ===
         const initRes = await initiateCourierCheckout(
           chosenAddress._id,
-          deliveryTip
+          tipToApply
         );
 
         if (initRes.isFreeOrder) {
@@ -325,7 +330,7 @@ export default function CheckoutScreen() {
 
         // Open Razorpay Checkout WebView (Single Payment!)
         const options = {
-          description: 'Courier Order Payment',
+          description: tipToApply > 0 ? `Courier Order Payment + ₹${tipToApply} Tip` : 'Courier Order Payment',
           currency: 'INR',
           key: initRes.key_id,
           amount: initRes.amount,
@@ -610,8 +615,11 @@ export default function CheckoutScreen() {
 
                  {isEligible && (
                   <>
-                    {/* --- DELIVERY TOTAL (PAY NOW) --- */}
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 8, marginTop: 8 }}>Pay Upfront Now</Text>
+                    {/* --- POST-TRIAL SUMMARY --- */}
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 8, marginTop: 8 }}>Pay After Trial</Text>
+                    <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>
+                      No upfront payment required! Pay for delivery, tip, and kept items after the trial session.
+                    </Text>
 
                     {merchantOffers?.freeDelivery ? (
                       <>
@@ -626,31 +634,25 @@ export default function CheckoutScreen() {
                     ) : (
                       <>
                         <View style={styles.billRow}>
-                          <Text style={styles.billLabel}>Delivery Fee</Text>
+                          <Text style={styles.billLabel}>Estimated Delivery Fee</Text>
                           <Text style={styles.billValue}>₹{deliveryCharge}</Text>
                         </View>
                         <View style={styles.billRow}>
-                          <Text style={styles.billLabel}>Return Handling (Refundable)</Text>
+                          <Text style={styles.billLabel}>Return Handling (Refunded if all kept)</Text>
                           <Text style={styles.billValue}>₹{returnCharge}</Text>
                         </View>
                       </>
                     )}
                     {deliveryTip > 0 && (
                       <View style={styles.billRow}>
-                        <Text style={styles.billLabel}>Delivery Tip</Text>
+                        <Text style={styles.billLabel}>Delivery Tip (Post-Trial)</Text>
                         <Text style={styles.billValue}>₹{deliveryTip}</Text>
-                      </View>
-                    )}
-                    {serviceGST > 0 && (
-                      <View style={styles.billRow}>
-                        <Text style={styles.billLabel}>Service GST (18%)</Text>
-                        <Text style={styles.billValue}>₹{serviceGST}</Text>
                       </View>
                     )}
                     <View style={styles.divider} />
                     <View style={[styles.billRow, { marginBottom: 4 }]}>
-                      <Text style={[styles.totalLabel, { color: theme.primary }]}>Total Upfront Payable</Text>
-                      <Text style={[styles.totalValue, { color: theme.primary }]}>₹{upfrontPayable}</Text>
+                      <Text style={[styles.totalLabel, { color: '#10B981' }]}>Payable Upfront Now</Text>
+                      <Text style={[styles.totalValue, { color: '#10B981' }]}>₹0 (FREE)</Text>
                     </View>
                   </>
                 )}
@@ -703,8 +705,8 @@ export default function CheckoutScreen() {
       {/* Sticky Bottom */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
         <View>
-          <Text style={styles.bottomTotal}>₹{finalPayable}</Text>
-          <Text style={styles.bottomSub}>{isTB ? 'Upfront Fee Only' : 'Total Amount'}</Text>
+          <Text style={styles.bottomTotal}>{isTB ? '₹0' : `₹${finalPayable}`}</Text>
+          <Text style={styles.bottomSub}>{isTB ? 'Pay after trial' : 'Total Amount'}</Text>
         </View>
         <TouchableOpacity
           style={[

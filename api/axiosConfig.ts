@@ -131,6 +131,15 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
     }
+    // Handle 429 Rate Limiting with backoff retry
+    if (error.response?.status === 429 && !originalRequest._retry429) {
+      originalRequest._retry429 = true;
+      const retryAfterSec = Number(error.response.headers?.['retry-after']) || 2;
+      console.warn(`[Axios] 429 Rate Limit hit for ${originalRequest.url}. Retrying after ${retryAfterSec}s...`);
+      await new Promise(resolve => setTimeout(resolve, retryAfterSec * 1000));
+      return api(originalRequest);
+    }
+
     if (error.response?.status === 401) {
       error.isAuthError = true;
     }

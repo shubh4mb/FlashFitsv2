@@ -2,7 +2,6 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
     Image,
     ScrollView,
     StyleSheet,
@@ -13,16 +12,15 @@ import {
 import logo from '@/assets/images/logo/logo.png';
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '@/context/AuthContext';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import Loader from '@/components/common/Loader';
 import { useAlert } from '@/context/AlertContext';
+import { triggerRateAppPrompt } from '@/hooks/useRateApp';
 
 export default function ProfileScreen() {
     const router = useRouter();
     const { signOut } = useAuth();
-    const { selectedGender } = useGender();
-    const theme = GenderThemes[selectedGender] || GenderThemes.Men;
     const showAlert = useAlert();
 
     const [loading, setLoading] = useState(true);
@@ -75,6 +73,12 @@ export default function ProfileScreen() {
             onPress: () => router.push('/(app)/addresses' as any),
         },
         {
+            title: 'Refer & Earn',
+            subtitle: 'Invite friends, get Free Delivery',
+            icon: 'gift-outline' as const,
+            onPress: () => router.push('/(app)/refer-earn' as any),
+        },
+        {
             title: 'Help & Support',
             subtitle: 'FAQs and customer care',
             icon: 'help-buoy-outline' as const,
@@ -85,6 +89,12 @@ export default function ProfileScreen() {
             subtitle: 'Our story and vision',
             icon: 'leaf-outline' as const,
             onPress: () => router.push('/(app)/about' as any),
+        },
+        {
+            title: 'Rate FlashFits',
+            subtitle: 'Love the app? Rate us on Play Store',
+            icon: 'star-outline' as const,
+            onPress: () => triggerRateAppPrompt(),
         },
     ];
 
@@ -98,37 +108,39 @@ export default function ProfileScreen() {
 
     return (
         <ScrollView
-            style={[styles.container, { backgroundColor: theme.background + '08' }]}
+            style={[styles.container, { backgroundColor: BrandColors.offWhite }]}
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={false}
         >
             {/* ── Header ── */}
             <View style={styles.headerRow}>
                 <TouchableOpacity 
-                    style={[styles.floatingBackBtn, { backgroundColor: theme.primary + '10' }]}
+                    style={[styles.floatingBackBtn, { backgroundColor: '#F1F5F9' }]}
                     onPress={() => router.back()}
-                ><Ionicons name="chevron-back" size={24} color={theme.primary} /></TouchableOpacity>
+                >
+                    <Ionicons name="chevron-back" size={24} color={BrandColors.matteBlack} />
+                </TouchableOpacity>
                 <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
                 <View style={{ width: 44 }} />
             </View>
 
             {/* ── User + Wallet Card ── */}
-            <View style={[styles.walletCard, { borderColor: selectedGender === 'Men' ? '#F1F5F9' : theme.primary + '15', shadowColor: theme.primary }]}>
+            <View style={[styles.walletCard, { borderColor: '#F1F5F9', shadowColor: '#000' }]}>
                 {/* User row */}
                 <View style={styles.userRow}>
-                    <View style={[styles.phoneIconCircle, { backgroundColor: theme.primary }]}>
+                    <View style={[styles.phoneIconCircle, { backgroundColor: BrandColors.matteBlack }]}>
                         <Ionicons name="person" size={22} color="#fff" />
                     </View>
                     <View style={styles.userInfo}>
                         <Text style={styles.phoneLabel}>ACCOUNT</Text>
-                        <Text style={[styles.phoneText, { color: theme.primary }]}>
+                        <Text style={[styles.phoneText, { color: BrandColors.matteBlack }]}>
                             {phoneNumber ? `+91 ${phoneNumber}` : 'Not available'}
                         </Text>
                     </View>
                 </View>
 
                 {/* Divider */}
-                <View style={[styles.divider, { backgroundColor: theme.primary + '10' }]} />
+                <View style={[styles.divider, { backgroundColor: '#F1F5F9' }]} />
 
                 {/* Wallet row */}
                 <View style={styles.walletRow}>
@@ -148,7 +160,7 @@ export default function ProfileScreen() {
             </View>
 
             {/* ── Menu List ── */}
-            <View style={[styles.menuContainer, { borderColor: selectedGender === 'Men' ? '#F1F5F9' : theme.primary + '08', shadowColor: theme.primary }]}>
+            <View style={[styles.menuContainer, { borderColor: '#F1F5F9', shadowColor: '#000' }]}>
                 {menuItems.map((item, index) => (
                     <TouchableOpacity
                         key={index}
@@ -156,38 +168,38 @@ export default function ProfileScreen() {
                             styles.menuItem,
                             index < menuItems.length - 1 && {
                                 borderBottomWidth: 1,
-                                borderBottomColor: selectedGender === 'Men' ? '#F1F5F9' : theme.primary + '08',
+                                borderBottomColor: '#F1F5F9',
                             },
                         ]}
                         activeOpacity={0.6}
                         onPress={item.onPress}
                     >
-                        <View style={[styles.menuIconBox, { backgroundColor: theme.primary + '0A' }]}>
-                            <Ionicons name={item.icon} size={20} color={theme.primary} />
+                        <View style={[styles.menuIconBox, { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#F1F5F9' }]}>
+                            <Ionicons name={item.icon} size={20} color={BrandColors.matteBlack} />
                         </View>
                         <View style={styles.menuTextBox}>
                             <Text style={styles.menuTitle}>{item.title}</Text>
                             <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
                         </View>
-                        <Ionicons name="chevron-forward" size={18} color={theme.accent} />
+                        <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
                     </TouchableOpacity>
                 ))}
             </View>
 
             {/* ── Logout ── */}
             <TouchableOpacity
-                style={[styles.logoutBtn, { borderColor: selectedGender === 'Men' ? '#F1F5F9' : theme.primary + '25', shadowColor: theme.primary }]}
+                style={[styles.logoutBtn, { borderColor: '#F1F5F9', shadowColor: '#000' }]}
                 activeOpacity={0.7}
                 onPress={handleLogout}
             >
-                <MaterialIcons name="logout" size={20} color={theme.primary} />
-                <Text style={[styles.logoutText, { color: theme.primary }]}>LOG OUT</Text>
+                <MaterialIcons name="logout" size={20} color={BrandColors.matteBlack} />
+                <Text style={[styles.logoutText, { color: BrandColors.matteBlack }]}>LOG OUT</Text>
             </TouchableOpacity>
 
             <View style={styles.footer}>
                 <Image source={logo} style={styles.footerLogo} blurRadius={3} resizeMode="contain" />
                 <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-                <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
             </View>
         </ScrollView>
     );

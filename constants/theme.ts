@@ -1,45 +1,70 @@
+export const BrandColors = {
+  primary: "#2ED3E6",             // Vibrant Brand Cyan
+  secondary: "#5EE9F4",           // Light Brand Cyan
+  darkCyan: "#0891B2",            // Deep Rich Cyan for Tab Icons & High Contrast
+  gradient: ["#2ED3E6", "#5EE9F4"] as const, // Signature Cyan Gradient
+  softCyan: "#EBFDFF",           // Soft Cyan surface/pill background
+  softCyanBorder: "#BCEEFA",     // Soft Cyan subtle border
+  cyanDeep: "#0891B2",           // Deep cyan for high-contrast text on soft cyan
+  offWhite: "#F8F9FA",           // Premium Clean Off-White Background
+  offWhiteAlt: "#F1F5F9",        // Secondary Off-White/Light Gray
+  surface: "#FFFFFF",            // Pure White Card Surface
+  matteBlack: "#121212",         // Matte Black for Titles, Dark CTAs & Logo
+  matteBlackLight: "#1E1E1E",    // Light Matte Black / Charcoal
+  charcoal: "#27272A",           // Dark Neutral Charcoal
+  textPrimary: "#121212",        // Matte Black Text
+  textSecondary: "#52525B",      // Secondary Slate Text
+  textMuted: "#71717A",          // Muted Text
+  textLight: "#FFFFFF",          // White Text
+  border: "#E5E7EB",             // Standard Soft Border
+  borderLight: "#F1F5F9",        // Ultra-light Border
+};
+
 export const Palette = {
-  primary: "#1A1A1A",
-  secondary: "#64748B",
-  accent: "#EF4444",
-  background: "#F8FAFC",
-  surface: "#FFFFFF",
+  primary: BrandColors.primary,
+  secondary: BrandColors.secondary,
+  brandCyan: BrandColors.primary,
+  brandCyanLight: BrandColors.secondary,
+  accent: BrandColors.primary,
+  background: BrandColors.offWhite,
+  surface: BrandColors.surface,
+  matteBlack: BrandColors.matteBlack,
   error: "#EF4444",
   success: "#10B981",
   warning: "#F59E0B",
   text: {
-    primary: "#0F172A",
-    secondary: "#64748B",
-    inverse: "#FFFFFF",
-    muted: "#94A3B8",
+    primary: BrandColors.textPrimary,
+    secondary: BrandColors.textSecondary,
+    inverse: BrandColors.textLight,
+    muted: BrandColors.textMuted,
   },
-  border: "#E2E8F0",
+  border: BrandColors.border,
 };
 
 export const GenderThemes = {
   Men: {
-    primary: "#011441",
-    secondary: "#012258ff",
-    background: "#01184eff",
-    text: "#FFFFFF",
-    accent: "#38BDF8",
-    dark: "#00081d",
+    primary: BrandColors.primary,
+    secondary: BrandColors.secondary,
+    background: BrandColors.offWhite,
+    text: BrandColors.textPrimary,
+    accent: BrandColors.primary,
+    dark: BrandColors.matteBlack,
   },
   Women: {
-    primary: "#DB2777",
+    primary: BrandColors.primary,
     secondary: "#BE185D",
-    background: "#DB2777",
-    text: "#FFFFFF",
-    accent: "#F472B6",
-    dark: "#4c0525",
+    background: BrandColors.offWhite,
+    text: BrandColors.textPrimary,
+    accent: BrandColors.primary,
+    dark: BrandColors.matteBlack,
   },
   Kids: {
-    primary: "#df4300ff",
+    primary: BrandColors.primary,
     secondary: "#d95e06ff",
-    background: "#f5650bff",
-    text: "#FFFFFF",
-    accent: "#fb6c24ff",
-    dark: "#471200",
+    background: BrandColors.offWhite,
+    text: BrandColors.textPrimary,
+    accent: BrandColors.primary,
+    dark: BrandColors.matteBlack,
   },
 };
 
@@ -72,49 +97,91 @@ export const Colors = {
   light: {
     text: Palette.text.primary,
     background: Palette.background,
-    tint: Palette.primary,
-    icon: Palette.secondary,
-    tabIconDefault: Palette.secondary,
-    tabIconSelected: Palette.primary,
+    tint: BrandColors.matteBlack,
+    icon: Palette.text.muted,
+    tabIconDefault: "#94A3B8",
+    tabIconSelected: BrandColors.matteBlack,
   },
   dark: {
     text: Palette.text.inverse,
-    background: Palette.primary,
-    tint: Palette.surface,
+    background: BrandColors.matteBlack,
+    tint: BrandColors.primary,
     icon: Palette.text.muted,
     tabIconDefault: Palette.text.muted,
-    tabIconSelected: Palette.surface,
+    tabIconSelected: BrandColors.primary,
   },
 };
 
 export const SectionHeaderStyles = {
   title: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: Typography.fontFamily.extraBold,
-    letterSpacing: 0.1, // Increased from -0.8 to create more distance/breathing room
-    color: '#1C1917', // Warm black
+    letterSpacing: -0.2,
+    color: BrandColors.matteBlack,
   },
   subtitle: {
-    fontSize: 10,
-    color: '#64748B',
+    fontSize: 11,
+    color: BrandColors.textMuted,
     marginTop: 2,
     fontFamily: Typography.fontFamily.medium,
     letterSpacing: 0.1,
   },
   viewAll: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: Typography.fontFamily.semiBold,
-    letterSpacing: 0.2,
-    color: '#1C1917', // Warm black
+    letterSpacing: 0.1,
+    color: BrandColors.primary,
   },
 };
 
+export const AppPalette = {
+  appPrimary: BrandColors.primary,          // Brand Cyan
+  appSecondary: BrandColors.secondary,      // Light Cyan
+  appBackground: BrandColors.offWhite,      // Clean Off-White Background
+  appSurface: BrandColors.surface,          // Pure White Surface
+  appWarmWhite: BrandColors.offWhite,       // Backward compatibility
+  appWarmWhiteSoft: BrandColors.offWhiteAlt,// Soft Off-White
+  appCream: BrandColors.softCyan,           // Soft Cyan tint
+  appMatteBlack: BrandColors.matteBlack,    // Matte Black
+  appMatteBlackLight: BrandColors.matteBlackLight,
+  appCharcoal: BrandColors.charcoal,        // Charcoal
+  appText: BrandColors.textPrimary,         // Matte Black Text
+  appTextMuted: BrandColors.textMuted,      // Muted Text
+  appTextLight: BrandColors.textLight,      // White Text
+  appAccent: BrandColors.primary,           // Cyan Accent
+  appBorder: BrandColors.border,            // Soft Border
+  appCardBg: BrandColors.surface,           // White Card Background
+  appSoftCyan: BrandColors.softCyan,        // Soft Cyan Pill
+};
 
+export const AppTheme = {
+  appPrimary: AppPalette.appPrimary,
+  appSecondary: AppPalette.appSecondary,
+  appBackground: AppPalette.appBackground,
+  appSurface: AppPalette.appSurface,
+  appWarmWhite: AppPalette.appWarmWhite,
+  appMatteBlack: AppPalette.appMatteBlack,
+  appText: AppPalette.appText,
+  appTextMuted: AppPalette.appTextMuted,
+  appTextLight: AppPalette.appTextLight,
+  appAccent: AppPalette.appAccent,
+  appBorder: AppPalette.appBorder,
+  appCardBg: AppPalette.appCardBg,
+};
+
+// Aliases for compatibility
+export const PremiumPalette = AppPalette;
+export const PremiumTheme = AppTheme;
 
 export default {
+  BrandColors,
   Palette,
   GenderThemes,
   Typography,
   Colors,
   SectionHeaderStyles,
+  AppPalette,
+  AppTheme,
+  PremiumPalette,
+  PremiumTheme,
 };

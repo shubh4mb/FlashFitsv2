@@ -147,7 +147,6 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
         renderItem={renderItem}
         keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
         horizontal
-        estimatedItemSize={100}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         snapToInterval={ITEM_SIZE + 16}

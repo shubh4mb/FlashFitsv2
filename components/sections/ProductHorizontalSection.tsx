@@ -31,6 +31,10 @@ interface ProductHorizontalSectionProps {
     actionUrl?: string;
   };
   collectionId?: string;
+  slug?: string;
+  campaignType?: string;
+  badgeText?: string;
+  theme?: any;
   sortBy?: 'relevance' | 'price_low' | 'price_high' | 'newest' | 'trending';
   refreshKey?: number;
 }
@@ -63,17 +67,26 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
   isLoading = false,
   banner,
   collectionId,
+  slug,
+  campaignType,
+  badgeText,
+  theme: customTheme,
   sortBy,
 }) => {
   const router = useRouter();
   const { selectedGender } = useGender();
-  const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+  const genderTheme = GenderThemes[selectedGender] || GenderThemes.Men;
+
+  const primaryAccent = customTheme?.primaryColor || genderTheme.primary;
 
   const handleNavigation = () => {
-    if (collectionId) {
+    if (slug || collectionId) {
       router.push({
         pathname: '/(app)/search-results',
-        params: { collectionId, title }
+        params: { 
+          collectionId: collectionId || slug,
+          title 
+        }
       } as any);
     } else if (sortBy) {
       router.push({
@@ -113,14 +126,20 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          {badgeText ? (
+            <View style={[styles.badgePill, { backgroundColor: customTheme?.primaryColor || '#CA8A04' }]}>
+              <Text style={styles.badgeText}>{badgeText}</Text>
+            </View>
+          ) : null}
           <Text style={styles.title}>{title}</Text>
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </View>
         <TouchableOpacity onPress={handleNavigation}>
-          <Text style={styles.seeAll}>View All</Text>
+          <Text style={[styles.seeAll, { color: primaryAccent }]}>View All</Text>
         </TouchableOpacity>
       </View>
+
 
       {banner && banner.imageUrl && (
         <TouchableOpacity
@@ -139,7 +158,6 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
             style={styles.bannerImage}
             contentFit="cover"
             transition={300}
-            placeholder={{ uri: 'https://via.placeholder.com/800x200/F0F0F0/8E8E93?text=...' }}
           />
         </TouchableOpacity>
       )}
@@ -149,7 +167,6 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
         renderItem={renderItem}
         keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
         horizontal
-        estimatedItemSize={171}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"
@@ -177,6 +194,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 10,
   },
+  badgePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   bannerContainer: {
     marginHorizontal: 0,
     marginBottom: 16,
@@ -192,3 +223,4 @@ const styles = StyleSheet.create({
 });
 
 export default ProductHorizontalSection;
+

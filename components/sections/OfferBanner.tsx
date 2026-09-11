@@ -146,7 +146,7 @@ function getOfferConfig(type: string) {
     case 'CART_VALUE':
       return { bg: '#FFF7ED', border: '#FED7AA', tagBg: '#EA580C', titleColor: '#9A3412', icon: 'cart', label: 'CART OFFER' };
     case 'CATEGORY':
-      return { bg: '#EFF6FF', border: '#BFDBFE', tagBg: '#2563EB', titleColor: '#1E40AF', icon: 'pricetag', label: 'CATEGORY' };
+      return { bg: '#EBFDFF', border: '#BCEEFA', tagBg: '#2ED3E6', titleColor: '#0E7490', icon: 'pricetag', label: 'CATEGORY' };
     case 'VENDOR_DISCOUNT':
       return { bg: '#F5F3FF', border: '#DDD6FE', tagBg: '#7C3AED', titleColor: '#5B21B6', icon: 'storefront', label: 'STORE DEAL' };
     case 'VENDOR_MIN_ORDER':

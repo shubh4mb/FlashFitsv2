@@ -158,7 +158,7 @@ const ProductCard = ({
         <View style={styles.tryBadge}>
           <View style={[styles.tryDot, { backgroundColor: isFast ? "#3FA65C" : "#C9A24B" }]} />
           <Text style={styles.tryBadgeText}>
-            {product.isWarehouseListing || product.source === 'warehouse' ? "FLASHMART" : (isFast ? "20-40 MINS" : "1-7 DAYS")}
+            {(product as any).isWarehouseListing || (product as any).source === 'warehouse' ? "FLASHMART" : (isFast ? "20-40 MINS" : "1-7 DAYS")}
           </Text>
         </View>
       </View>
@@ -172,13 +172,18 @@ const ProductCard = ({
         <View style={styles.priceRow}>
           <Text style={styles.price}>₹{price}</Text>
           {discount > 0 && (
-            <Text style={styles.mrp}>₹{mrp}</Text>
+            <>
+              <Text style={styles.mrp}>₹{mrp}</Text>
+              <View style={styles.discountBadge}>
+                <Text style={styles.discountText}>-{discount}%</Text>
+              </View>
+            </>
           )}
         </View>
 
-        {(product.isWarehouseListing || product.source === 'warehouse') && (
+        {((product as any).isWarehouseListing || (product as any).source === 'warehouse') && (
           <Text style={{ fontSize: 9.5, color: '#059669', fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
-            FF Warehouse • {product.merchantId?.shopName || 'Partner Store'}
+            FF Warehouse • {(product as any).merchantId?.shopName || 'Partner Store'}
           </Text>
         )}
       </View>
@@ -189,13 +194,15 @@ const ProductCard = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginRight: 8,
+    borderRadius: 14,
+    marginRight: 10,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   imageContainer: {
     width: '100%',
-    height: 220,
+    height: 210,
     position: 'relative',
     backgroundColor: '#F8FAFC',
   },
@@ -208,10 +215,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255, 255, 255, 0.35)', // very low opacity white bg
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
@@ -222,34 +229,46 @@ const styles = StyleSheet.create({
   },
 
   details: {
-    padding: 8,
+    padding: 10,
   },
   name: {
-    fontFamily: Typography.fontFamily.serifMedium,
-    fontWeight: 700,
-    fontSize: 10.5,
-    color: '#1C1C1A',
-    letterSpacing: -0.4, // slightly tight as requested
-    marginBottom: 2,
+    fontFamily: Typography.fontFamily.semiBold,
+    fontWeight: '600',
+    fontSize: 12,
+    color: '#121212',
+    letterSpacing: -0.2,
+    marginBottom: 4,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
     gap: 6,
   },
   price: {
-    fontFamily: Typography.fontFamily.serifMedium,
-    fontSize: 12,
-    color: '#3F3F46',
+    fontFamily: Typography.fontFamily.bold,
+    fontWeight: '700',
+    fontSize: 13.5,
+    color: '#121212',
     letterSpacing: -0.2,
   },
   mrp: {
-    fontFamily: Typography.fontFamily.serifMedium,
-    fontSize: 10,
+    fontFamily: Typography.fontFamily.regular,
+    fontSize: 11,
     color: '#94A3B8',
     letterSpacing: -0.1,
     textDecorationLine: 'line-through',
+  },
+  discountBadge: {
+    backgroundColor: '#EBFDFF',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  discountText: {
+    color: '#0891B2',
+    fontSize: 9.5,
+    fontFamily: Typography.fontFamily.bold,
+    fontWeight: '700',
   },
   ratingRow: {
     flexDirection: 'row',

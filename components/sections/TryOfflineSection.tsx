@@ -3,13 +3,16 @@ import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
+import { useAddress } from '@/context/AddressContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 
 const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     const { selectedGender } = useGender();
+    const { openAddressModal } = useAddress();
     const router = useRouter();
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
     const primaryColor = '#000000';
@@ -34,23 +37,34 @@ const TryOfflineSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
                         Oops! All nearby merchants are currently offline.
                     </Text>
                     <Text style={styles.subMessage}>
-                        Instant delivery is not possible right now as our partner stores are closed. They will be back soon!
+                        Instant delivery is not possible right now as our partner stores are closed. Try another address or explore standard delivery.
                     </Text>
                 </View>
 
-                {/* <View style={styles.badge}>
-                    <Ionicons name="flash" size={14} color={theme.primary} />
-                    <Text style={[styles.badgeText, { color: theme.primary }]}>FASHION IN A FLASH</Text>
-                </View> */}
+                <View style={styles.buttonsContainer}>
+                    <TouchableOpacity 
+                        style={[styles.changeAddressButton, { borderColor: primaryColor }]}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            openAddressModal();
+                        }}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons name="location-outline" size={18} color={primaryColor} />
+                        <Text style={[styles.changeAddressButtonText, { color: primaryColor }]}>
+                            Change Delivery Address
+                        </Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity 
-                    style={[styles.exploreButton, { backgroundColor: primaryColor }]}
-                    onPress={() => router.push('/explore')}
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.exploreButtonText}>Explore Products</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
-                </TouchableOpacity>
+                    <TouchableOpacity 
+                        style={[styles.exploreButton, { backgroundColor: primaryColor }]}
+                        onPress={() => router.push('/explore')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.exploreButtonText}>Explore Products</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                    </TouchableOpacity>
+                </View>
             </View>
         </View>
     );
@@ -133,24 +147,49 @@ const styles = StyleSheet.create({
         fontFamily: Typography.fontFamily.bold,
         letterSpacing: 1.5,
     },
+    buttonsContainer: {
+        width: '100%',
+        paddingHorizontal: 28,
+        gap: 12,
+        marginTop: 28,
+    },
+    changeAddressButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 20,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        backgroundColor: '#FFFFFF',
+        gap: 8,
+        width: '100%',
+    },
+    changeAddressButtonText: {
+        fontSize: 14,
+        fontFamily: Typography.fontFamily.bold,
+        letterSpacing: 0.2,
+    },
     exploreButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 24,
+        justifyContent: 'center',
         paddingVertical: 14,
-        borderRadius: 16,
-        gap: 10,
-        marginTop: 32,
+        paddingHorizontal: 20,
+        borderRadius: 14,
+        gap: 8,
+        width: '100%',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
     },
     exploreButtonText: {
         color: '#FFF',
-        fontSize: 16,
+        fontSize: 14,
         fontFamily: Typography.fontFamily.bold,
+        letterSpacing: 0.2,
     },
     brandsWrapper: {
         width: width,

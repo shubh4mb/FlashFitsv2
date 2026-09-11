@@ -1,7 +1,7 @@
 import { fetchRelatedProducts, productDetailPage } from '@/api/products';
 import Loader from '@/components/common/Loader';
 import ProductCard from '@/components/common/ProductCard';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
 import flashfitsLogo from '@/assets/images/logo/logo.png';
 import { useAddress } from '@/context/AddressContext';
 import { useCart } from '@/context/CartContext';
@@ -53,86 +53,7 @@ const formatText = (text: string) => {
     .join(' ');
 };
 
-const reconstructLegacyStructure = (data: any) => {
-  if (!data || !data.isFlatPayload) return data;
 
-  const activeProduct = data.activeProduct;
-  const siblings = data.siblings || [];
-
-  const allProducts = [activeProduct, ...siblings];
-
-  // De-duplicate documents by _id
-  const seenIds = new Set();
-  const uniqueProducts = allProducts.filter(p => {
-    const idStr = p._id?.toString();
-    if (!idStr || seenIds.has(idStr)) return false;
-    seenIds.add(idStr);
-    return true;
-  });
-
-  const parentGroupId = activeProduct.styleGroupId || activeProduct._id.toString();
-
-  // Group size combinations by color name
-  const colorGroups: Record<string, any> = {};
-  uniqueProducts.forEach(p => {
-    const colorName = p.color?.name || 'Default';
-    if (!colorGroups[colorName]) {
-      colorGroups[colorName] = {
-        color: p.color || { name: 'Default', hex: '' },
-        mrp: p.mrp || 0,
-        price: p.price || 0,
-        discount: p.discount || 0,
-        images: p.images || [],
-        sizesMap: {}
-      };
-    }
-
-    colorGroups[colorName].sizesMap[p.size] = {
-      _id: p._id.toString(),
-      size: p.size,
-      stock: p.stock || 0
-    };
-  });
-
-  const legacyVariants = Object.keys(colorGroups).map(colorName => {
-    const group = colorGroups[colorName];
-    const firstProduct = uniqueProducts.find(p => (p.color?.name || 'Default') === colorName);
-    const colorVariantId = firstProduct?.colorVariantId || 'fallback';
-
-    return {
-      _id: colorVariantId,
-      color: group.color,
-      mrp: group.mrp,
-      price: group.price,
-      discount: group.discount,
-      images: group.images,
-      sizes: Object.values(group.sizesMap)
-    };
-  });
-
-  return {
-    _id: parentGroupId,
-    name: activeProduct.name,
-    brandId: activeProduct.brandId,
-    categoryId: activeProduct.categoryId,
-    subCategoryId: activeProduct.subCategoryId,
-    subSubCategoryId: activeProduct.subSubCategoryId,
-    merchantId: activeProduct.merchantId,
-    gender: activeProduct.gender,
-    description: activeProduct.description,
-    isTriable: activeProduct.isTriable,
-    ratings: activeProduct.ratings,
-    numReviews: activeProduct.numReviews,
-    isActive: activeProduct.isActive,
-    isVerified: activeProduct.isVerified,
-    isDeleted: activeProduct.isDeleted,
-    attributes: activeProduct.attributes,
-    variants: legacyVariants,
-    isInstantBuyable: data.isInstantBuyable,
-    isNearby: data.isNearby,
-    fulfillmentOptions: data.fulfillmentOptions
-  };
-};
 
 const ProductDetailPage = () => {
   const { id, fromExplore, variantId, size } = useLocalSearchParams();
@@ -251,8 +172,7 @@ const ProductDetailPage = () => {
       setRefreshing(true);
       const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
-      const rawData = await productDetailPage(id as string, lat, lng);
-      const data = reconstructLegacyStructure(rawData);
+      const data = await productDetailPage(id as string, lat, lng);
       setProduct(data);
 
       if (data?._id) {
@@ -279,8 +199,7 @@ const ProductDetailPage = () => {
         console.log("=== ProductDetailPage Mount ===", { id, fromExplore, variantId, size });
         const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
         const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
-        const rawData = await productDetailPage(id as string, lat, lng);
-        const data = reconstructLegacyStructure(rawData);
+        const data = await productDetailPage(id as string, lat, lng);
         setProduct(data);
 
         // Smart location & fulfillment mode default
@@ -297,17 +216,18 @@ const ProductDetailPage = () => {
 
         if (data.variants?.[0]) {
           const targetVariant = variantId
-            ? data.variants.find((v: any) => v._id === variantId)
+            ? data.variants.find((v: any) => v._id === variantId || v.colorVariantId === variantId)
             : data.variants[0];
 
           if (targetVariant) {
-            setSelectedColor(targetVariant.color.name);
+            setSelectedColor(targetVariant.color?.name || 'Default');
 
             if (size) {
               setSelectedSize(size as string);
             } else {
-              const firstInStockSize = targetVariant.sizes.find((s: any) => s.stock > 0);
-              if (firstInStockSize) setSelectedSize(firstInStockSize.size);
+              const colorVariants = data.variants.filter((v: any) => (v.color?.name || 'Default') === (targetVariant.color?.name || 'Default'));
+              const firstInStock = colorVariants.find((v: any) => v.stock > 0) || colorVariants[0];
+              if (firstInStock) setSelectedSize(firstInStock.size);
             }
           }
         }
@@ -409,6 +329,23 @@ const ProductDetailPage = () => {
 
   const handleOpenDeliveryOptions = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    const flashmartAvailable = product?.fulfillmentOptions?.flashmart !== undefined
+      ? !!product.fulfillmentOptions.flashmart?.available
+      : !!(product?.isWarehouseListing && (product?.isNearby ?? true));
+
+    const directStoreAvailable = product?.fulfillmentOptions?.directStore !== undefined
+      ? !!product.fulfillmentOptions.directStore?.available
+      : !!(product?.availableInShop || (!product?.isWarehouseListing && (product?.isNearby ?? false) && (product?.isInstantBuyable ?? false)));
+
+    if (selectedFulfillmentMode === 'flashmart' && !flashmartAvailable) {
+      setSelectedFulfillmentMode(directStoreAvailable ? 'directStore' : 'courier');
+    } else if (selectedFulfillmentMode === 'directStore' && !directStoreAvailable) {
+      setSelectedFulfillmentMode(flashmartAvailable ? 'flashmart' : 'courier');
+    } else if (selectedFulfillmentMode === 'courier' && (flashmartAvailable || directStoreAvailable)) {
+      setSelectedFulfillmentMode(flashmartAvailable ? 'flashmart' : 'directStore');
+    }
+
     setDeliveryOptionsModalVisible(true);
   };
 
@@ -511,6 +448,31 @@ const ProductDetailPage = () => {
     }
   };
 
+  const colorOptions = useMemo(() => {
+    if (!product?.variants) return [];
+    const map = new Map();
+    product.variants.forEach((v: any) => {
+      const cName = v.color?.name || 'Default';
+      if (!map.has(cName)) {
+        map.set(cName, v.color || { name: 'Default', hex: '#ccc' });
+      }
+    });
+    return Array.from(map.values());
+  }, [product?.variants]);
+
+  const availableSizes = useMemo(() => {
+    if (!product?.variants) return [];
+    return product.variants.filter((v: any) => (v.color?.name || 'Default') === (selectedColor || 'Default'));
+  }, [product?.variants, selectedColor]);
+
+  const activeVariant = useMemo(() => {
+    if (!product?.variants) return null;
+    const match = product.variants.find((v: any) => 
+      (v.color?.name || 'Default') === (selectedColor || 'Default') && v.size === selectedSize
+    );
+    return match || availableSizes[0] || product.variants[0];
+  }, [product?.variants, selectedColor, selectedSize, availableSizes]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -532,9 +494,8 @@ const ProductDetailPage = () => {
     );
   }
 
-  const activeVariant = product.variants.find((v: any) => v.color?.name === selectedColor) || product.variants[0];
   const images = activeVariant?.images || [];
-  const discountPercent = activeVariant.mrp > activeVariant.price
+  const discountPercent = (activeVariant?.mrp && activeVariant?.price && activeVariant.mrp > activeVariant.price)
     ? Math.round(((activeVariant.mrp - activeVariant.price) / activeVariant.mrp) * 100)
     : 0;
 
@@ -774,20 +735,23 @@ const ProductDetailPage = () => {
           <View style={styles.divider} />
 
           {/* Color Selection */}
-          {product.variants.length > 1 && product.variants.some((v: any) => v.color && v.color.name && v.color.name.toLowerCase() !== 'none' && v.color.name.trim() !== '') && (
+          {colorOptions.length > 1 && colorOptions.some((c: any) => c && c.name && c.name.toLowerCase() !== 'none' && c.name.trim() !== '') && (
             <>
               <Text style={styles.sectionTitle}>
-                Color <Text style={styles.sectionSubtitle}>{formatText(selectedColor)}</Text>
+                Color <Text style={styles.sectionSubtitle}>{formatText(selectedColor || '')}</Text>
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectionRow}>
-                {product.variants.map((v: any, i: number) => {
-                  if (!v.color || !v.color.name || v.color.name.toLowerCase() === 'none' || v.color.name.trim() === '') return null;
-                  const isSelected = selectedColor === v.color.name;
+                {colorOptions.map((c: any, i: number) => {
+                  if (!c || !c.name || c.name.toLowerCase() === 'none' || c.name.trim() === '') return null;
+                  const isSelected = selectedColor === c.name;
                   return (
                     <TouchableOpacity
                       key={i}
                       onPress={() => {
-                        setSelectedColor(v.color.name);
+                        setSelectedColor(c.name);
+                        const sizesForColor = product.variants.filter((v: any) => (v.color?.name || 'Default') === c.name);
+                        const firstInStock = sizesForColor.find((v: any) => v.stock > 0) || sizesForColor[0];
+                        if (firstInStock) setSelectedSize(firstInStock.size);
                         setActiveIndex(0);
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       }}
@@ -800,17 +764,17 @@ const ProductDetailPage = () => {
                       <View
                         style={[
                           styles.colorCircle,
-                          { backgroundColor: v.color.hex || '#ccc' },
+                          { backgroundColor: c.hex || '#ccc' },
                           isSelected && {
                             ...Platform.select({
-                              ios: { shadowColor: v.color.hex, shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1.5 } },
+                              ios: { shadowColor: c.hex, shadowOpacity: 0.35, shadowRadius: 3, shadowOffset: { width: 0, height: 1.5 } },
                               android: { elevation: 2 },
                             }),
                           },
                         ]}
                       />
                       <Text style={[styles.chipText, isSelected && { color: theme.primary, fontFamily: Typography.fontFamily.bold }]}>
-                        {formatText(v.color.name)}
+                        {formatText(c.name)}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -824,7 +788,7 @@ const ProductDetailPage = () => {
             Size <Text style={styles.sectionSubtitle}>{selectedSize || 'Select'}</Text>
           </Text>
           <View style={styles.sizeGrid}>
-            {activeVariant.sizes.map((s: any, i: number) => {
+            {availableSizes.map((s: any, i: number) => {
               const isSelected = selectedSize === s.size;
               const outOfStock = s.stock === 0;
               return (
@@ -840,18 +804,10 @@ const ProductDetailPage = () => {
                   activeOpacity={0.7}
                   style={[
                     styles.sizeChip,
-                    isSelected && { borderColor: 'transparent' },
+                    isSelected && { backgroundColor: BrandColors.primary, borderColor: BrandColors.primary },
                     outOfStock && styles.disabledSizeChip,
                   ]}
                 >
-                  {isSelected && (
-                    <LinearGradient
-                      colors={[theme.dark || '#000000', theme.primary]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  )}
                   <Text
                     style={[
                       styles.sizeText,
@@ -956,6 +912,32 @@ const ProductDetailPage = () => {
             </View>
           </View>
 
+          {/* Complete the Look Section */}
+          {product?.matchingProducts && product.matchingProducts.length > 0 && (
+            <View style={styles.relatedSection}>
+              <View style={[styles.relatedHeader, { marginBottom: 14 }]}>
+                <Text style={[styles.sectionTitle, { marginBottom: 0, marginTop: 0 }]}>Complete the Look</Text>
+              </View>
+              <FlashList
+                data={product.matchingProducts}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item: any) => item._id}
+                contentContainerStyle={styles.relatedList}
+                renderItem={({ item }: { item: any }) => (
+                  <ProductCard
+                    product={item}
+                    width={160}
+                    containerStyle={styles.relatedCard}
+                    fromExplore={isExplore}
+                    isNearby={item.isInstantBuyable || item.isNearby}
+                    isOnline={item.isOnline !== false}
+                  />
+                )}
+              />
+            </View>
+          )}
+
           {/* Related Products Section */}
           <View style={styles.relatedSection}>
             <View style={[styles.relatedHeader, { justifyContent: 'space-between', marginBottom: 14 }]}>
@@ -986,7 +968,6 @@ const ProductDetailPage = () => {
               <FlashList
                 data={filteredRelated}
                 horizontal
-                estimatedItemSize={176}
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item: any) => item._id}
                 contentContainerStyle={styles.relatedList}
@@ -1057,24 +1038,18 @@ const ProductDetailPage = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.cartBtn, { backgroundColor: theme.dark || '#000000' }, isAdding && { opacity: 0.8 }]}
+          style={[styles.cartBtn, { backgroundColor: BrandColors.primary }, isAdding && { opacity: 0.8 }]}
           onPress={handleOpenDeliveryOptions}
           activeOpacity={0.85}
           disabled={isAdding}
         >
-          <LinearGradient
-            colors={[theme.dark || '#000000', theme.primary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
-          />
           {isAdding ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
             <>
-              <Ionicons name="bag-add-outline" size={17} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Ionicons name="bag-handle-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={styles.cartBtnText}>
-                Add to Bag
+                ADD TO BAG
               </Text>
             </>
           )}
@@ -1106,7 +1081,7 @@ const ProductDetailPage = () => {
                   Select Delivery Option
                 </Text>
                 <Text style={{ fontSize: 12, color: '#64748B', fontFamily: Typography.fontFamily.medium, marginTop: 2 }}>
-                  Choose how you'd like your item fulfilled
+                  {"Choose how you'd like your item fulfilled"}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1196,87 +1171,101 @@ const ProductDetailPage = () => {
 
             {/* Options List */}
             {(() => {
-              const flashmartAvailable = !!(product?.fulfillmentOptions?.flashmart?.available || (product?.isWarehouseListing && product?.isNearby));
-              const directStoreAvailable = !!(product?.fulfillmentOptions?.directStore?.available || product?.availableInShop || (!product?.isWarehouseListing && product?.isNearby && (product?.isInstantBuyable || !isOnline)));
+              const flashmartAvailable = product?.fulfillmentOptions?.flashmart !== undefined
+                ? !!product.fulfillmentOptions.flashmart?.available
+                : !!(product?.isWarehouseListing && (product?.isNearby ?? true));
+
+              const directStoreAvailable = product?.fulfillmentOptions?.directStore !== undefined
+                ? !!product.fulfillmentOptions.directStore?.available
+                : !!(product?.availableInShop || (!product?.isWarehouseListing && (product?.isNearby ?? false) && (product?.isInstantBuyable ?? false)));
+
               const merchantShopName = product?.shopMerchantName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Store';
+              const hasAnyTryAndBuy = flashmartAvailable || directStoreAvailable;
 
               return (
                 <View style={{ gap: 10, marginBottom: 18 }}>
-                  {/* Option 1: FlashMart Express */}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    disabled={!flashmartAvailable}
-                    onPress={() => {
-                      setSelectedFulfillmentMode('flashmart');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    style={[
-                      styles.fulfillmentCard,
-                      selectedFulfillmentMode === 'flashmart' && styles.fulfillmentCardActiveFlashmart,
-                      !flashmartAvailable && styles.fulfillmentCardDisabled,
-                    ]}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Ionicons
-                          name={selectedFulfillmentMode === 'flashmart' ? "radio-button-on" : "radio-button-off"}
-                          size={18}
-                          color={selectedFulfillmentMode === 'flashmart' ? '#10B981' : '#94A3B8'}
-                        />
-                        <Ionicons name="flash" size={16} color={flashmartAvailable ? '#10B981' : '#94A3B8'} />
-                        <Text style={[styles.fulfillmentTitle, !flashmartAvailable && styles.disabledText]}>
-                          FlashMart Express
-                        </Text>
+                  {/* Option 1: Warehouse Try & Buy - Only show if available */}
+                  {flashmartAvailable && (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setSelectedFulfillmentMode('flashmart');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      style={[
+                        styles.fulfillmentCard,
+                        selectedFulfillmentMode === 'flashmart' && styles.fulfillmentCardActiveFlashmart,
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons
+                            name={selectedFulfillmentMode === 'flashmart' ? "radio-button-on" : "radio-button-off"}
+                            size={18}
+                            color={selectedFulfillmentMode === 'flashmart' ? '#10B981' : '#94A3B8'}
+                          />
+                          <Ionicons name="flash" size={16} color="#10B981" />
+                          <Text style={styles.fulfillmentTitle}>
+                            FlashMart Hub (Warehouse)
+                          </Text>
+                        </View>
+                        <View style={[styles.fulfillmentBadge, { backgroundColor: '#ECFDF5' }]}>
+                          <Text style={[styles.fulfillmentBadgeText, { color: '#059669' }]}>
+                            45 MINS
+                          </Text>
+                        </View>
                       </View>
-                      <View style={[styles.fulfillmentBadge, { backgroundColor: flashmartAvailable ? '#ECFDF5' : '#F1F5F9' }]}>
-                        <Text style={[styles.fulfillmentBadgeText, { color: flashmartAvailable ? '#059669' : '#94A3B8' }]}>
-                          45 MINS
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
-                      {flashmartAvailable ? '⚡ Try & Buy at doorstep from FlashFits Hub' : 'Not available in your area'}
-                    </Text>
-                  </TouchableOpacity>
+                      <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                        ⚡ Try & Buy at doorstep from FlashFits Hub
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
-                  {/* Option 2: Dynamic Merchant Store Try & Buy */}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    disabled={!directStoreAvailable}
-                    onPress={() => {
-                      setSelectedFulfillmentMode('directStore');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    style={[
-                      styles.fulfillmentCard,
-                      selectedFulfillmentMode === 'directStore' && styles.fulfillmentCardActiveStore,
-                      !directStoreAvailable && styles.fulfillmentCardDisabled,
-                    ]}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
-                        <Ionicons
-                          name={selectedFulfillmentMode === 'directStore' ? "radio-button-on" : "radio-button-off"}
-                          size={18}
-                          color={selectedFulfillmentMode === 'directStore' ? '#F59E0B' : '#94A3B8'}
-                        />
-                        <Ionicons name="storefront-outline" size={16} color={directStoreAvailable ? '#F59E0B' : '#94A3B8'} />
-                        <Text style={[styles.fulfillmentTitle, !directStoreAvailable && styles.disabledText]} numberOfLines={1}>
-                          {merchantShopName} Try & Buy
-                        </Text>
+                  {/* Option 2: Dynamic Merchant Store Try & Buy - Only show if available */}
+                  {directStoreAvailable && (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setSelectedFulfillmentMode('directStore');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      style={[
+                        styles.fulfillmentCard,
+                        selectedFulfillmentMode === 'directStore' && styles.fulfillmentCardActiveStore,
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                          <Ionicons
+                            name={selectedFulfillmentMode === 'directStore' ? "radio-button-on" : "radio-button-off"}
+                            size={18}
+                            color={selectedFulfillmentMode === 'directStore' ? '#F59E0B' : '#94A3B8'}
+                          />
+                          <Ionicons name="storefront-outline" size={16} color="#F59E0B" />
+                          <Text style={styles.fulfillmentTitle} numberOfLines={1}>
+                            {merchantShopName} (Shop)
+                          </Text>
+                        </View>
+                        <View style={[styles.fulfillmentBadge, { backgroundColor: '#FEF3C7' }]}>
+                          <Text style={[styles.fulfillmentBadgeText, { color: '#D97706' }]}>
+                            45–60 MINS
+                          </Text>
+                        </View>
                       </View>
-                      <View style={[styles.fulfillmentBadge, { backgroundColor: directStoreAvailable ? '#FEF3C7' : '#F1F5F9' }]}>
-                        <Text style={[styles.fulfillmentBadgeText, { color: directStoreAvailable ? '#D97706' : '#94A3B8' }]}>
-                          45–60 MINS
-                        </Text>
-                      </View>
+                      <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                        🏪 Doorstep Try & Buy directly from {merchantShopName}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* If neither Try & Buy option is available */}
+                  {!hasAnyTryAndBuy && (
+                    <View style={{ padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                      <Text style={{ fontSize: 12, color: '#64748B', fontFamily: Typography.fontFamily.medium }}>
+                        ⚡ Doorstep Try & Buy is currently unavailable for this item in your area. You can order with Pan-India Courier delivery below.
+                      </Text>
                     </View>
-                    <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
-                      {directStoreAvailable 
-                        ? `🏪 Doorstep Try & Buy directly from ${merchantShopName}`
-                        : 'Beyond 7 km Try & Buy radius'}
-                    </Text>
-                  </TouchableOpacity>
+                  )}
 
                   {/* Option 3: Pan-India Courier */}
                   <TouchableOpacity
@@ -1340,7 +1329,11 @@ const ProductDetailPage = () => {
                 <>
                   <Ionicons name="bag-add-outline" size={18} color="#FFFFFF" />
                   <Text style={{ color: '#FFFFFF', fontSize: 14, fontFamily: Typography.fontFamily.bold }}>
-                    Confirm & Add to Bag
+                    {selectedFulfillmentMode === 'flashmart'
+                      ? 'Add to Warehouse Cart'
+                      : selectedFulfillmentMode === 'directStore'
+                      ? `Add to ${product?.shopMerchantName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Shop'} Cart`
+                      : 'Confirm & Add to Bag'}
                   </Text>
                 </>
               )}
@@ -1830,9 +1823,10 @@ const styles = StyleSheet.create({
   },
   cartBtnText: {
     color: '#FFFFFF',
-    fontSize: 12.5,
-    fontFamily: Typography.fontFamily.semiBold,
-    letterSpacing: 0.3,
+    fontSize: 13.5,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   relatedSection: {
     marginTop: 30,

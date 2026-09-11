@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "@/context/CartContext";
 import { useCourierCart } from "@/context/CourierCartContext";
 import * as Haptics from "expo-haptics";
+import { BrandColors } from "@/constants/theme";
 
 const KEYWORDS = ['Sneakers', 'Jeans', 'Summer Wear', 'Accessories', 'T-Shirts', 'Jackets'];
 
@@ -69,7 +70,7 @@ export default function HomeHeader({
           hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
         >
           <View style={styles.locationPin} pointerEvents="none">
-            <Ionicons name="location" size={20} color="#000" />
+            <Ionicons name="location" size={18} color={BrandColors.primary} />
           </View>
           <View style={styles.addressInfo} pointerEvents="none">
             <View style={styles.addressRow} pointerEvents="none">
@@ -92,7 +93,7 @@ export default function HomeHeader({
             hitSlop={{ top: 18, bottom: 18, left: 10, right: 10 }}
           >
             <View style={styles.iconWrapper} pointerEvents="none">
-              <MaterialCommunityIcons name="heart-outline" size={20} color="#1C1917" />
+              <MaterialCommunityIcons name="heart-outline" size={22} color={BrandColors.matteBlack} />
               {wishlistCount > 0 && (
                 <View style={[styles.badgeContainer, styles.topRightBadge]} pointerEvents="none">
                   <Text style={styles.badgeText}>
@@ -114,15 +115,15 @@ export default function HomeHeader({
             hitSlop={{ top: 18, bottom: 18, left: 10, right: 10 }}
           >
             <View style={styles.iconWrapper} pointerEvents="none">
-              <MaterialCommunityIcons name="shopping-outline" size={20} color="#1C1917" />
+              <MaterialCommunityIcons name="shopping-outline" size={22} color={BrandColors.matteBlack} />
 
               {/* Instant Cart Badge (Top Right) */}
               {instantCartCount > 0 && (
-                <View style={[styles.badgeContainer, styles.topRightBadge, { right:-8,paddingLeft: 2 }]} pointerEvents="none">
+                <View style={[styles.badgeContainer, styles.topRightBadge, { right:-8, paddingHorizontal: 4 }]} pointerEvents="none">
                   <Text style={styles.badgeText}>
                     {instantCartCount > 99 ? '99+' : instantCartCount}
                   </Text>
-                  <Ionicons name="flash" size={8} color="#1C1917" style={{ marginLeft: 0.5 }} />
+                  <Ionicons name="flash" size={8} color="#FFFFFF" style={{ marginLeft: 0.5 }} />
                 </View>
               )}
 
@@ -154,7 +155,7 @@ export default function HomeHeader({
             hitSlop={{ top: 18, bottom: 18, left: 10, right: 14 }}
           >
             <View style={styles.iconWrapper} pointerEvents="none">
-              <MaterialCommunityIcons name="menu" size={22} color="#1C1917" />
+              <MaterialCommunityIcons name="menu" size={24} color={BrandColors.matteBlack} />
             </View>
           </TouchableOpacity>
         </View>
@@ -166,7 +167,7 @@ export default function HomeHeader({
         activeOpacity={0.9}
         onPress={() => {/* TODO: Search Screen */ }}
       >
-        <Ionicons name="search" size={16} color="#999" style={styles.searchIcon} />
+        <Ionicons name="search" size={17} color="#94A3B8" style={styles.searchIcon} />
         <View style={styles.searchTextContainer}>
           <Text style={styles.staticSearchText}>Search </Text>
           <Animated.Text style={[styles.animatedSearchText, { opacity: fadeAnim }]}>
@@ -174,7 +175,7 @@ export default function HomeHeader({
           </Animated.Text>
         </View>
         <View style={styles.micButton}>
-          <MaterialCommunityIcons name="microphone-outline" size={16} color="#666" />
+          <MaterialCommunityIcons name="microphone-outline" size={17} color={BrandColors.matteBlack} />
         </View>
       </TouchableOpacity>
     </View>
@@ -183,22 +184,22 @@ export default function HomeHeader({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#fff",
+    backgroundColor: BrandColors.surface,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   topRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   locationContainer: {
     flexDirection: "row",
@@ -210,7 +211,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: BrandColors.softCyan,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
@@ -225,7 +226,7 @@ const styles = StyleSheet.create({
   addressText: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#000",
+    color: BrandColors.matteBlack,
     flexShrink: 1,
   },
   chevron: {
@@ -233,15 +234,18 @@ const styles = StyleSheet.create({
   },
   subText: {
     fontSize: 11,
-    color: "#888",
+    color: BrandColors.textMuted,
     marginTop: 1,
   },
   actionIcons: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 14,
   },
   iconButton: {
+    padding: 2,
+  },
+  profileButton: {
     padding: 2,
   },
   iconWrapper: {
@@ -254,32 +258,40 @@ const styles = StyleSheet.create({
     position: "absolute",
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: BrandColors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    minWidth: 16,
+    justifyContent: "center",
   },
   badgeText: {
-    color: "#1C1917",
-    fontSize: 10,
+    color: "#FFFFFF",
+    fontSize: 9,
     fontWeight: "800",
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
     lineHeight: 11,
   },
   topRightBadge: {
-    top: -3,
+    top: -4,
     right: -6,
   },
   bottomRightBadge: {
-    bottom: -3,
+    bottom: -4,
     right: -6,
   },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f7f7f7",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 40,
+    backgroundColor: BrandColors.offWhiteAlt,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: BrandColors.border,
+    paddingHorizontal: 14,
+    height: 44,
   },
   searchIcon: {
-    marginRight: 6,
+    marginRight: 8,
   },
   searchTextContainer: {
     flex: 1,
@@ -288,18 +300,18 @@ const styles = StyleSheet.create({
   },
   staticSearchText: {
     fontSize: 13,
-    color: "#999",
+    color: "#94A3B8",
   },
   animatedSearchText: {
     fontSize: 13,
-    color: "#333",
+    color: BrandColors.matteBlack,
     fontWeight: "600",
   },
   micButton: {
     width: 28,
     height: 28,
-    borderRadius: 8,
-    backgroundColor: "rgba(148,163,184,0.12)",
+    borderRadius: 14,
+    backgroundColor: BrandColors.softCyan,
     alignItems: "center",
     justifyContent: "center",
   },

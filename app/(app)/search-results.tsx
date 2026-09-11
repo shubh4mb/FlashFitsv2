@@ -2,8 +2,10 @@ import { fetchCategories } from '@/api/categories';
 import { fetchMerchants } from '@/api/merchants';
 import { fetchFilteredProducts } from '@/api/products';
 import Loader from '@/components/common/Loader';
-import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import ProductCard from '@/components/common/ProductCard';
+import ColorFamilySelector from '@/components/common/ColorFilter';
+import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import { COLOR_FAMILIES, POPULAR_COLORS } from '@/utils/colors';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
@@ -91,6 +93,8 @@ export default function SearchResultsScreen() {
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>(flashmart === 'true' ? 'tryAndBuy' : null);
   const [collectionFilter, setCollectionFilter] = useState<string | undefined>(collectionId);
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(merchantId ? [merchantId] : []);
+  const [selectedColorFamily, setSelectedColorFamily] = useState<string>('ALL');
+  const [selectedColorHex, setSelectedColorHex] = useState<string>('');
 
   const [isSortModalVisible, setIsSortModalVisible] = useState(false);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
@@ -121,6 +125,16 @@ export default function SearchResultsScreen() {
     try {
       const { lat, lng } = getCoords();
 
+      let colorsToFilter: string[] | undefined = undefined;
+      if (selectedColorHex) {
+        colorsToFilter = [selectedColorHex];
+      } else if (selectedColorFamily && selectedColorFamily.toUpperCase() !== 'ALL') {
+        const famData = COLOR_FAMILIES.find(f => f.family.toUpperCase() === selectedColorFamily.toUpperCase());
+        if (famData) {
+          colorsToFilter = famData.colors.map(c => c.hex);
+        }
+      }
+
       const response = await fetchFilteredProducts({
         search: query,
         page: pageNum,
@@ -133,6 +147,7 @@ export default function SearchResultsScreen() {
         deliveryMode: deliveryMode,
         collectionId: collectionFilter,
         selectedStores: selectedStoreIds.length > 0 ? selectedStoreIds : undefined,
+        selectedColors: colorsToFilter,
         lat,
         lng,
       });
@@ -474,6 +489,50 @@ export default function SearchResultsScreen() {
               })}
             </View>
 
+            {/* Color Filter */}
+            <Text style={[styles.filterSectionTitle, { marginTop: 24 }]}>Shop by Color</Text>
+            <ColorFamilySelector 
+              selectedFamily={selectedColorFamily}
+              onSelectFamily={(fam) => {
+                setSelectedColorFamily(fam);
+                setSelectedColorHex(''); // reset specific color when family changes
+              }}
+              showAllOption={true}
+            />
+
+            {selectedColorFamily.toUpperCase() !== 'ALL' && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', gap: 12, paddingLeft: 16, paddingRight: 16 }}>
+                  {(COLOR_FAMILIES.find((f) => f.family.toUpperCase() === selectedColorFamily.toUpperCase())?.colors || [])
+                    .map((c) => {
+                      const isSelected = selectedColorHex === c.hex;
+                      return (
+                        <TouchableOpacity
+                          key={`${c.name}_${c.hex}`}
+                          style={[{ alignItems: 'center', justifyContent: 'center' }]}
+                          onPress={() => setSelectedColorHex(isSelected ? '' : c.hex)}
+                        >
+                          <View 
+                            style={[{ 
+                              width: 32, 
+                              height: 32, 
+                              borderRadius: 16, 
+                              backgroundColor: c.hex,
+                              borderWidth: c.hex.toLowerCase() === '#ffffff' ? 1 : (isSelected ? 2 : 0),
+                              borderColor: isSelected ? theme.primary : '#CBD5E1',
+                              marginBottom: 4
+                            }]} 
+                          />
+                          <Text style={{ fontSize: 10, color: isSelected ? theme.primary : '#64748B', fontFamily: Typography.fontFamily.medium }}>
+                            {c.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                  })}
+                </View>
+              </ScrollView>
+            )}
+
             <View style={{ height: 24 }} />
           </ScrollView>
 
@@ -487,6 +546,8 @@ export default function SearchResultsScreen() {
                 setGenderFilter('');
                 setDeliveryMode(null);
                 setSelectedStoreIds([]);
+                setSelectedColorFamily('ALL');
+                setSelectedColorHex('');
               }}
             >
               <Text style={styles.resetButtonText}>Reset</Text>
@@ -533,7 +594,7 @@ export default function SearchResultsScreen() {
             <Ionicons name="chevron-back" size={24} color="#0F172A" />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerLabel}>Search results for</Text>
+            <Text style={styles.headerLabel}>{collectionFilter ? 'Curated Collection' : 'Search results for'}</Text>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {title || query || (categories.find(c => c._id === categoryId || c._id === subCategoryId)?.name || 'Products')}
             </Text>
@@ -623,7 +684,6 @@ export default function SearchResultsScreen() {
           <AnimatedFlashList
             data={products}
             renderItem={renderProduct}
-            estimatedItemSize={250}
             keyExtractor={(item: any, index: number) => `${item._id || index}-${item.variantId || index}`}
             numColumns={2}
             contentContainerStyle={[styles.listContent, { paddingTop: headerHeight }]}

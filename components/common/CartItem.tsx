@@ -178,9 +178,9 @@ const CartItem = ({ item, isCourier = false }: CartItemProps) => {
               
               <TouchableOpacity 
                 onPress={handleIncrement}
-                style={[styles.qtyButton, { borderColor: theme.primary, backgroundColor: theme.primary + '10' }]}
+                style={[styles.qtyButton, { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' }]}
               >
-                <Ionicons name="add" size={16} color={theme.primary} />
+                <Ionicons name="add" size={16} color="#1E293B" />
               </TouchableOpacity>
             </View>
           </View>

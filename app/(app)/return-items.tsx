@@ -207,6 +207,22 @@ export default function ReturnItemsScreen() {
           <Text style={styles.instructionText}>• Keep items ready for pickup</Text>
         </View>
 
+        {/* Delivery Fee Recovery Card (Scenario 2) */}
+        {parsedOrderData?.deliveryFeeRecovery?.required && parsedOrderData?.deliveryFeeRecovery?.status === 'pending' && (
+          <View style={[styles.instructionsCard, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
+            <View style={styles.instructionHeader}>
+              <Ionicons name="warning" size={18} color="#EF4444" />
+              <Text style={[styles.instructionTitle, { color: '#EF4444' }]}>Delivery Fee Required</Text>
+            </View>
+            <Text style={styles.instructionText}>
+              Your kept items did not meet the free delivery threshold.
+            </Text>
+            <Text style={[styles.instructionText, { fontWeight: '700', marginTop: 8 }]}>
+              Please pay ₹{parsedOrderData.deliveryFeeRecovery.amount} to the rider via their QR code.
+            </Text>
+          </View>
+        )}
+
         {/* Items Section */}
         <View style={styles.itemsSection}>
           <View style={styles.sectionTitleRow}>

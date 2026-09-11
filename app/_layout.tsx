@@ -6,6 +6,10 @@ import { WishlistProvider } from '@/context/WishlistContext';
 import { OffersProvider } from '@/context/OffersContext';
 import { AlertProvider } from '@/context/AlertContext';
 import GlobalAlert from '@/components/common/GlobalAlert';
+import { AppUpdateModal } from '@/components/modals/AppUpdateModal';
+import { useAppUpdate } from '@/hooks/useAppUpdate';
+import { RateAppModal } from '@/components/modals/RateAppModal';
+import { useRateApp } from '@/hooks/useRateApp';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -85,6 +89,8 @@ export default function RootLayout() {
                   <OffersProvider>
                     <RootNavigator />
                     <GlobalAlert />
+                    <AppUpdateGatekeeper />
+                    <RateAppGatekeeper />
                     <StatusBar style="dark" />
                     {showCustomSplash && (
                       <CustomSplashScreen onFinish={() => setShowCustomSplash(false)} />
@@ -97,6 +103,55 @@ export default function RootLayout() {
         </AuthProvider>
       </AlertProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function AppUpdateGatekeeper() {
+  const {
+    updateType,
+    isModalVisible,
+    versionPolicy,
+    currentAppVersion,
+    dismissOptionalUpdate,
+  } = useAppUpdate();
+
+  if (!versionPolicy || updateType === 'UP_TO_DATE') {
+    return null;
+  }
+
+  return (
+    <AppUpdateModal
+      visible={isModalVisible}
+      type={updateType}
+      currentVersion={currentAppVersion}
+      latestVersion={versionPolicy.latestVersion}
+      storeUrl={versionPolicy.storeUrl}
+      webUrl={versionPolicy.webUrl}
+      title={
+        updateType === 'MANDATORY'
+          ? versionPolicy.mandatoryTitle
+          : versionPolicy.optionalTitle
+      }
+      message={
+        updateType === 'MANDATORY'
+          ? versionPolicy.mandatoryMessage
+          : versionPolicy.optionalMessage
+      }
+      releaseNotes={versionPolicy.releaseNotes}
+      onDismiss={dismissOptionalUpdate}
+    />
+  );
+}
+
+function RateAppGatekeeper() {
+  const { isRateModalVisible, closeRateModal, markAsRated } = useRateApp();
+
+  return (
+    <RateAppModal
+      visible={isRateModalVisible}
+      onClose={closeRateModal}
+      onRateSuccess={markAsRated}
+    />
   );
 }
 

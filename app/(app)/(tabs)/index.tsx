@@ -1,10 +1,9 @@
-import { fetchCollectionsHome } from '@/api/collections';
-import { fetchMerchants } from '@/api/merchants';
-import { fetchBanners, fetchRecommendedProductsData, fetchTrendingProductsData, fetchnewArrivalsProductsData } from '@/api/products';
+import { fetchHomeFeedData } from '@/api/home';
 import logo from '@/assets/images/logo/logo.png';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import Skeleton from '@/components/common/Skeleton';
 import MainHeader from '@/components/layout/MainHeader';
+import CampaignHeroSection from '@/components/sections/CampaignHeroSection';
 import MerchantLogosSection from '@/components/sections/MerchantLogosSection';
 import OfferBanner from '@/components/sections/OfferBanner';
 import ProductHorizontalSection from '@/components/sections/ProductHorizontalSection';
@@ -12,13 +11,17 @@ import PromotionalCarousel from '@/components/sections/PromotionalCarousel';
 import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
 import TryComingSoonSection from '@/components/sections/TryComingSoonSection';
 import TryOfflineSection from '@/components/sections/TryOfflineSection';
+import TryGuaranteeBanner from '@/components/sections/TryGuaranteeBanner';
 import { Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
 import { useAuth } from '@/context/AuthContext';
+import { useCampaign } from '@/context/CampaignContext';
 import { useGender } from '@/context/GenderContext';
 import { Product } from '@/utils/recentlyViewed';
+import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Image,
@@ -26,17 +29,27 @@ import {
   NativeSyntheticEvent,
   StyleSheet,
   Text,
-  View
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 export default function HomeScreen() {
   const { signOut } = useAuth();
   const { selectedGender, selectedSubGender } = useGender();
-  const { userLocation, selectedAddress, tbAvailable, tbOffline } = useAddress();
+  const {
+    userLocation,
+    selectedAddress,
+    tbAvailable,
+    tbOffline,
+    openAddressModal,
+    enableLocation,
+  } = useAddress();
+  const { setCampaignFromCollections } = useCampaign();
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const [headerHeight, setHeaderHeight] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [enablingLocation, setEnablingLocation] = useState(false);
 
   const [trendingProducts, setTrendingProducts] = useState<Product[]>([]);
   const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
@@ -46,6 +59,10 @@ export default function HomeScreen() {
   const [merchants, setMerchants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const targetLat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
+  const targetLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+  const addressId = selectedAddress?._id;
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -53,26 +70,20 @@ export default function HomeScreen() {
         ? selectedSubGender.toUpperCase()
         : (selectedGender === 'Kids' ? 'KIDS' : selectedGender.toUpperCase());
 
-      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const feedData = await fetchHomeFeedData(apiGender, targetLat, targetLng);
 
-      const [trending, recommended, newArrivals, bannerData, merchantsResponse, collectionData] = await Promise.all([
-        fetchTrendingProductsData(apiGender, lat, lng),
-        fetchRecommendedProductsData(apiGender, lat, lng),
-        fetchnewArrivalsProductsData(apiGender, lat, lng),
-        fetchBanners(),
-        fetchMerchants(lat, lng, selectedGender, true),
-        fetchCollectionsHome(apiGender, lat, lng)
-      ]);
+      setTrendingProducts(Array.isArray(feedData?.trending) ? feedData.trending : (feedData?.trending?.products || feedData?.trending?.data || []));
+      setRecommendedProducts(Array.isArray(feedData?.recommended) ? feedData.recommended : (feedData?.recommended?.products || feedData?.recommended?.data || []));
+      setNewArrivalsProducts(Array.isArray(feedData?.newArrivals) ? feedData.newArrivals : (feedData?.newArrivals?.products || feedData?.newArrivals?.data || []));
+      
+      const parsedCollections = Array.isArray(feedData?.collections) ? feedData.collections : (feedData?.collections?.collections || feedData?.collections?.data || []);
+      setCollections(parsedCollections);
+      
+      // Feed collections to CampaignContext so it picks the hero campaign
+      setCampaignFromCollections(parsedCollections);
 
-
-
-      setTrendingProducts(Array.isArray(trending) ? trending : (trending?.products || trending?.data || []));
-      setRecommendedProducts(Array.isArray(recommended) ? recommended : (recommended?.products || recommended?.data || []));
-      setNewArrivalsProducts(Array.isArray(newArrivals) ? newArrivals : (newArrivals?.products || newArrivals?.data || []));
-      setCollections(Array.isArray(collectionData) ? collectionData : (collectionData?.collections || collectionData?.data || []));
-      setMerchants(merchantsResponse?.merchants || merchantsResponse?.data?.merchants || []);
-      setBanners(bannerData?.banners || bannerData || {});
+      setMerchants(feedData?.merchants?.merchants || feedData?.merchants?.data?.merchants || []);
+      setBanners(feedData?.banners?.banners || feedData?.banners || {});
     } catch (error: any) {
       if (!error?.isAuthError) {
         console.error('Error loading home data:', error);
@@ -80,7 +91,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedGender, selectedSubGender, userLocation, selectedAddress]);
+  }, [selectedGender, selectedSubGender, targetLat, targetLng, addressId]);
 
   useEffect(() => {
     loadData();
@@ -118,8 +129,49 @@ export default function HomeScreen() {
         >
           {headerHeight > 0 && <View style={{ height: headerHeight }} />}
 
-          {tbAvailable === null ? (
-            // ── Loading Availability ──
+          {(!selectedAddress && !userLocation) ? (
+            // ── Location / Address Not Chosen Yet ──
+            <View style={styles.promptContainer}>
+              <View style={styles.promptIconCircle}>
+                <Ionicons name="location-outline" size={38} color="#0F172A" />
+              </View>
+              <Text style={styles.promptTitle}>Where should we deliver?</Text>
+              <Text style={styles.promptSubtitle}>
+                Select a saved address or enable device location to view trending styles, partner stores, and 60-minute delivery in your area.
+              </Text>
+              <View style={styles.promptButtonsRow}>
+                <TouchableOpacity
+                  style={styles.promptPrimaryButton}
+                  activeOpacity={0.8}
+                  onPress={openAddressModal}
+                >
+                  <Ionicons name="home-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.promptPrimaryButtonText}>Select Delivery Address</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.promptSecondaryButton}
+                  activeOpacity={0.8}
+                  onPress={async () => {
+                    setEnablingLocation(true);
+                    await enableLocation();
+                    setEnablingLocation(false);
+                  }}
+                  disabled={enablingLocation}
+                >
+                  {enablingLocation ? (
+                    <ActivityIndicator size="small" color="#0F172A" />
+                  ) : (
+                    <>
+                      <Ionicons name="flash-outline" size={16} color="#0F172A" style={{ marginRight: 6 }} />
+                      <Text style={styles.promptSecondaryButtonText}>Enable Device Location</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : loading && tbAvailable === null ? (
+            // ── Initial Loading ──
             <View style={{ padding: 20 }}>
               <Skeleton width="100%" height={200} borderRadius={20} style={{ marginBottom: 24 }} />
               <Skeleton width="60%" height={24} borderRadius={10} style={{ marginBottom: 16 }} />
@@ -134,14 +186,23 @@ export default function HomeScreen() {
               {tbOffline ? (
                 <TryOfflineSection refreshKey={refreshKey} />
               ) : (
-                <TryComingSoonSection refreshKey={refreshKey} />
+                <TryComingSoonSection />
               )}
             </View>
           ) : (
             // ── Service Available ──
             <>
+              {/* Promotional Carousel */}
               <PromotionalCarousel />
+
+              {/* ═══ CAMPAIGN HERO (Swiggy-Inspired) ═══ */}
+              {/* Only renders when an active campaign exists via CampaignContext */}
+              <CampaignHeroSection />
+
+              {/* Verified Partner Stores Near You */}
               <MerchantLogosSection refreshKey={refreshKey} initialMerchants={merchants} />
+
+              {/* Offers & Flash Deals */}
               <OfferBanner />
 
               {/* Render Remote Collections */}
@@ -149,16 +210,22 @@ export default function HomeScreen() {
                 <ProductHorizontalSection
                   key={coll._id || idx}
                   title={coll.name ? coll.name.charAt(0).toUpperCase() + coll.name.slice(1) : ''}
-                  subtitle={coll.description ? coll.description.charAt(0).toUpperCase() + coll.description.slice(1) : 'Special curated list'}
+                  subtitle={coll.tagline || (coll.description ? coll.description.charAt(0).toUpperCase() + coll.description.slice(1) : 'Special curated list')}
                   products={coll.products || []}
                   isLoading={loading}
                   banner={coll.banner}
                   collectionId={coll._id}
+                  slug={coll.slug}
+                  campaignType={coll.campaignType}
+                  badgeText={coll.badgeText}
+                  theme={coll.theme}
                 />
               ))}
 
+              {/* Recently Viewed Fits */}
               <RecentlyViewedSection refreshKey={refreshKey} />
 
+              {/* New Arrivals */}
               <ProductHorizontalSection
                 title="New Arrivals"
                 subtitle="Fresh styles just for you"
@@ -168,6 +235,7 @@ export default function HomeScreen() {
                 sortBy="newest"
               />
 
+              {/* Trending Now */}
               <ProductHorizontalSection
                 title="Trending Now"
                 subtitle="Top picks for you"
@@ -177,6 +245,7 @@ export default function HomeScreen() {
                 sortBy="trending"
               />
 
+              {/* Curated Recommendations */}
               <ProductHorizontalSection
                 title="You May Like"
                 subtitle="Curated collection"
@@ -186,11 +255,15 @@ export default function HomeScreen() {
                 sortBy="trending"
               />
 
+              {/* The Try & Buy Promise Card */}
+              <TryGuaranteeBanner />
+
+              {/* Brand Footer */}
               <View style={{ padding: 20 }}>
                 <View style={styles.footer}>
                   <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
                   <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
-                  <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
+                  <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
                 </View>
               </View>
             </>
@@ -236,5 +309,80 @@ const styles = StyleSheet.create({
     width: 140,
     height: 60,
     opacity: 0.25,
+  },
+  promptContainer: {
+    paddingHorizontal: 28,
+    paddingVertical: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promptIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  promptTitle: {
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  promptSubtitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 28,
+    paddingHorizontal: 8,
+  },
+  promptButtonsRow: {
+    width: '100%',
+    gap: 12,
+  },
+  promptPrimaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F172A',
+    paddingVertical: 15,
+    borderRadius: 14,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  promptPrimaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.2,
+  },
+  promptSecondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    paddingVertical: 14,
+    borderRadius: 14,
+    width: '100%',
+  },
+  promptSecondaryButtonText: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.2,
   },
 });

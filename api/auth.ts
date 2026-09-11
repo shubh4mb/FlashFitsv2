@@ -31,8 +31,12 @@ export const checkDeliveryAvailability = async (lat: number, lng: number) => {
  * Authenticate user using Google ID Token
  * Returns { token, refreshToken, userId, isNewUser } on success
  */
-export const googleLogin = async (idToken: string) => {
-    const response = await api.post('/auth/google-login', { idToken });
+export const googleLogin = async (idToken: string, referralCode?: string) => {
+    const payload: any = { idToken };
+    if (referralCode) {
+        payload.referralCode = referralCode;
+    }
+    const response = await api.post('/auth/google-login', payload);
     return response.data;
 };
 
@@ -49,6 +53,14 @@ export const getUserProfile = async () => {
  */
 export const updateUserProfilePhone = async (phoneNumber: string) => {
     const response = await api.put('/user/profile/phone', { phoneNumber });
+    return response.data;
+};
+
+/**
+ * Get User Referral Stats
+ */
+export const getReferralStats = async () => {
+    const response = await api.get('/user/referral-stats');
     return response.data;
 };
 

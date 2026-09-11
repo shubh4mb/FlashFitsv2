@@ -5,7 +5,8 @@ import api from './axiosConfig';
 export const getAllOrders = async () => {
     try {
         const res = await api.get("/user/order/getAllOrders");
-        return res.data.orders;
+        const list = res.data?.data?.orders || res.data?.orders || res.data?.data;
+        return Array.isArray(list) ? list : [];
     } catch (error) {
         console.log(error, "error");
         throw error;
@@ -14,7 +15,7 @@ export const getAllOrders = async () => {
 
 export const getOrderById = async (orderId: string) => {
     const response = await api.get(`/user/order/${orderId}`);
-    return response.data;
+    return response.data?.data || response.data?.order || response.data;
 };
 
 /**
@@ -112,7 +113,7 @@ export const finalpaymentInitiate = async (payload: { orderId: string; items: an
             `/user/order/createFinalPaymentOrder/${orderId}`,
             { items }
         );
-        return res.data;
+        return res.data?.data || res.data;
     } catch (error: any) {
         console.error('Final payment initiate error:', error.response?.data || error.message);
         throw error;
@@ -130,7 +131,7 @@ export const finalPaymentVerify = async (paymentData: any, internalOrderId: stri
             razorpay_signature: paymentData.razorpay_signature,
             orderId: internalOrderId,
         });
-        return response.data;
+        return response.data?.data || response.data;
     } catch (error: any) {
         console.error('Final payment verify error:', error.response?.data || error.message);
         throw error;
@@ -190,7 +191,8 @@ export const verifyCourierOrderPayment = async (params: {
 export const getCourierOrders = async () => {
     try {
         const res = await api.get('/courier/orders');
-        return res.data.orders;
+        const list = res.data?.orders || res.data?.data?.orders || res.data?.data;
+        return Array.isArray(list) ? list : [];
     } catch (error) {
         console.error('Get courier orders error:', error);
         throw error;

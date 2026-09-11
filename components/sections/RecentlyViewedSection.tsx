@@ -105,7 +105,6 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         renderItem={renderItem}
         keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
         horizontal
-        estimatedItemSize={171}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"

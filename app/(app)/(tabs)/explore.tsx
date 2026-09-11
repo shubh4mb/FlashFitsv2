@@ -137,7 +137,7 @@ export default function ExploreScreen() {
     }
   };
 
-  const renderProduct = useCallback(({ item, index }: { item: Product; index: number }) => (
+  const renderProduct = useCallback(({ item, index }: { item: any; index: number }) => (
     <View style={[styles.cardWrapper, { marginBottom: 16, marginRight: index % 2 === 0 ? 10 : 0 }]}>
       <ProductCard
         product={item}
@@ -176,7 +176,6 @@ export default function ExploreScreen() {
         <AnimatedFlashList
           data={products}
           renderItem={renderProduct}
-          estimatedItemSize={250}
           keyExtractor={(item: any, index: number) => item._id || String(index)}
           numColumns={2}
           showsVerticalScrollIndicator={false}
@@ -211,7 +210,6 @@ export default function ExploreScreen() {
                 <FlashList
                   data={merchants}
                   horizontal
-                  estimatedItemSize={150}
                   showsHorizontalScrollIndicator={false}
                   keyExtractor={(item: any) => item._id}
                   contentContainerStyle={styles.merchantsList}

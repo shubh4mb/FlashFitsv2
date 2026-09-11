@@ -1,9 +1,10 @@
-import React, { createContext, ReactNode, useContext, useState, useEffect } from "react";
-import * as SecureStore from 'expo-secure-store'; // Note: SecureStore is imported but used later if needed
+import React, { createContext, ReactNode, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import * as SecureStore from 'expo-secure-store';
 import { Address, getAddresses } from "../api/address";
 import * as Location from 'expo-location';
 import { checkDeliveryAvailability } from "../api/auth";
 import { useAuth } from "./AuthContext";
+import { Alert, Linking } from "react-native";
 
 const SELECTED_ADDRESS_KEY = 'selectedAddress';
 
@@ -13,7 +14,7 @@ interface AddressContextType {
     addresses: Address[];
     setAddresses: (addresses: Address[]) => void;
     
-    // New Location States
+    // Location States
     userLocation: { latitude: number; longitude: number } | null;
     locationAddress: string | null;
     deliveryAvailable: boolean | null;
@@ -21,7 +22,15 @@ interface AddressContextType {
     tbOffline: boolean | null;
     locationPermission: Location.PermissionStatus | 'undetermined';
     locationLoading: boolean;
+    isLocationOff: boolean;
     detectLocation: () => Promise<void>;
+    enableLocation: () => Promise<boolean>;
+    refreshAddresses: () => Promise<Address[]>;
+
+    // Address / Location Modal State
+    isAddressModalVisible: boolean;
+    openAddressModal: () => void;
+    closeAddressModal: () => void;
 }
 
 const AddressContext = createContext<AddressContextType>({
@@ -36,7 +45,13 @@ const AddressContext = createContext<AddressContextType>({
     tbOffline: null,
     locationPermission: 'undetermined',
     locationLoading: true,
+    isLocationOff: false,
     detectLocation: async () => { },
+    enableLocation: async () => false,
+    refreshAddresses: async () => [],
+    isAddressModalVisible: false,
+    openAddressModal: () => { },
+    closeAddressModal: () => { },
 });
 
 export const distanceInMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -58,7 +73,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
     const [addresses, setAddresses] = useState<Address[]>([]);
     const { isAuthenticated } = useAuth();
     
-    // New States
+    // States
     const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
     const [locationAddress, setLocationAddress] = useState<string | null>(null);
     const [deliveryAvailable, setDeliveryAvailable] = useState<boolean | null>(null);
@@ -66,42 +81,115 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
     const [tbOffline, setTbOffline] = useState<boolean | null>(null);
     const [locationPermission, setLocationPermission] = useState<Location.PermissionStatus | 'undetermined'>('undetermined');
     const [locationLoading, setLocationLoading] = useState(true);
-    const [retryCount, setRetryCount] = useState(0);
+    const [isLocationOff, setIsLocationOff] = useState(false);
+    const [isAddressModalVisible, setIsAddressModalVisible] = useState(false);
 
-    const detectLocation = async () => {
+    const openAddressModal = useCallback(() => setIsAddressModalVisible(true), []);
+    const closeAddressModal = useCallback(() => setIsAddressModalVisible(false), []);
+
+    const refreshAddresses = useCallback(async (): Promise<Address[]> => {
+        if (!isAuthenticated) return [];
+        try {
+            const addressesRes = await getAddresses();
+            const userAddresses = addressesRes?.addresses || (Array.isArray(addressesRes) ? addressesRes : []);
+            setAddresses(userAddresses);
+            return userAddresses;
+        } catch {
+            console.log('Skipping saved addresses fetch (not authenticated or error)');
+            return [];
+        }
+    }, [isAuthenticated]);
+
+    const setSelectedAddress = useCallback(async (address: Address | null) => {
+        try {
+            setSelectedAddressState(address);
+            if (address) {
+                await SecureStore.setItemAsync(SELECTED_ADDRESS_KEY, JSON.stringify(address));
+            } else {
+                await SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY);
+            }
+        } catch (error) {
+            console.error('Failed to save address to SecureStore:', error);
+        }
+    }, []);
+
+    const detectLocation = useCallback(async () => {
         try {
             setLocationLoading(true);
-            
-            // 1. Request Permission
+
+            // Always fetch saved addresses in parallel so user can pick one immediately
+            const userAddressesPromise = refreshAddresses();
+
+            // 1. Check if location services are enabled on device
+            const servicesEnabled = await Location.hasServicesEnabledAsync();
+            if (!servicesEnabled) {
+                console.log('[AddressContext] Device location services are turned OFF');
+                setIsLocationOff(true);
+                setLocationLoading(false);
+                await userAddressesPromise;
+                // If user doesn't have a selected address, automatically show the selection modal
+                if (!selectedAddress) {
+                    setIsAddressModalVisible(true);
+                }
+                return;
+            }
+
+            // 2. Request Foreground Permission
             const { status } = await Location.requestForegroundPermissionsAsync();
             setLocationPermission(status);
             
             if (status !== 'granted') {
+                console.log('[AddressContext] Location permission NOT granted:', status);
+                setIsLocationOff(true);
                 setLocationLoading(false);
+                await userAddressesPromise;
+                // If user doesn't have a selected address, prompt them with the selection modal
+                if (!selectedAddress) {
+                    setIsAddressModalVisible(true);
+                }
                 return;
             }
 
-            // 2. Get Coordinates
-            const location = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Balanced,
-            });
+            // 3. Get Coordinates with Timeout & Last Known Fallback
+            let location: Location.LocationObject | null = null;
+            try {
+                location = await Promise.race([
+                    Location.getCurrentPositionAsync({
+                        accuracy: Location.Accuracy.Balanced,
+                    }),
+                    new Promise<null>((resolve) => setTimeout(() => resolve(null), 4500)),
+                ]);
+            } catch (posErr) {
+                console.warn('getCurrentPositionAsync error, will attempt last known:', posErr);
+            }
+
+            if (!location) {
+                try {
+                    location = await Location.getLastKnownPositionAsync();
+                } catch (lastErr) {
+                    console.warn('getLastKnownPositionAsync error:', lastErr);
+                }
+            }
+
+            if (!location) {
+                console.log('[AddressContext] Could not retrieve location coordinates');
+                setIsLocationOff(true);
+                setLocationLoading(false);
+                await userAddressesPromise;
+                if (!selectedAddress) {
+                    setIsAddressModalVisible(true);
+                }
+                return;
+            }
+
+            // Location obtained successfully
+            setIsLocationOff(false);
             const lat = location.coords.latitude;
             const lng = location.coords.longitude;
             setUserLocation({ latitude: lat, longitude: lng });
 
-            // 3. Fetch Saved Addresses
-            let userAddresses: Address[] = [];
-            if (isAuthenticated) {
-                try {
-                    const addressesRes = await getAddresses();
-                    userAddresses = addressesRes?.addresses || (Array.isArray(addressesRes) ? addressesRes : []);
-                    setAddresses(userAddresses);
-                } catch (e) {
-                    console.log('Skipping saved addresses fetch (not authenticated or error)');
-                }
-            }
-
-            // 4. Proximity Match
+            // 4. Proximity Match with saved addresses
+            const userAddresses = await userAddressesPromise;
             let bestMatch: Address | null = null;
             let minFoundDist = 100; // 100m threshold
 
@@ -109,7 +197,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 if (addr.location?.coordinates && Array.isArray(addr.location.coordinates)) {
                     const [c1, c2] = addr.location.coordinates;
                     const d1 = distanceInMeters(lat, lng, Number(c2), Number(c1));
-                    const d2 = distanceInMeters(lat, lng, Number(c1), Number(c2)); // rotated check
+                    const d2 = distanceInMeters(lat, lng, Number(c1), Number(c2));
                     const dist = Math.min(d1, d2);
                     if (dist < minFoundDist) {
                         minFoundDist = dist;
@@ -131,15 +219,18 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 return;
             }
 
-            // 5. Fallback: Check Availability and Reverse Geocode
+            // 5. Reverse Geocode with Timeout
             try {
-                // The useEffect will handle syncing availability, but we do the initial fetch here 
-                // so we can use the same check to avoid race conditions. Actually, let's just let
-                // the useEffect handle the availability, but we need to do reverse geocoding here.
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3500);
                 const resp = await fetch(
                     `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-                    { headers: { "User-Agent": "FlashFitsApp/1.0 (contact@flashfits.com)" } }
+                    {
+                        headers: { "User-Agent": "FlashFitsApp/1.0 (contact@flashfits.com)" },
+                        signal: controller.signal,
+                    }
                 );
+                clearTimeout(timeoutId);
                 const json = await resp.json();
                 const addressObj = json.address || {};
                 const shortAddress = [
@@ -150,19 +241,78 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 const postcode = addressObj.postcode || '';
                 setLocationAddress(postcode ? `${shortAddress}, ${postcode}` : shortAddress);
             } catch (err) {
-                console.error('Reverse geocode failed:', err);
-                setLocationAddress("Location found");
+                console.error('Reverse geocode failed or timed out:', err);
+                setLocationAddress("Current Location");
             }
 
         } catch (error) {
             console.error('Location detection error:', error);
-            setDeliveryAvailable(false);
-            setTbAvailable(false);
-            setTbOffline(false);
+            setIsLocationOff(true);
         } finally {
             setLocationLoading(false);
         }
-    };
+    }, [refreshAddresses, selectedAddress, setSelectedAddress]);
+
+    const enableLocation = useCallback(async (): Promise<boolean> => {
+        try {
+            setLocationLoading(true);
+
+            // Check if device location services are enabled
+            const servicesEnabled = await Location.hasServicesEnabledAsync();
+            if (!servicesEnabled) {
+                setLocationLoading(false);
+                Alert.alert(
+                    "Location Services Disabled",
+                    "Please turn on location services in your phone settings to detect your location.",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { 
+                            text: "Open Settings", 
+                            onPress: () => {
+                                Linking.openSettings().catch(() => {});
+                            }
+                        }
+                    ]
+                );
+                return false;
+            }
+
+            // Request permission
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            setLocationPermission(status);
+
+            if (status !== 'granted') {
+                setLocationLoading(false);
+                Alert.alert(
+                    "Location Permission Required",
+                    "FlashFits needs location permission to show nearby partner stores and 60-minute delivery in your area.",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { 
+                            text: "Open Settings", 
+                            onPress: () => {
+                                Linking.openSettings().catch(() => {});
+                            }
+                        }
+                    ]
+                );
+                return false;
+            }
+
+            // Permission and services are active: detect coordinates
+            setIsLocationOff(false);
+            await detectLocation();
+            
+            // Switch to current location by clearing selectedAddress if user specifically pressed Enable Location
+            await setSelectedAddress(null);
+            closeAddressModal();
+            return true;
+        } catch (err) {
+            console.error('enableLocation error:', err);
+            setLocationLoading(false);
+            return false;
+        }
+    }, [detectLocation, setSelectedAddress, closeAddressModal]);
     
     // Handle Logout / Auth State Changes
     useEffect(() => {
@@ -175,15 +325,17 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             setDeliveryAvailable(null);
             setTbAvailable(null);
             setTbOffline(null);
+            setIsLocationOff(false);
+            setIsAddressModalVisible(false);
             SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY).catch(e => 
                 console.error('Failed to clear address on logout:', e)
             );
         } else {
             // On Login or App Start while authenticated
-            // We only trigger detectLocation if we don't have a selection yet
-            // Or if we specifically want to refresh
             if (!selectedAddress) {
                 detectLocation();
+            } else {
+                refreshAddresses();
             }
         }
     }, [isAuthenticated]);
@@ -193,7 +345,11 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         const initialLoad = async () => {
             const saved = await SecureStore.getItemAsync(SELECTED_ADDRESS_KEY);
             if (saved) {
-                setSelectedAddressState(JSON.parse(saved));
+                try {
+                    setSelectedAddressState(JSON.parse(saved));
+                } catch (e) {
+                    console.error('Failed to parse saved address:', e);
+                }
             }
             await detectLocation();
         };
@@ -212,57 +368,70 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
 
             if (lat !== undefined && lng !== undefined) {
                 try {
-                    // Set to null while fetching to avoid stale UI flashes
-                    setTbAvailable(null);
-                    setDeliveryAvailable(null);
-                    
                     const availability = await checkDeliveryAvailability(lat, lng);
                     
-                    setDeliveryAvailable(availability?.serviceable || false);
-                    setTbAvailable(availability?.tbAvailable || false);
-                    setTbOffline(availability?.allOffline || false);
+                    setDeliveryAvailable(availability?.serviceable ?? true);
+                    setTbAvailable(availability?.tbAvailable ?? false);
+                    setTbOffline(availability?.allOffline ?? false);
                 } catch (e) {
                     console.error('[AddressContext] Unified availability check failed:', e);
-                    setDeliveryAvailable(false);
+                    setDeliveryAvailable(true);
                     setTbAvailable(false);
                     setTbOffline(false);
                 }
+            } else {
+                // If neither address nor location is chosen, reset availability to null
+                // so the app knows location is pending rather than "not serviceable"
+                setDeliveryAvailable(null);
+                setTbAvailable(null);
+                setTbOffline(null);
             }
         };
 
         updateAvailability();
     }, [selectedAddress, userLocation]);
 
-    const setSelectedAddress = async (address: Address | null) => {
-        try {
-            setSelectedAddressState(address);
-            if (address) {
-                await SecureStore.setItemAsync(SELECTED_ADDRESS_KEY, JSON.stringify(address));
-            } else {
-                await SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY);
-            }
-        } catch (error) {
-            console.error('Failed to save address to SecureStore:', error);
-        }
-    };
+    const contextValue = useMemo(() => ({
+        selectedAddress,
+        setSelectedAddress,
+        addresses,
+        setAddresses,
+        userLocation,
+        locationAddress,
+        deliveryAvailable,
+        tbAvailable,
+        tbOffline,
+        locationPermission,
+        locationLoading,
+        isLocationOff,
+        detectLocation,
+        enableLocation,
+        refreshAddresses,
+        isAddressModalVisible,
+        openAddressModal,
+        closeAddressModal,
+    }), [
+        selectedAddress,
+        setSelectedAddress,
+        addresses,
+        userLocation,
+        locationAddress,
+        deliveryAvailable,
+        tbAvailable,
+        tbOffline,
+        locationPermission,
+        locationLoading,
+        isLocationOff,
+        detectLocation,
+        enableLocation,
+        refreshAddresses,
+        isAddressModalVisible,
+        openAddressModal,
+        closeAddressModal,
+    ]);
 
     return (
-        <AddressContext.Provider
-            value={{
-                selectedAddress,
-                setSelectedAddress,
-                addresses,
-                setAddresses,
-                userLocation,
-                locationAddress,
-                deliveryAvailable,
-                tbAvailable,
-                tbOffline,
-                locationPermission,
-                locationLoading,
-                detectLocation,
-            }}
-        >
+        <AddressContext.Provider value={contextValue}>
             {children}
         </AddressContext.Provider>
     );

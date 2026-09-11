@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo, useRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import { 
   addToCart as addToCartApi, 
@@ -87,11 +87,15 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [deliveryTip, setDeliveryTip] = useState(0);
   const { isAuthenticated } = useAuth();
 
+  const inFlightRef = useRef(false);
+
   const fetchCart = useCallback(async (isSilent = false) => {
     if (!isAuthenticated) {
       setLoading(false);
       return;
     }
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       if (!isSilent) setLoading(true);
       const addressId = selectedAddress?._id || (selectedAddress as any)?.id;
@@ -113,6 +117,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error('Failed to fetch cart:', error);
     } finally {
+      inFlightRef.current = false;
       if (!isSilent) setLoading(false);
     }
   }, [isAuthenticated, selectedAddress, userLocation, deliveryTip]);
@@ -125,8 +130,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (!isAuthenticated) {
       setCart(null);
       setDeliveryTip(0);
-    } else {
-      fetchCart();
     }
   }, [isAuthenticated]);
 
@@ -266,21 +269,36 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [fetchCart]);
 
+  const contextValue = useMemo(() => ({
+    cart, 
+    loading, 
+    addToCart, 
+    updateQuantity, 
+    removeItem, 
+    clearCart,
+    refreshCart: fetchCart,
+    moveToCourier,
+    deliveryTip,
+    setDeliveryTip,
+    applyOffer,
+    removeOffer,
+  }), [
+    cart, 
+    loading, 
+    addToCart, 
+    updateQuantity, 
+    removeItem, 
+    clearCart,
+    fetchCart,
+    moveToCourier,
+    deliveryTip,
+    setDeliveryTip,
+    applyOffer,
+    removeOffer,
+  ]);
+
   return (
-    <CartContext.Provider value={{ 
-      cart, 
-      loading, 
-      addToCart, 
-      updateQuantity, 
-      removeItem, 
-      clearCart,
-      refreshCart: fetchCart,
-      moveToCourier,
-      deliveryTip,
-      setDeliveryTip,
-      applyOffer,
-      removeOffer
-    }}>
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );
