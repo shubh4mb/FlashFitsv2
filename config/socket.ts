@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { io, Socket } from 'socket.io-client';
 import * as SecureStore from 'expo-secure-store';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.0.102:5000';
+const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.137.1:5000';
 
 let socket: Socket | null = null;
 
@@ -13,6 +13,9 @@ export const initSocket = async (): Promise<Socket> => {
     if (!socket) {
         socket = io(BACKEND_URL, {
             transports: ['websocket'],
+            extraHeaders: {
+                'ngrok-skip-browser-warning': 'true',
+            },
             query: { userId: userId || '', role },
             reconnection: true,
             reconnectionAttempts: 10,

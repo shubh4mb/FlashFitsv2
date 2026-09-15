@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { View, Modal, ActivityIndicator, StyleSheet, Platform, Linking, Alert, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Modal, ActivityIndicator, StyleSheet, Platform, Linking, Alert, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useToast } from '@/context/AlertContext';
@@ -115,20 +116,56 @@ export default function RazorpayWebView({
 
   const handleShouldStartLoadWithRequest = (event: any) => {
     const { url } = event;
+    if (!url) return false;
     
-    // Allow http, https, and about:blank inside the webview
-    if (url.startsWith('http') || url.startsWith('https') || url.startsWith('about:blank')) {
+    // Allow http, https, about: (including about:blank and about:srcdoc), data:, blob:, and javascript: inside the webview
+    if (
+      url.startsWith('http://') ||
+      url.startsWith('https://') ||
+      url.startsWith('about:') ||
+      url.startsWith('data:') ||
+      url.startsWith('blob:') ||
+      url.startsWith('javascript:')
+    ) {
       return true;
     }
 
     // Attempt to open deep links (UPI apps like GPay, PhonePe, Paytm, etc.) natively
-    Linking.canOpenURL(url).then(supported => {
-      if (supported) {
-        Linking.openURL(url);
-      } else {
+    const openPaymentDeepLink = async () => {
+      try {
+        const canOpen = await Linking.canOpenURL(url);
+        if (canOpen) {
+          await Linking.openURL(url);
+          return;
+        }
+
+        // On iOS, generic upi:// schemes might return canOpenURL false even when an app is installed
+        const isUpiScheme = 
+          url.startsWith('upi://') || 
+          url.startsWith('phonepe://') || 
+          url.startsWith('tez://') || 
+          url.startsWith('paytmmp://') || 
+          url.startsWith('bhim://') || 
+          url.startsWith('credpay://') ||
+          url.startsWith('whatsapp://');
+
+        if (isUpiScheme) {
+          try {
+            await Linking.openURL(url);
+            return;
+          } catch (directErr) {
+            console.log('Direct open payment URL fallback failed:', directErr);
+          }
+        }
+
+        showToast({ message: 'No application found to handle this payment method.', type: 'error' });
+      } catch (err) {
+        console.error('An error occurred while opening payment link:', err);
         showToast({ message: 'No application found to handle this payment method.', type: 'error' });
       }
-    }).catch(err => console.error('An error occurred', err));
+    };
+
+    openPaymentDeepLink();
     
     // Prevent webview from trying to load the custom scheme itself
     return false;

@@ -26,6 +26,7 @@ import { getSocket } from '@/config/socket';
 import { calculateFinalBilling } from '@/utils/ItemSelectionCalculation';
 import RazorpayWebView from '@/components/common/RazorpayWebView';
 import { useAlert, useToast } from '@/context/AlertContext';
+import { applyCoupon as applyCouponApi, getAvailableOffers } from '@/api/offers';
 import CouponOffersModal from '@/components/modals/CouponOffersModal';
 import LiveOrderMap from '@/components/common/LiveOrderMap';
 
@@ -39,7 +40,7 @@ type Item = {
   size?: string;
   price: number;
   quantity: number;
-  tryStatus?: 'pending' | 'keep' | 'returned' | 'accepted';
+  tryStatus?: 'pending' | 'keep' | 'returned' | 'accepted' | 'return';
   returnReason?: string | null;
 };
 
@@ -179,6 +180,20 @@ export default function OrderTrackingScreen() {
   const [packageOpen, setPackageOpen] = useState(false);
   const [finalPaymentMethod, setFinalPaymentMethod] = useState<'online' | 'cod'>('cod');
   const [offersModalVisible, setOffersModalVisible] = useState(false);
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discount: number;
+    title?: string;
+    description?: string;
+    discountType?: 'percentage' | 'flat';
+    discountValue?: number;
+    maxDiscount?: number;
+    minCartValue?: number;
+    freeDelivery?: boolean;
+  } | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [availableOffers, setAvailableOffers] = useState<any[]>([]);
   const [billingSummary, setBillingSummary] = useState({
     baseAmount: 0,
     gst: 0,
@@ -240,23 +255,6 @@ export default function OrderTrackingScreen() {
       const data: OrderData = res?.order || res?.data || res;
       if (!data || !data._id) return null;
 
-      // Handle completed try phase -> redirect to return page only if paid and has returns
-      if (data.orderStatus === 'selection_made' && data.paymentStatus === 'paid') {
-        const hasReturns = data.items?.some((i: any) => i.tryStatus === 'returned');
-        if (hasReturns) {
-          router.replace({
-            pathname: '/return-items' as any,
-            params: {
-              orderId: data._id || cleanOrderId,
-              otp: data.otp || '',
-              items: JSON.stringify(data.items),
-              orderData: JSON.stringify(data),
-            },
-          });
-          return data.orderStatus;
-        }
-      }
-
       if (data.deliveryRiderStatus === 'at_delivery' || data.orderStatus === 'try_phase') {
         hasNotifiedArrival.current = true;
       }
@@ -272,8 +270,16 @@ export default function OrderTrackingScreen() {
       }
 
       if (data.items) {
-        setItems(data.items.map(i => ({ ...i, tryStatus: i.tryStatus || 'pending', returnReason: i.returnReason || null })));
-        const alreadySubmitted = data.orderStatus === 'selection_made' || data.items.some((i: any) => i.tryStatus === 'accepted' || i.tryStatus === 'returned');
+        setItems(data.items.map(i => {
+          const raw = (i.tryStatus as string | undefined);
+          const mapped: 'keep' | 'returned' | 'pending' = (raw === 'accepted' || raw === 'keep')
+            ? 'keep'
+            : (raw === 'returned' || raw === 'return')
+              ? 'returned'
+              : 'pending';
+          return { ...i, tryStatus: mapped, returnReason: i.returnReason || null };
+        }));
+        const alreadySubmitted = data.orderStatus === 'selection_made' || data.items.some((i: any) => i.tryStatus === 'accepted' || i.tryStatus === 'keep' || i.tryStatus === 'returned');
         if (alreadySubmitted) {
           setIsSelectionSubmitted(true);
         }
@@ -318,23 +324,6 @@ export default function OrderTrackingScreen() {
       listenOrderUpdates((update: any) => {
         console.log('📦 Order update:', update);
 
-        // Handle completed try phase -> redirect if returns exist and paid
-        if (update.orderStatus === 'selection_made' && update.paymentStatus === 'paid') {
-          const hasReturns = (update.items || items)?.some((i: any) => i.tryStatus === 'returned');
-          if (hasReturns) {
-            router.replace({
-              pathname: '/return-items' as any,
-              params: {
-                orderId: cleanOrderId,
-                otp: update.otp || otp,
-                items: JSON.stringify(update.items || items),
-                orderData: JSON.stringify(order),
-              },
-            });
-            return;
-          }
-        }
-
         if ((update.deliveryRiderStatus === 'at_delivery' || update.orderStatus === 'try_phase') && !hasNotifiedArrival.current) {
           hasNotifiedArrival.current = true;
           Notifications.scheduleNotificationAsync({
@@ -377,7 +366,15 @@ export default function OrderTrackingScreen() {
           setOrder(prev => prev ? { ...prev, returnPhotos: update.returnPhotos } : prev);
         }
         if (update.items) {
-          setItems(update.items.map((i: any) => ({ ...i, tryStatus: i.tryStatus || 'pending', returnReason: i.returnReason || null })));
+          setItems(update.items.map((i: any) => {
+            const raw = i.tryStatus;
+            const mapped = (raw === 'accepted' || raw === 'keep')
+              ? 'keep'
+              : (raw === 'returned' || raw === 'return')
+                ? 'returned'
+                : 'pending';
+            return { ...i, tryStatus: mapped, returnReason: i.returnReason || null };
+          }));
         }
         if (update.trialPhaseDuration && update.trialPhaseStart && !update.trialPhaseEnd) {
           setTrialActive(true);
@@ -432,8 +429,8 @@ export default function OrderTrackingScreen() {
 
             showAlert({
               title: '⏰ OTP Verified',
-              message: `OTP verified! Delivery partner is capturing verification photo.${data.overtimePenalty > 0 ? `\nOvertime fee: ₹${data.overtimePenalty}` : ''}`,
-              type: 'info',
+              message: `OTP verified! Please review your bill summary and complete payment.${data.overtimePenalty > 0 ? `\nOvertime fee: ₹${data.overtimePenalty}` : ''}`,
+              type: 'success',
             });
           }
         });
@@ -451,29 +448,22 @@ export default function OrderTrackingScreen() {
             if (data.hasReturns) {
               showAlert({
                 title: '💵 Cash Received!',
-                message: `Payment of ₹${data.amountCollected} has been confirmed by your delivery partner.\nPlease hand over the return items.`,
+                message: `Payment of ₹${data.amountCollected} confirmed. Your return items have been recorded and handed over.`,
                 type: 'success',
-                buttons: [{
-                  text: 'Handover Returns',
-                  onPress: () => {
-                    router.replace({
-                      pathname: '/return-items' as any,
-                      params: {
-                        orderId: cleanOrderId,
-                        otp: '',
-                        items: JSON.stringify(items.filter(i => i.tryStatus === 'returned')),
-                        orderData: JSON.stringify(order),
-                      },
-                    });
-                  }
-                }]
+                buttons: [
+                  { text: 'Order Details', onPress: () => {} },
+                  { text: 'View All Orders', onPress: () => router.replace('/orders' as any) }
+                ]
               });
             } else {
               showAlert({
                 title: '✅ Order Complete!',
                 message: `Payment of ₹${data.amountCollected} has been confirmed by your delivery partner.\nThank you for shopping with FlashFits!`,
                 type: 'success',
-                buttons: [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
+                buttons: [
+                  { text: 'Order Details', onPress: () => {} },
+                  { text: 'View All Orders', onPress: () => router.replace('/orders' as any) }
+                ]
               });
             }
           }
@@ -554,14 +544,175 @@ export default function OrderTrackingScreen() {
     );
   };
 
+  // ── Order Status Predicates ──
+  const status = order?.orderStatus || '';
+  const isTryPhase = ['try_phase', 'selection_made'].includes(status);
+  const isCompleted = ['completed', 'return_in_progress'].includes(status) || (status === 'selection_made' && order?.paymentStatus === 'paid');
+  const isTracking = ['placed', 'accepted', 'packed', 'in_transit'].includes(status);
+  const isRiderVerified = Boolean(order?.trialPhaseEnd || order?.photoVerified || (order as any)?.isPhotoVerified);
+  const hasSubmittedSelection = isSelectionSubmitted || order?.orderStatus === 'selection_made' || isRiderVerified;
+  // Show the live map only after the rider has picked up the items from the merchant
+  const isItemPickedUp =
+    status === 'in_transit' ||
+    ['picked_up', 'en_route_delivery', 'at_delivery'].includes(order?.deliveryRiderStatus) ||
+    order?.customerDeliveryStatus === 'on_the_way';
+
+  // ── Item Status Predicates ──
+  const isItemKept = (item: any) => item.tryStatus === 'keep' || item.tryStatus === 'accepted';
+  const isItemReturned = (item: any) => item.tryStatus === 'returned' || item.tryStatus === 'return';
+  const isItemDecided = (item: any) => isItemKept(item) || isItemReturned(item);
+
+  // ── Sync active coupon from order if available ──
+  useEffect(() => {
+    if (order?.couponCode && !appliedCoupon) {
+      const matchedOffer = order.appliedOffers?.find((o: any) => o.couponCode?.toUpperCase() === order.couponCode?.toUpperCase());
+      setAppliedCoupon({
+        code: order.couponCode,
+        discount: matchedOffer?.discountApplied || 0,
+        title: matchedOffer?.title || order.couponCode,
+        discountType: matchedOffer?.discountType,
+        discountValue: matchedOffer?.discountValue,
+        maxDiscount: (matchedOffer as any)?.maxDiscount,
+        minCartValue: (matchedOffer as any)?.conditions?.minCartValue,
+        freeDelivery: Boolean(matchedOffer?.freeDelivery),
+      });
+    }
+  }, [order?.couponCode, order?.appliedOffers]);
+
   // ── Calculate discount on kept items ──
   const appliedOffersList = order?.appliedOffers || [];
-  const keptItems = items.filter(i => i.tryStatus === 'keep');
+  const keptItems = items.filter(isItemKept);
   const keptSubtotal = keptItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
 
-  let discountToApply = 0;
+  // ── Fetch available offers for final stage ──
+  useEffect(() => {
+    if (!order) return;
+    const mid = order.merchantId?._id ? order.merchantId._id.toString() : (order.merchantId?.toString() || undefined);
+    getAvailableOffers(keptSubtotal, mid, 'try_and_buy')
+      .then((offers) => {
+        setAvailableOffers(offers || []);
+      })
+      .catch((err) => {
+        console.error('Failed to load available offers for order:', err);
+      });
+  }, [cleanOrderId, order?.merchantId, isRiderVerified, keptSubtotal]);
+
+  // ── Apply Coupon Code Handler ──
+  const handleApplyCouponCode = async (codeToApply?: string) => {
+    const code = (codeToApply || couponCodeInput).trim().toUpperCase();
+    if (!code) {
+      showToast({ message: 'Please enter a coupon code', type: 'warning' });
+      return false;
+    }
+
+    if (keptItems.length === 0 || keptSubtotal === 0) {
+      showToast({ message: 'Please select at least 1 item to keep before applying a coupon.', type: 'warning' });
+      return false;
+    }
+
+    setApplyingCoupon(true);
+    try {
+      const mid = order?.merchantId?._id ? order.merchantId._id.toString() : (order?.merchantId?.toString() || undefined);
+      const cartContext = {
+        items: keptItems.map(item => ({
+          ...item,
+          productId: (item as any).productId || item._id,
+          categoryId: (item as any).categoryId,
+          price: item.price,
+          quantity: item.quantity || 1,
+          merchantId: mid,
+        })),
+        subtotal: keptSubtotal,
+        merchantTotals: mid ? { [mid]: keptSubtotal } : {},
+      };
+
+      const res = await applyCouponApi(code, cartContext, 'try_and_buy');
+      if (res && res.success) {
+        const offer = res.offer || {};
+        const discountAmount = Number(res.discountAmount) || 0;
+        const isFree = Boolean(offer.freeDelivery);
+        setAppliedCoupon({
+          code,
+          discount: discountAmount,
+          title: offer.title || code,
+          description: offer.description,
+          discountType: offer.discountType,
+          discountValue: offer.discountValue,
+          maxDiscount: offer.maxDiscount,
+          minCartValue: offer.conditions?.minCartValue,
+          freeDelivery: isFree,
+        });
+        setCouponCodeInput('');
+        setOffersModalVisible(false);
+        showToast({
+          message: isFree && discountAmount === 0
+            ? `Coupon ${code} applied! Free Delivery unlocked 🎉`
+            : `Coupon ${code} applied! Saved ₹${discountAmount}`,
+          type: 'success',
+        });
+        return true;
+      } else {
+        showToast({
+          message: res?.message || 'Invalid coupon code',
+          type: 'error',
+        });
+        return false;
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || 'Failed to apply coupon';
+      showToast({ message: msg, type: 'error' });
+      return false;
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = async () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    showToast({ message: 'Coupon removed', type: 'info' });
+  };
+
+  const handleApplyOffer = async (offer: any) => {
+    if (offer.couponCode) {
+      return await handleApplyCouponCode(offer.couponCode);
+    }
+    showToast({ message: 'Store offers are automatically applied to qualifying items', type: 'info' });
+    return false;
+  };
+
+  const combinedOffersForModal = useMemo(() => {
+    const map = new Map<string, any>();
+    availableOffers.forEach((o: any) => {
+      const key = o._id?.toString() || o.couponCode || Math.random().toString();
+      map.set(key, o);
+    });
+    appliedOffersList.forEach((o: any) => {
+      const key = o._id?.toString() || o.offerId?.toString() || o.couponCode || 'applied';
+      if (!map.has(key)) {
+        map.set(key, {
+          _id: key,
+          title: o.title || o.couponCode || 'Applied Discount',
+          couponCode: o.couponCode,
+          requiresCoupon: !!o.couponCode,
+          discountAmount: o.discountApplied,
+          discountType: o.discountType,
+          discountValue: o.discountValue,
+          conditions: o.conditions,
+          description: o.description || (o.couponCode ? `Coupon code ${o.couponCode}` : 'Applied store promotion'),
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [availableOffers, appliedOffersList]);
+
+  // ── Auto-applied Store promotions (excluding coupon code offers) ──
+  let storeOffersDiscount = 0;
   if (appliedOffersList.length > 0 && keptSubtotal > 0) {
     for (const appliedOffer of appliedOffersList) {
+      if (appliedOffer.couponCode) {
+        continue;
+      }
       const minSpend = (appliedOffer as any).conditions?.minCartValue || (appliedOffer as any).conditions?.minOrderValue || 0;
       if (minSpend > 0 && keptSubtotal < minSpend) {
         continue;
@@ -569,22 +720,51 @@ export default function OrderTrackingScreen() {
       if (appliedOffer.discountType === 'percentage' && appliedOffer.discountValue) {
         let d = (keptSubtotal * appliedOffer.discountValue) / 100;
         if ((appliedOffer as any).maxDiscount) d = Math.min(d, (appliedOffer as any).maxDiscount);
-        discountToApply += d;
+        storeOffersDiscount += d;
       } else if (appliedOffer.discountType === 'flat' && appliedOffer.discountValue) {
-        discountToApply += Math.min(appliedOffer.discountValue, keptSubtotal);
+        storeOffersDiscount += Math.min(appliedOffer.discountValue, keptSubtotal);
       } else if (appliedOffer.discountApplied) {
-        discountToApply += appliedOffer.discountApplied;
+        storeOffersDiscount += appliedOffer.discountApplied;
       }
     }
-    discountToApply = Math.round(discountToApply);
   }
+  storeOffersDiscount = Math.round(storeOffersDiscount);
 
-  // ── Update billing whenever items change ──
+  // ── Dynamic Coupon Discount Calculation ──
+  let couponDiscount = 0;
+  if (appliedCoupon && keptSubtotal > 0) {
+    const minSpend = appliedCoupon.minCartValue || 0;
+    if (minSpend === 0 || keptSubtotal >= minSpend) {
+      if (appliedCoupon.discountType === 'percentage' && appliedCoupon.discountValue) {
+        let d = (keptSubtotal * appliedCoupon.discountValue) / 100;
+        if (appliedCoupon.maxDiscount) d = Math.min(d, appliedCoupon.maxDiscount);
+        couponDiscount = d;
+      } else if (appliedCoupon.discountType === 'flat' && appliedCoupon.discountValue) {
+        couponDiscount = Math.min(appliedCoupon.discountValue, keptSubtotal);
+      } else if (appliedCoupon.discount) {
+        couponDiscount = Math.min(appliedCoupon.discount, keptSubtotal);
+      }
+    }
+  }
+  couponDiscount = Math.round(couponDiscount);
+
+  // Combined discount to deduct from kept items total
+  const discountToApply = storeOffersDiscount + couponDiscount;
+
+  // ── Free Delivery Status & Charges ──
+  const isFreeDelivery = Boolean(
+    appliedCoupon?.freeDelivery || 
+    appliedOffersList.some((o: any) => o.freeDelivery)
+  );
+
+  const originalDeliveryCharge = Number(order?.originalDeliveryCharge ?? order?.deliveryCharge ?? 0);
+  const effectiveDeliveryCharge = isFreeDelivery ? 0 : originalDeliveryCharge;
+
   useEffect(() => {
     if (items.length > 0) {
       const summary = calculateFinalBilling({
         orderItems: [...items],
-        deliveryCharge: order?.originalDeliveryCharge ?? order?.deliveryCharge ?? 0,
+        deliveryCharge: effectiveDeliveryCharge,
         returnCharge: order?.originalReturnCharge ?? order?.returnCharge ?? 0,
         deliveryTip: order?.finalBilling?.deliveryTip ?? order?.deliveryTip ?? 0,
         discountToApply,
@@ -592,17 +772,11 @@ export default function OrderTrackingScreen() {
       });
       setBillingSummary(summary);
     }
-  }, [items, order?.originalDeliveryCharge, order?.deliveryCharge, order?.originalReturnCharge, order?.returnCharge, order?.finalBilling?.deliveryTip, order?.deliveryTip, order?.finalBilling?.overtimePenalty, order?.overtimePenalty, discountToApply]);
+  }, [items, effectiveDeliveryCharge, order?.originalReturnCharge, order?.returnCharge, order?.finalBilling?.deliveryTip, order?.deliveryTip, order?.finalBilling?.overtimePenalty, order?.overtimePenalty, discountToApply]);
 
   useEffect(() => {
-    if (order?.paymentMethod === 'cod') {
-      if (billingSummary.totalPayable > 1000) {
-        setFinalPaymentMethod('online');
-      } else {
-        setFinalPaymentMethod('cod');
-      }
-    }
-  }, [billingSummary.totalPayable, order?.paymentMethod]);
+    setFinalPaymentMethod('online');
+  }, []);
 
   // ── Item keep/return ──
   const handleItemUpdate = (index: number, tryStatus: 'keep' | 'returned', reason: string | null) => {
@@ -611,9 +785,9 @@ export default function OrderTrackingScreen() {
     setItems(updated);
   };
 
-  const allSelected = items.length > 0 && items.every(i => i.tryStatus === 'keep' || i.tryStatus === 'returned');
-  const hasReturns = items.some(i => i.tryStatus === 'returned');
-  const isAllReturned = items.every(i => i.tryStatus === 'returned');
+  const allSelected = items.length > 0 && items.every(isItemDecided);
+  const hasReturns = items.some(isItemReturned);
+  const isAllReturned = items.length > 0 && items.every(isItemReturned);
 
   // ── Confirm cloth selection without charging (waits for rider OTP & photo verification) ──
   const handleConfirmSelectionOnly = async () => {
@@ -628,8 +802,8 @@ export default function OrderTrackingScreen() {
         orderId: orderId!,
         items: items.map(i => ({
           itemId: i._id,
-          tryStatus: i.tryStatus,
-          returnReason: i.returnReason || null,
+          tryStatus: isItemReturned(i) ? 'return' : 'keep',
+          returnReason: isItemReturned(i) ? (i.returnReason || 'Not liked') : null,
         })),
       };
 
@@ -646,58 +820,31 @@ export default function OrderTrackingScreen() {
 
   // ── Submit selection & Pay (Triggered from Bill Summary Screen after rider verifies OTP & photo) ──
   const handleSubmitSelection = async () => {
-    if (!allSelected) {
-      showToast({ message: 'Please mark each item as Keep or Return.', type: 'warning' });
-      return;
-    }
-
     setSubmitting(true);
     try {
+      // Ensure all items are decided without blocking: any item explicitly returned stays returned, everything else is kept
+      const finalizedItems = items.map(i => {
+        const isRet = isItemReturned(i);
+        return {
+          itemId: i._id,
+          tryStatus: isRet ? 'returned' : 'keep',
+          returnReason: isRet ? (i.returnReason || 'Not liked') : null,
+        };
+      });
+
+      // Update state so UI stays in complete sync
+      setItems(prev => prev.map(i => ({
+        ...i,
+        tryStatus: isItemReturned(i) ? 'returned' : 'keep',
+      })));
+
+      // Always use online Razorpay payment for final payment
       const payload = {
         orderId: orderId!,
-        items: items.map(i => ({
-          itemId: i._id,
-          tryStatus: i.tryStatus,
-          returnReason: i.returnReason || null,
-        })),
-        finalPaymentMethod: order?.paymentMethod === 'cod' ? finalPaymentMethod : 'online',
+        items: finalizedItems,
+        couponCode: appliedCoupon ? appliedCoupon.code : '',
+        finalPaymentMethod: 'online',
       };
-
-      // If customer chose COD and prefers COD payment for kept items, bypass Razorpay final payment
-      if (order?.paymentMethod === 'cod' && finalPaymentMethod === 'cod' && !isAllReturned) {
-        const verifyResult = await confirmCodSelection({
-          orderId: orderId!,
-          items: items.map(i => ({
-            itemId: i._id,
-            tryStatus: i.tryStatus,
-            returnReason: i.returnReason || null,
-          })),
-          finalPaymentMethod: 'cod'
-        });
-
-        if (verifyResult.success) {
-          if (hasReturns) {
-            router.replace({
-              pathname: '/return-items' as any,
-              params: {
-                orderId: orderId!,
-                otp,
-                items: JSON.stringify(items.filter(i => i.tryStatus === 'returned')),
-                orderData: JSON.stringify(order),
-              },
-            });
-          } else {
-            showAlert({
-              title: '✅ Selection Confirmed!',
-              message: `Your selections have been recorded.\nPlease hand over ₹${billingSummary.totalPayable} cash to the delivery rider.`,
-              type: 'success',
-              buttons: [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
-            });
-          }
-        }
-        setSubmitting(false);
-        return;
-      }
 
       // initiate final payment order (this creates Razorpay order on backend)
       const res = await finalpaymentInitiate(payload);
@@ -707,62 +854,34 @@ export default function OrderTrackingScreen() {
         return;
       }
 
-      if (isAllReturned) {
-        // All items returned
-        if (res.isDeliveryFree) {
-          showAlert({
-            title: '🎁 Free Delivery Applied!',
-            message: 'All items returned. Delivery is free because of your applied offer. Please hand over the package to the delivery partner.',
-            type: 'success',
-            buttons: [{
-              text: 'OK',
-              onPress: () => {
-                router.replace({
-                  pathname: '/return-items' as any,
-                  params: {
-                    orderId: orderId!,
-                    otp,
-                    items: JSON.stringify(items),
-                    orderData: JSON.stringify(res.order || order),
-                  },
-                });
-              }
-            }]
-          });
-          return;
-        } else if (res.requiresDeliveryFee && res.deliveryFeeAmount > 0) {
-          showAlert({
-            title: 'Delivery Fee Due',
-            message: `All items returned. A delivery fee of ₹${res.deliveryFeeAmount} is payable directly to your delivery partner.`,
-            type: 'info',
-            buttons: [{
-              text: 'Pay Directly to Rider',
-              onPress: () => {
-                router.replace({
-                  pathname: '/return-items' as any,
-                  params: {
-                    orderId: orderId!,
-                    otp: res?.order?.otp || res?.otp || otp,
-                    items: JSON.stringify(items),
-                    orderData: JSON.stringify(res?.order || order),
-                  },
-                });
-              }
-            }]
-          });
-          return;
-        }
+      // If nothing is payable (₹0 due)
+      if (res.isDeliveryFree || billingSummary.totalPayable === 0) {
+        setOrder(prev => prev ? {
+          ...prev,
+          orderStatus: hasReturns ? 'return_in_progress' : 'completed',
+          paymentStatus: 'paid',
+          finalBilling: {
+            ...prev.finalBilling,
+            baseAmount: billingSummary.baseAmount,
+            totalPayable: 0,
+            deliveryCharge: 0,
+            discount: billingSummary.discountApplied,
+          }
+        } : null);
+        await fetchOrder();
 
-        // Default all-returned redirect
-        router.replace({
-          pathname: '/return-items' as any,
-          params: {
-            orderId: orderId!,
-            otp: res?.order?.otp || res?.otp || otp,
-            items: JSON.stringify(items),
-            orderData: JSON.stringify(res?.order || order),
-          },
+        showAlert({
+          title: hasReturns ? '✅ Return Complete!' : '✅ Order Confirmed!',
+          message: hasReturns
+            ? 'All items returned with ₹0 fee due. Package handed over to delivery partner.'
+            : 'All items kept with ₹0 due. Thank you for shopping with FlashFits!',
+          type: 'success',
+          buttons: [
+            { text: 'Order Details', onPress: () => {} },
+            { text: 'View All Orders', onPress: () => router.replace('/orders' as any) }
+          ]
         });
+        setSubmitting(false);
         return;
       }
 
@@ -800,26 +919,31 @@ export default function OrderTrackingScreen() {
         const verifyResult = await finalPaymentVerify(paymentData, internalOrderId);
 
         if (verifyResult.success) {
-          if (hasReturns) {
-            // Has return items - go to return handover page
-            router.replace({
-              pathname: '/return-items' as any,
-              params: {
-                orderId: internalOrderId,
-                otp,
-                items: JSON.stringify(items.filter(i => i.tryStatus === 'returned')),
-                orderData: JSON.stringify(order),
-              },
-            });
-          } else {
-            // All items kept - show success
-            showAlert({
-              title: '✅ Payment Successful!',
-              message: `All ${billingSummary.itemsAccepted} items kept.\nTotal: ₹${billingSummary.totalPayable}`,
-              type: 'success',
-              buttons: [{ text: 'View Orders', onPress: () => router.replace('/orders' as any) }]
-            });
-          }
+          setOrder(prev => prev ? {
+            ...prev,
+            orderStatus: hasReturns ? 'return_in_progress' : 'completed',
+            paymentStatus: 'paid',
+            finalBilling: {
+              ...prev.finalBilling,
+              baseAmount: billingSummary.baseAmount,
+              totalPayable: billingSummary.totalPayable,
+              deliveryCharge: billingSummary.deliveryCharge,
+              discount: billingSummary.discountApplied,
+            }
+          } : null);
+          await fetchOrder();
+
+          showAlert({
+            title: '✅ Payment Successful!',
+            message: hasReturns
+              ? `Payment of ₹${billingSummary.totalPayable} confirmed. Your return items have been recorded and handed over.`
+              : `Payment of ₹${billingSummary.totalPayable} confirmed! Thank you for shopping with FlashFits.`,
+            type: 'success',
+            buttons: [
+              { text: 'Order Details', onPress: () => {} },
+              { text: 'View All Orders', onPress: () => router.replace('/orders' as any) }
+            ]
+          });
         }
       } catch (paymentErr: any) {
         // Razorpay dismissal (user cancelled)
@@ -837,18 +961,6 @@ export default function OrderTrackingScreen() {
       setSubmitting(false);
     }
   };
-
-  const status = order?.orderStatus || '';
-  const isTryPhase = ['try_phase', 'selection_made'].includes(status);
-  const isCompleted = ['completed', 'return_in_progress'].includes(status);
-  const isTracking = ['placed', 'accepted', 'packed', 'in_transit'].includes(status);
-  const isRiderVerified = Boolean(order?.trialPhaseEnd && (order?.photoVerified || (order as any)?.isPhotoVerified));
-  const hasSubmittedSelection = isSelectionSubmitted || order?.orderStatus === 'selection_made' || isRiderVerified;
-  // Show the live map only after the rider has picked up the items from the merchant
-  const isItemPickedUp =
-    status === 'in_transit' ||
-    ['picked_up', 'en_route_delivery', 'at_delivery'].includes(order?.deliveryRiderStatus) ||
-    order?.customerDeliveryStatus === 'on_the_way';
 
   if (loading) {
     return (
@@ -1055,26 +1167,26 @@ export default function OrderTrackingScreen() {
 
                       <View style={styles.actionRow}>
                         <TouchableOpacity
-                          style={[styles.actionBtn, item.tryStatus === 'keep' && { backgroundColor: '#DCFCE7', borderColor: '#16A34A' }]}
+                          style={[styles.actionBtn, isItemKept(item) && { backgroundColor: '#DCFCE7', borderColor: '#16A34A' }]}
                           onPress={() => handleItemUpdate(idx, 'keep', null)}
                         >
-                          <Ionicons name={item.tryStatus === 'keep' ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18} color={item.tryStatus === 'keep' ? '#16A34A' : '#94A3B8'} />
-                          <Text style={[styles.actionText, item.tryStatus === 'keep' && { color: '#16A34A', fontWeight: '800' }]}>
+                          <Ionicons name={isItemKept(item) ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18} color={isItemKept(item) ? '#16A34A' : '#94A3B8'} />
+                          <Text style={[styles.actionText, isItemKept(item) && { color: '#16A34A', fontWeight: '800' }]}>
                             Keep
                           </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={[styles.actionBtn, item.tryStatus === 'returned' && { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}
+                          style={[styles.actionBtn, isItemReturned(item) && { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}
                           onPress={() => handleItemUpdate(idx, 'returned', item.returnReason || 'Not liked')}
                         >
-                          <Ionicons name={item.tryStatus === 'returned' ? 'arrow-undo-circle' : 'arrow-undo-circle-outline'} size={18} color={item.tryStatus === 'returned' ? '#EF4444' : '#94A3B8'} />
-                          <Text style={[styles.actionText, item.tryStatus === 'returned' && { color: '#EF4444', fontWeight: '800' }]}>
+                          <Ionicons name={isItemReturned(item) ? 'arrow-undo-circle' : 'arrow-undo-circle-outline'} size={18} color={isItemReturned(item) ? '#EF4444' : '#94A3B8'} />
+                          <Text style={[styles.actionText, isItemReturned(item) && { color: '#EF4444', fontWeight: '800' }]}>
                             Return
                           </Text>
                         </TouchableOpacity>
                       </View>
 
-                      {item.tryStatus === 'returned' && (
+                      {isItemReturned(item) && (
                         <TextInput
                           style={[styles.reasonInput, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}
                           placeholder="Feel free to add feedback (Optional)"
@@ -1174,13 +1286,9 @@ export default function OrderTrackingScreen() {
                   </View>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    {order?.photoVerified ? (
-                      <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
-                    ) : (
-                      <ActivityIndicator size="small" color="#6366F1" />
-                    )}
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: order?.photoVerified ? '#16A34A' : '#4F46E5' }}>
-                      {order?.photoVerified ? "3. Verification Photo Recorded" : "3. Awaiting Verification Photo..."}
+                    <Ionicons name="card-outline" size={20} color="#6366F1" />
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#4F46E5' }}>
+                      3. Bill & payment screen unlocks upon OTP verification
                     </Text>
                   </View>
                 </View>
@@ -1188,7 +1296,7 @@ export default function OrderTrackingScreen() {
                 <View style={{ backgroundColor: '#EFF6FF', borderRadius: 10, padding: 12, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Ionicons name="information-circle" size={18} color="#2563EB" />
                   <Text style={{ flex: 1, fontSize: 12, color: '#1D4ED8', lineHeight: 16 }}>
-                    Your bill summary and final payment screen will unlock as soon as your delivery partner finishes OTP and photo verification.
+                    Your bill summary and final payment screen will unlock as soon as your delivery partner enters your OTP.
                   </Text>
                 </View>
               </View>
@@ -1217,48 +1325,239 @@ export default function OrderTrackingScreen() {
                     <Text style={{ fontSize: 12, color: '#166534', marginTop: 2 }}>
                       {order?.trialPhaseDuration ? `Trial duration: ${order.trialPhaseDuration} mins.` : 'Trial verified by delivery partner.'} Please review your bill and complete payment.
                     </Text>
+                    {order?.photoVerified && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                        <Ionicons name="shield-checkmark" size={14} color="#16A34A" />
+                        <Text style={{ fontSize: 11, color: '#15803D', fontWeight: '600' }}>
+                          Return photo evidence recorded
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </View>
 
                 {/* Items Summary */}
                 <View style={{ marginBottom: 16 }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>
-                    Items Breakdown ({items.filter(i => i.tryStatus === 'keep' || i.tryStatus === 'accepted').length} kept, {items.filter(i => i.tryStatus === 'returned').length} returned)
+                    Items Breakdown ({items.filter(isItemKept).length} kept, {items.filter(isItemReturned).length} returned)
                   </Text>
-                  {items.map((item) => (
-                    <View key={item._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' }}>
-                      <View style={{ flex: 1 }}>
+                  {items.map((item, idx) => (
+                    <View key={item._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
                         <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>{item.name}</Text>
-                        <Text style={{ fontSize: 11, color: '#64748B' }}>Size: {item.size} • Status: <Text style={{ fontWeight: '700', color: item.tryStatus === 'keep' || item.tryStatus === 'accepted' ? '#16A34A' : '#EF4444' }}>{(item.tryStatus === 'keep' || item.tryStatus === 'accepted') ? 'KEPT' : 'RETURNED'}</Text></Text>
+                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                          Size: {item.size} • Status: <Text style={{ fontWeight: '700', color: isItemKept(item) ? '#16A34A' : '#EF4444' }}>{isItemKept(item) ? 'KEPT' : 'RETURNED'}</Text>
+                        </Text>
                       </View>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
-                        {(item.tryStatus === 'keep' || item.tryStatus === 'accepted') ? `₹${item.price * (item.quantity || 1)}` : '₹0'}
-                      </Text>
+                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                          {isItemKept(item) ? `₹${item.price * (item.quantity || 1)}` : '₹0'}
+                        </Text>
+                        <TouchableOpacity
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                            backgroundColor: isItemKept(item) ? '#FEF2F2' : '#DCFCE7',
+                            borderWidth: 1,
+                            borderColor: isItemKept(item) ? '#FECACA' : '#BBF7D0',
+                          }}
+                          onPress={() => handleItemUpdate(idx, isItemKept(item) ? 'returned' : 'keep', isItemKept(item) ? (item.returnReason || 'Not liked') : null)}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: isItemKept(item) ? '#EF4444' : '#16A34A' }}>
+                            {isItemKept(item) ? 'Return item' : 'Keep item'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   ))}
                 </View>
 
                 {/* Coupons & Offers Section (Post-Try Phase) */}
-                {appliedOffersList.length > 0 && (
-                  <View style={[styles.billingCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', marginBottom: 12 }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <MaterialCommunityIcons name="tag-check" size={18} color="#16A34A" />
-                        <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#166534' }}>
-                          Applied Offers & Coupons
-                        </Text>
+                <View style={[styles.billingCard, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, marginBottom: 16, padding: 14 }]}>
+                  {/* Section Title */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <MaterialCommunityIcons name="ticket-percent-outline" size={20} color={theme.primary} />
+                      <Text style={{ fontSize: 14, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }}>
+                        Coupons & Offers
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setOffersModalVisible(true)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
+                    >
+                      <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
+                        View All Offers ›
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Active Applied Coupon Card (if a coupon is applied) */}
+                  {appliedCoupon ? (
+                    <View
+                      style={{
+                        backgroundColor: '#F0FDF4',
+                        borderColor: '#86EFAC',
+                        borderWidth: 1.5,
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                          <View
+                            style={{
+                              backgroundColor: '#DCFCE7',
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              borderWidth: 1,
+                              borderColor: '#86EFAC',
+                            }}
+                          >
+                            <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#15803D', letterSpacing: 0.5 }}>
+                              {appliedCoupon.code}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: '#166534' }}>
+                              Coupon Applied!
+                            </Text>
+                            {appliedCoupon.minCartValue && keptSubtotal < appliedCoupon.minCartValue ? (
+                              <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#B45309', marginTop: 2 }}>
+                                ⚠️ Min. kept spend ₹{appliedCoupon.minCartValue} required
+                              </Text>
+                            ) : (
+                              <Text style={{ fontSize: 11, color: '#15803D', marginTop: 1 }}>
+                                {appliedCoupon.title ? appliedCoupon.title : 'Savings applied on kept items'}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={handleRemoveCoupon}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 8,
+                            backgroundColor: '#FEF2F2',
+                            borderWidth: 1,
+                            borderColor: '#FECACA',
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#EF4444' }}>
+                            Remove
+                          </Text>
+                        </TouchableOpacity>
                       </View>
-                      {discountToApply > 0 && (
-                        <View style={{ backgroundColor: '#16A34A', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 10, fontFamily: Typography.fontFamily.bold, color: '#FFFFFF' }}>
-                            Saved ₹{discountToApply}
+
+                      {appliedCoupon.freeDelivery && (
+                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#DCFCE7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#166534' }}>
+                            Delivery Fee Waived:
+                          </Text>
+                          <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                            {originalDeliveryCharge > 0 ? `FREE (Saved ₹${originalDeliveryCharge})` : 'FREE (₹0)'}
+                          </Text>
+                        </View>
+                      )}
+
+                      {(!appliedCoupon.minCartValue || keptSubtotal >= appliedCoupon.minCartValue) && couponDiscount > 0 && (
+                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#DCFCE7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#166534' }}>
+                            Discount deduction on final bill:
+                          </Text>
+                          <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                            - ₹{couponDiscount}
                           </Text>
                         </View>
                       )}
                     </View>
+                  ) : (
+                    /* Coupon Input Field when no coupon is applied */
+                    <View style={{ marginBottom: 8 }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: '#E2E8F0',
+                          paddingHorizontal: 12,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <MaterialCommunityIcons name="ticket-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+                        <TextInput
+                          style={{
+                            flex: 1,
+                            fontSize: 13,
+                            fontFamily: Typography.fontFamily.bold,
+                            color: '#0F172A',
+                            paddingVertical: 8,
+                            letterSpacing: 0.5,
+                          }}
+                          placeholder="Enter coupon code"
+                          placeholderTextColor="#94A3B8"
+                          value={couponCodeInput}
+                          onChangeText={(text) => setCouponCodeInput(text.toUpperCase())}
+                          autoCapitalize="characters"
+                          autoCorrect={false}
+                        />
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: couponCodeInput.trim() ? theme.primary : '#E2E8F0',
+                            paddingHorizontal: 14,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                          }}
+                          onPress={() => handleApplyCouponCode()}
+                          disabled={!couponCodeInput.trim() || applyingCoupon}
+                        >
+                          {applyingCoupon ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                fontFamily: Typography.fontFamily.bold,
+                                color: couponCodeInput.trim() ? '#FFFFFF' : '#94A3B8',
+                              }}
+                            >
+                              Apply
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
 
-                    {appliedOffersList.map((appliedItem: any, idx: number) => {
-                      const isCoupon = !!(appliedItem.couponCode || appliedItem.requiresCoupon);
+                      {/* Quick Offer Trigger */}
+                      <TouchableOpacity
+                        onPress={() => setOffersModalVisible(true)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4,
+                          marginTop: 8,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        <MaterialCommunityIcons name="tag-outline" size={14} color={theme.primary} />
+                        <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
+                          Tap to select from available coupons & offers ›
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Auto-applied store offers (if any non-coupon offers exist in order) */}
+                  {appliedOffersList
+                    .filter((o: any) => !o.couponCode && (!appliedCoupon || o.offerId !== (appliedCoupon as any)._id))
+                    .map((appliedItem: any, idx: number) => {
                       const minSpend = appliedItem.conditions?.minCartValue || appliedItem.conditions?.minOrderValue || 0;
                       const thresholdMet = minSpend === 0 || keptSubtotal >= minSpend;
 
@@ -1272,7 +1571,7 @@ export default function OrderTrackingScreen() {
                             backgroundColor: '#FFFFFF',
                             borderRadius: 10,
                             padding: 10,
-                            marginBottom: 6,
+                            marginTop: 6,
                             borderWidth: 1,
                             borderColor: thresholdMet ? '#DCFCE7' : '#FDE68A',
                           }}
@@ -1284,23 +1583,17 @@ export default function OrderTrackingScreen() {
                                   paddingHorizontal: 5,
                                   paddingVertical: 1,
                                   borderRadius: 4,
-                                  backgroundColor: isCoupon ? '#EDE9FE' : '#FEF3C7',
+                                  backgroundColor: '#FEF3C7',
                                   borderWidth: 1,
-                                  borderColor: isCoupon ? '#DDD6FE' : '#FDE68A',
+                                  borderColor: '#FDE68A',
                                 }}
                               >
-                                <Text
-                                  style={{
-                                    fontSize: 9,
-                                    fontFamily: Typography.fontFamily.bold,
-                                    color: isCoupon ? '#6D28D9' : '#B45309',
-                                  }}
-                                >
-                                  {isCoupon ? '🎟️ COUPON' : '🏷️ STORE OFFER (Auto-applied)'}
+                                <Text style={{ fontSize: 9, fontFamily: Typography.fontFamily.bold, color: '#B45309' }}>
+                                  🏷️ STORE OFFER (Auto-applied)
                                 </Text>
                               </View>
                               <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }}>
-                                {appliedItem.couponCode || appliedItem.title}
+                                {appliedItem.title || 'Store promotion'}
                               </Text>
                             </View>
                             {!thresholdMet && (
@@ -1309,26 +1602,15 @@ export default function OrderTrackingScreen() {
                               </Text>
                             )}
                           </View>
-
-                          {thresholdMet && discountToApply > 0 && (
+                          {thresholdMet && (appliedItem.discountApplied || 0) > 0 && (
                             <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
-                              - ₹{discountToApply}
+                              - ₹{appliedItem.discountApplied}
                             </Text>
                           )}
                         </View>
                       );
                     })}
-
-                    <TouchableOpacity
-                      onPress={() => setOffersModalVisible(true)}
-                      style={{ alignItems: 'center', marginTop: 4, paddingTop: 4 }}
-                    >
-                      <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
-                        View full coupon & offer details ›
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                </View>
 
                 {/* Detailed Billing Summary */}
                 <View style={styles.billingCard}>
@@ -1341,13 +1623,36 @@ export default function OrderTrackingScreen() {
                     <Text style={styles.billValue}>₹{billingSummary.baseAmount}</Text>
                   </View>
 
-                  {billingSummary.discountApplied > 0 && (
+                  {/* Active Applied Coupon in Billing Summary */}
+                  {appliedCoupon && (couponDiscount > 0 || appliedCoupon.freeDelivery) && (
+                    <View style={[styles.billRow, { backgroundColor: '#F0FDF4', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, marginVertical: 4, borderWidth: 1, borderColor: '#BBF7D0' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                        <Ionicons name="pricetag" size={15} color="#16A34A" />
+                        <View>
+                          <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#15803D' }}>
+                            Coupon ({appliedCoupon.code})
+                          </Text>
+                          {appliedCoupon.freeDelivery && (
+                            <Text style={{ fontSize: 11, color: '#166534', fontFamily: Typography.fontFamily.medium }}>
+                              Free Delivery Applied
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                        {couponDiscount > 0 ? `- ₹${couponDiscount}` : 'FREE DEL'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Store Offers Discount (auto-applied promotions) */}
+                  {storeOffersDiscount > 0 && (
                     <View style={styles.billRow}>
                       <Text style={[styles.billLabel, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
-                        Coupon & Offers Discount
+                        Store Offers Discount
                       </Text>
                       <Text style={[styles.billValue, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
-                        - ₹{billingSummary.discountApplied}
+                        - ₹{storeOffersDiscount}
                       </Text>
                     </View>
                   )}
@@ -1388,14 +1693,26 @@ export default function OrderTrackingScreen() {
                     </View>
                   )}
 
-                  {billingSummary.itemsAccepted > 0 && (billingSummary.deliveryCharge ?? 0) > 0 && (
-                    <View style={styles.billRow}>
-                      <Text style={styles.billLabel}>Delivery Charge</Text>
-                      <Text style={styles.billValue}>₹{billingSummary.deliveryCharge}</Text>
-                    </View>
-                  )}
+                  {/* Delivery Charge */}
+                  <View style={styles.billRow}>
+                    <Text style={styles.billLabel}>Delivery Charge</Text>
+                    {isFreeDelivery ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {originalDeliveryCharge > 0 && (
+                          <Text style={{ fontSize: 13, color: '#94A3B8', textDecorationLine: 'line-through' }}>
+                            ₹{originalDeliveryCharge}
+                          </Text>
+                        )}
+                        <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ color: '#16A34A', fontSize: 12, fontWeight: '800' }}>FREE</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={styles.billValue}>₹{originalDeliveryCharge}</Text>
+                    )}
+                  </View>
 
-                  {billingSummary.itemsAccepted > 0 && (billingSummary.deliveryTip ?? 0) > 0 && (
+                  {(billingSummary.deliveryTip ?? 0) > 0 && (
                     <View style={styles.billRow}>
                       <Text style={styles.billLabel}>Delivery Tip</Text>
                       <Text style={styles.billValue}>₹{billingSummary.deliveryTip}</Text>
@@ -1410,99 +1727,36 @@ export default function OrderTrackingScreen() {
                   </View>
                 </View>
 
-                {/* COD Options / Warnings */}
-                {order?.paymentMethod === 'cod' && !isAllReturned && (
-                  <View style={{ marginTop: 16, marginBottom: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>
-                      Final Payment Method
-                    </Text>
-                    
-                    {billingSummary.totalPayable > 1000 ? (
-                      <View style={{
-                        flexDirection: 'row',
-                        backgroundColor: '#FEF2F2',
-                        borderColor: '#FCA5A5',
-                        borderWidth: 1,
-                        borderRadius: 12,
-                        padding: 12,
-                        alignItems: 'flex-start',
-                        gap: 8,
-                      }}>
-                        <Ionicons name="warning-outline" size={16} color="#EF4444" style={{ marginTop: 1 }} />
-                        <Text style={{ flex: 1, fontSize: 12, color: '#991B1B', lineHeight: 16, fontWeight: '500' }}>
-                          Liquid cash payment is not available for final purchases exceeding ₹1000. You are required to pay online to confirm selection.
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={{ flexDirection: 'row', gap: 12 }}>
-                        <TouchableOpacity
-                          style={[{
-                            flex: 1,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 6,
-                            borderWidth: 1.5,
-                            borderColor: '#E2E8F0',
-                            borderRadius: 12,
-                            paddingVertical: 10,
-                          }, finalPaymentMethod === 'cod' && { borderColor: theme.primary, backgroundColor: theme.primary + '08' }]}
-                          onPress={() => setFinalPaymentMethod('cod')}
-                        >
-                          <Ionicons name="cash-outline" size={16} color={finalPaymentMethod === 'cod' ? theme.primary : '#64748B'} />
-                          <Text style={[{ fontSize: 13, fontWeight: '600', color: '#64748B' }, finalPaymentMethod === 'cod' && { color: theme.primary, fontWeight: '700' }]}>
-                            Cash to Rider
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[{
-                            flex: 1,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 6,
-                            borderWidth: 1.5,
-                            borderColor: '#E2E8F0',
-                            borderRadius: 12,
-                            paddingVertical: 10,
-                          }, finalPaymentMethod === 'online' && { borderColor: theme.primary, backgroundColor: theme.primary + '08' }]}
-                          onPress={() => setFinalPaymentMethod('online')}
-                        >
-                          <Ionicons name="card-outline" size={16} color={finalPaymentMethod === 'online' ? theme.primary : '#64748B'} />
-                          <Text style={[{ fontSize: 13, fontWeight: '600', color: '#64748B' }, finalPaymentMethod === 'online' && { color: theme.primary, fontWeight: '700' }]}>
-                            Pay Online
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* Final Submit / Payment Button */}
+                {/* Razorpay Online Payment CTA */}
                 <TouchableOpacity
                   style={[
                     styles.submitBtn,
-                    { backgroundColor: theme.primary },
+                    { backgroundColor: theme.primary, marginTop: 16 },
                   ]}
                   onPress={handleSubmitSelection}
                   disabled={submitting}
+                  activeOpacity={0.85}
                 >
                   {submitting ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name={isAllReturned ? 'cash' : finalPaymentMethod === 'cod' ? 'cash' : 'card'} size={20} color="#fff" />
+                      <Ionicons name="card" size={20} color="#fff" />
                       <Text style={styles.submitText}>
-                        {isAllReturned
-                          ? `Pay ₹${billingSummary.totalPayable} Directly to Rider`
-                          : finalPaymentMethod === 'cod'
-                            ? `Confirm COD Payment (₹${billingSummary.totalPayable})`
-                            : `Pay ₹${billingSummary.totalPayable} to FlashFits`}
+                        {billingSummary.totalPayable === 0
+                          ? 'Complete Order (₹0 Due)'
+                          : `Pay ₹${billingSummary.totalPayable} with Razorpay`}
                       </Text>
                     </View>
                   )}
                 </TouchableOpacity>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+                  <Ionicons name="shield-checkmark" size={14} color="#16A34A" />
+                  <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '500' }}>
+                    Secured by Razorpay • UPI, Cards, NetBanking
+                  </Text>
+                </View>
               </View>
             )}
           </>
@@ -1557,8 +1811,16 @@ export default function OrderTrackingScreen() {
               </View>
               <View style={styles.billRow}>
                 <Text style={[styles.billLabel, { color: 'rgba(255,255,255,0.6)' }]}>Delivery Fee</Text>
-                <Text style={[styles.billValue, { color: '#fff' }]}>₹{order?.deliveryCharge || 0}</Text>
+                <Text style={[styles.billValue, { color: (order?.finalBilling?.deliveryCharge === 0 || order?.appliedOffers?.some((o: any) => o.freeDelivery)) ? '#10B981' : '#fff', fontWeight: (order?.finalBilling?.deliveryCharge === 0 || order?.appliedOffers?.some((o: any) => o.freeDelivery)) ? '800' : '600' }]}>
+                  {(order?.finalBilling?.deliveryCharge === 0 || order?.appliedOffers?.some((o: any) => o.freeDelivery)) ? 'FREE' : `₹${order?.deliveryCharge || 0}`}
+                </Text>
               </View>
+              {(order?.finalBilling?.discount || 0) > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={[styles.billLabel, { color: '#10B981' }]}>Discount Saved</Text>
+                  <Text style={[styles.billValue, { color: '#10B981', fontWeight: '800' }]}>- ₹{order?.finalBilling?.discount}</Text>
+                </View>
+              )}
               <View style={[styles.billDivider, { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
               <View style={styles.billRow}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: '#fff' }}>Total Paid</Text>
@@ -1749,21 +2011,12 @@ export default function OrderTrackingScreen() {
       <CouponOffersModal
         visible={offersModalVisible}
         onClose={() => setOffersModalVisible(false)}
-        offers={appliedOffersList.map((o: any) => ({
-          _id: o._id || o.offerId || 'applied-offer',
-          title: o.title || o.couponCode || 'Applied Discount',
-          couponCode: o.couponCode,
-          requiresCoupon: !!o.couponCode,
-          discountAmount: o.discountApplied || discountToApply,
-          discountType: o.discountType,
-          discountValue: o.discountValue,
-          conditions: o.conditions,
-          description: o.description || (o.couponCode ? `Coupon code ${o.couponCode} applied` : `Special offer on your order`),
-        }))}
+        offers={combinedOffersForModal}
         appliedOffers={appliedOffersList}
-        appliedCouponCode={order?.couponCode || appliedOffersList.find((o: any) => o.couponCode)?.couponCode}
-        onApplyCoupon={async () => {}}
-        onApplyOffer={async () => {}}
+        appliedCouponCode={appliedCoupon?.code || null}
+        onApplyCoupon={handleApplyCouponCode}
+        onApplyOffer={handleApplyOffer}
+        onRemoveCoupon={handleRemoveCoupon}
         themeColor={theme.primary}
         orderType="try_and_buy"
         cartTotal={keptSubtotal}

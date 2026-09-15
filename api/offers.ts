@@ -49,11 +49,16 @@ export interface AppliedOffers {
 /**
  * Get all available offers for the current user.
  */
-export const getAvailableOffers = async (subtotal?: number, merchantId?: string): Promise<Offer[]> => {
+export const getAvailableOffers = async (
+  subtotal?: number,
+  merchantId?: string,
+  orderType?: 'try_and_buy' | 'courier'
+): Promise<Offer[]> => {
   try {
     const params: any = {};
     if (subtotal !== undefined) params.subtotal = subtotal;
     if (merchantId) params.merchantId = merchantId;
+    if (orderType) params.orderType = orderType;
     const res = await api.get('user/offers', { params });
     return res.data?.offers || [];
   } catch (error) {

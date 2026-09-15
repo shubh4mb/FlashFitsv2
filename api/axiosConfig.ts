@@ -15,7 +15,7 @@ interface ApiResponse<T = any> {
 
 // Extract base URL from Expo Constants
 const getBaseURL = (): string => {
-  const url = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.0.102:5000';
+  const url = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.137.1:5000';
   return `${url}/api/`;
 };
 
@@ -25,6 +25,7 @@ const api: AxiosInstance = axios.create({
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
   },
 });
 

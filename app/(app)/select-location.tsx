@@ -7,10 +7,12 @@ import * as Location from "expo-location";
 import { Ionicons } from '@expo/vector-icons';
 import { useAddress } from "@/context/AddressContext";
 import { useToast } from "@/context/AlertContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const screen = Dimensions.get("window");
 
 export default function SelectLocationScreen() {
+    const insets = useSafeAreaInsets();
     const webviewRef = useRef<WebView>(null);
 
     const [centerCoords, setCenterCoords] = useState({
@@ -196,7 +198,7 @@ export default function SelectLocationScreen() {
 
     return (
         <View style={styles.container}>
-            <View style={styles.topHeader}>
+            <View style={[styles.topHeader, { top: insets.top + 10 }]}>
                 <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
                     <Ionicons name="chevron-back" size={24} color="#000" />
                 </TouchableOpacity>
@@ -231,7 +233,11 @@ export default function SelectLocationScreen() {
             </View>
 
             <TouchableOpacity
-                style={[styles.currentLocationBtn, locating && { opacity: 0.6 }]}
+                style={[
+                    styles.currentLocationBtn,
+                    { bottom: Math.max(insets.bottom, 16) + 195 },
+                    locating && { opacity: 0.6 }
+                ]}
                 onPress={requestAndFetchLocation}
                 disabled={locating}
             >
@@ -242,7 +248,7 @@ export default function SelectLocationScreen() {
                 )}
             </TouchableOpacity>
 
-            <View style={styles.addressContainer}>
+            <View style={[styles.addressContainer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
                 <Text style={styles.addressTitle}>Selected Location</Text>
                 <Text style={styles.address} numberOfLines={2}>{address}</Text>
 
@@ -278,7 +284,6 @@ const styles = StyleSheet.create({
     },
     topHeader: {
         position: 'absolute',
-        top: 60,
         left: 12,
         right: 12,
         zIndex: 20,

@@ -17,7 +17,7 @@ export function calculateFinalBilling({
 }: BillingInput) {
     // === STEP 1: Accepted (kept) items ===
     const acceptedItems = orderItems.filter(
-        item => item.tryStatus === "keep"
+        item => item.tryStatus === "keep" || item.tryStatus === "accepted" || item.tryStatus === "not-triable"
     );
 
     // Base amount calculation
@@ -27,17 +27,17 @@ export function calculateFinalBilling({
     }
 
     // === STEP 2: Return logic ===
-    const returnedItemsCount = orderItems.filter(i => i.tryStatus === "returned").length;
+    const returnedItemsCount = orderItems.filter(
+        i => i.tryStatus === "returned" || i.tryStatus === "return"
+    ).length;
     const allItemsKept = returnedItemsCount === 0 && orderItems.length > 0;
 
     // Return charge applies only if there are return items
     const effectiveReturnCharge = allItemsKept ? 0 : returnCharge;
     const returnChargeDeduction = allItemsKept ? returnCharge : 0;
 
-    // Delivery charge and tip included if buying at least 1
-    const deliveryAndService = acceptedItems.length > 0
-        ? (Number(deliveryCharge) || 0) + (Number(effectiveReturnCharge) || 0) + (Number(deliveryTip) || 0)
-        : 0;
+    // Delivery charge and tip included
+    const deliveryAndService = (Number(deliveryCharge) || 0) + (Number(effectiveReturnCharge) || 0) + (Number(deliveryTip) || 0);
 
     // === STEP 3: GST (set to 0 for now) ===
     const gst = 0;

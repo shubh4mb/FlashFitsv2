@@ -18,6 +18,7 @@ import { GenderThemes, Typography } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import axiosInstance from '@/api/axiosConfig';
 import * as SecureStore from 'expo-secure-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -111,6 +112,7 @@ const FAQ_DATA = [
 
 export default function HelpCenterScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
@@ -173,7 +175,10 @@ export default function HelpCenterScreen() {
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: '#F8FAFC' }]}
-      contentContainerStyle={styles.contentContainer}
+      contentContainerStyle={[
+        styles.contentContainer,
+        { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 30 }
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Header ── */}
@@ -283,8 +288,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingTop: 60,
-    paddingBottom: 40,
     paddingHorizontal: 20,
   },
   headerRow: {

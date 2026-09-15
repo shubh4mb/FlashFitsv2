@@ -10,7 +10,27 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.flashfits.app",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocationWhenInUseUsageDescription": "Allow FlashFits to use your location to show nearby stores, fast delivery options, and 60-minute Try & Buy service.",
+        "NSPhotoLibraryUsageDescription": "Allow FlashFits to access your photo library to upload return proofs or product reviews.",
+        "NSCameraUsageDescription": "Allow FlashFits to take photos of items for returns or reviews.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "upi",
+          "tez",
+          "phonepe",
+          "paytmmp",
+          "bhim",
+          "credpay",
+          "whatsapp"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -37,10 +57,20 @@
       [
         "expo-location",
         {
+          "locationWhenInUsePermission": "Allow FlashFits to use your location for delivery services.",
           "locationAlwaysPermission": "Allow FlashFits to use your location for delivery services.",
           "isAndroidBackgroundLocationEnabled": false
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FlashFits to access your photos for returns and reviews.",
+          "cameraPermission": "Allow FlashFits to take photos for returns and reviews."
+        }
+      ],
+      "expo-notifications",
+      "expo-apple-authentication",
       "expo-secure-store",
       [
         "expo-splash-screen",
@@ -57,7 +87,7 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.PLACEHOLDER_REVERSED_CLIENT_ID"
+          "iosUrlScheme": "com.googleusercontent.apps.38756562066-lgbnn9g7auuacav4mj59277p34ojc9f3"
         }
       ],
       "expo-font",
@@ -68,9 +98,7 @@
       "reactCompiler": false
     },
     "extra": {
-      // "BACKEND_URL": "https://api.theflashfits.com",
-      //  "BACKEND_URL": "https://api.theflashfits.com",
-      "BACKEND_URL": "http://192.168.29.230:5000",
+      "BACKEND_URL": "https://ef2d-2405-201-f001-8ff-ac70-a615-593c-f090.ngrok-free.app",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

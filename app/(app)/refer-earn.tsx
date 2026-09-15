@@ -15,9 +15,11 @@ import { getReferralStats } from '@/api/auth';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useAlert } from '@/context/AlertContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReferAndEarnScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const showAlert = useAlert();
@@ -81,7 +83,7 @@ export default function ReferAndEarnScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background + '08' }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           style={[styles.backBtn, { backgroundColor: theme.primary + '10' }]}
           onPress={() => router.back()}
@@ -97,7 +99,7 @@ export default function ReferAndEarnScreen() {
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}>
           <View style={styles.illustrationBox}>
             <Ionicons name="gift" size={80} color={theme.primary} />
           </View>
@@ -147,7 +149,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
     paddingHorizontal: 20,
     paddingBottom: 20,
   },

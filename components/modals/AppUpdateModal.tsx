@@ -8,6 +8,7 @@ import {
   BackHandler,
   Linking,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -15,6 +16,18 @@ import { BrandColors, Typography } from '@/constants/theme';
 import { AppUpdateType } from '@/utils/versionCompare';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const DEFAULT_STORE_URL = Platform.select({
+  ios: 'itms-apps://itunes.apple.com/app/com.flashfits.app',
+  android: 'market://details?id=com.flashfits.app',
+  default: 'https://theflashfits.com',
+});
+
+const DEFAULT_WEB_URL = Platform.select({
+  ios: 'https://apps.apple.com/app/com.flashfits.app',
+  android: 'https://play.google.com/store/apps/details?id=com.flashfits.app',
+  default: 'https://theflashfits.com',
+});
 
 export interface AppUpdateModalProps {
   visible: boolean;
@@ -34,14 +47,24 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
   type,
   currentVersion,
   latestVersion,
-  storeUrl = 'market://details?id=com.flashfits.app',
-  webUrl = 'https://play.google.com/store/apps/details?id=com.flashfits.app',
+  storeUrl,
+  webUrl,
   title,
   message,
   releaseNotes = [],
   onDismiss,
 }) => {
   const isMandatory = type === 'MANDATORY';
+  const isIos = Platform.OS === 'ios';
+
+  // Sanitize store URLs so iOS doesn't try opening Android market:// schemes
+  const effectiveStoreUrl = (isIos && storeUrl?.startsWith('market://')) 
+    ? DEFAULT_STORE_URL 
+    : (storeUrl || DEFAULT_STORE_URL);
+
+  const effectiveWebUrl = (isIos && webUrl?.includes('play.google.com')) 
+    ? DEFAULT_WEB_URL 
+    : (webUrl || DEFAULT_WEB_URL);
 
   // Android Hardware Back Button trap for Mandatory updates
   useEffect(() => {
@@ -75,20 +98,20 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      if (storeUrl) {
-        const canOpen = await Linking.canOpenURL(storeUrl);
+      if (effectiveStoreUrl) {
+        const canOpen = await Linking.canOpenURL(effectiveStoreUrl).catch(() => false);
         if (canOpen) {
-          await Linking.openURL(storeUrl);
+          await Linking.openURL(effectiveStoreUrl);
           return;
         }
       }
-      if (webUrl) {
-        await Linking.openURL(webUrl);
+      if (effectiveWebUrl) {
+        await Linking.openURL(effectiveWebUrl);
       }
     } catch (error) {
       console.warn('Failed to open app store link:', error);
-      if (webUrl) {
-        await Linking.openURL(webUrl);
+      if (effectiveWebUrl) {
+        await Linking.openURL(effectiveWebUrl);
       }
     }
   };

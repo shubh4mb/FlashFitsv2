@@ -113,10 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Clean up Google session if active
             try {
                 const { GoogleSignin } = require('@react-native-google-signin/google-signin');
-                GoogleSignin.configure({
-                    webClientId: "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com",
-                    offlineAccess: false,
-                });
+                const { GOOGLE_AUTH_CONFIG } = require('../config/auth');
+                GoogleSignin.configure(GOOGLE_AUTH_CONFIG);
                 if (await GoogleSignin.isSignedIn()) {
                     await GoogleSignin.signOut();
                 }

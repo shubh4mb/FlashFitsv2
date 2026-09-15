@@ -16,10 +16,13 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { sendOtp, googleLogin } from "../../api/auth";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as AppleAuthentication from "expo-apple-authentication";
+import { sendOtp, googleLogin, appleLogin } from "../../api/auth";
 import logo from "../../assets/images/logo/logo.png";
 import { useAuth } from "../../context/AuthContext";
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
+import { GOOGLE_AUTH_CONFIG } from "../../config/auth";
 
 // Safe import of expo-device — native module may not be available in Expo Go or Web
 let Device: { isDevice: boolean; totalMemory?: number } = { isDevice: Platform.OS !== 'web' };
@@ -150,12 +153,20 @@ function MovingAsset({ source, minX, maxX, minY, maxY, baseScale, isLowSpec }: M
 export default function PhoneLogin() {
   const router = useRouter();
   const { signIn } = useAuth();
+  const insets = useSafeAreaInsets();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isReferralFocused, setIsReferralFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [referralCode, setReferralCode] = useState("");
+  const [isAppleAuthAvailable, setIsAppleAuthAvailable] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setIsAppleAuthAvailable).catch(() => {});
+    }
+  }, []);
 
   const randomAssets = useRef(
     (() => {
@@ -204,10 +215,7 @@ export default function PhoneLogin() {
 
   // Google Sign-In setup
   useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com",
-      offlineAccess: false,
-    });
+    GoogleSignin.configure(GOOGLE_AUTH_CONFIG);
   }, []);
 
   // ── Animations ─────────────────────────────────────────────────────
@@ -263,12 +271,14 @@ export default function PhoneLogin() {
       setErrorMessage("");
 
       let idToken;
-      const clientId: string = "38756562066-okgjrlcfekdntca9af6cps7bgknc0dhr.apps.googleusercontent.com";
+      const clientId: string = GOOGLE_AUTH_CONFIG.webClientId;
       if (!clientId || clientId.includes("PLACEHOLDER")) {
         console.warn("Using mock token because GOOGLE_WEB_CLIENT_ID is a placeholder.");
         idToken = `mock-google-token-${Date.now()}-mockgoogleid-testuser@example.com`;
       } else {
-        await GoogleSignin.hasPlayServices();
+        if (Platform.OS === 'android') {
+          await GoogleSignin.hasPlayServices();
+        }
         try {
           await GoogleSignin.signOut();
         } catch (e) {
@@ -283,8 +293,9 @@ export default function PhoneLogin() {
       }
 
       const res = await googleLogin(idToken, referralCode);
-      if (res && res.token) {
-        const { token, refreshToken, userId, isNewUser } = res;
+      const authData = (res && (res as any).token) ? res : ((res as any)?.data?.token ? (res as any).data : res);
+      if (authData && authData.token) {
+        const { token, refreshToken, userId, isNewUser } = authData;
         await signIn(token, userId, refreshToken, isNewUser);
       } else {
         setErrorMessage("Google Sign-in failed. Please try again.");
@@ -300,6 +311,48 @@ export default function PhoneLogin() {
       } else {
         setErrorMessage(error?.response?.data?.message || error.message || "Google Authentication failed.");
       }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        throw new Error("No identity token received from Apple.");
+      }
+
+      const res = await appleLogin({
+        identityToken: credential.identityToken,
+        user: credential.user,
+        fullName: credential.fullName,
+        referralCode,
+      });
+
+      const authData = (res && (res as any).token) ? res : ((res as any)?.data?.token ? (res as any).data : res);
+      if (authData && authData.token) {
+        const { token, refreshToken, userId, isNewUser } = authData;
+        await signIn(token, userId, refreshToken, isNewUser);
+      } else {
+        setErrorMessage("Apple Sign-in failed. Please try again.");
+      }
+    } catch (error: any) {
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        // User cancelled Apple sign in sheet
+        return;
+      }
+      console.error("Apple Sign-In error:", error);
+      setErrorMessage(error?.response?.data?.message || error.message || "Apple Authentication failed.");
     } finally {
       setIsLoading(false);
     }
@@ -387,7 +440,13 @@ export default function PhoneLogin() {
         keyboardVerticalOffset={Platform.select({ ios: 0, android: 20 })}
       >
           <ScrollView
-            contentContainerStyle={styles.scrollContainer}
+            contentContainerStyle={[
+              styles.scrollContainer,
+              {
+                paddingTop: Math.max(insets.top, 24),
+                paddingBottom: Math.max(insets.bottom, 24) + 24,
+              }
+            ]}
             showsVerticalScrollIndicator={false}
             bounces={false}
             keyboardShouldPersistTaps="handled"
@@ -441,8 +500,21 @@ export default function PhoneLogin() {
                   />
                 </View>
 
+                {/* Apple Sign-In Button (iOS Only) */}
+                {Platform.OS === 'ios' && isAppleAuthAvailable && (
+                  <Animated.View style={{ transform: [{ scale: buttonScale }], marginTop: 12, marginBottom: 4 }}>
+                    <AppleAuthentication.AppleAuthenticationButton
+                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                      cornerRadius={16}
+                      style={{ width: "100%", height: 50 }}
+                      onPress={handleAppleSignIn}
+                    />
+                  </Animated.View>
+                )}
+
                 {/* Google Sign-In Button */}
-                <Animated.View style={{ transform: [{ scale: buttonScale }], marginVertical: 12 }}>
+                <Animated.View style={{ transform: [{ scale: buttonScale }], marginVertical: 8 }}>
                   <TouchableOpacity
                     style={styles.googleBtn}
                     disabled={isLoading}

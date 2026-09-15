@@ -41,6 +41,20 @@ export const googleLogin = async (idToken: string, referralCode?: string) => {
 };
 
 /**
+ * Authenticate user using Apple Sign In credentials
+ * Returns { token, refreshToken, userId, isNewUser } on success
+ */
+export const appleLogin = async (payload: {
+    identityToken: string;
+    user?: string;
+    fullName?: { givenName?: string | null; familyName?: string | null } | null;
+    referralCode?: string;
+}) => {
+    const response = await api.post('/auth/apple-login', payload);
+    return response.data;
+};
+
+/**
  * Get current user profile details
  */
 export const getUserProfile = async () => {

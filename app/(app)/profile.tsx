@@ -17,11 +17,13 @@ import { useGender } from '@/context/GenderContext';
 import Loader from '@/components/common/Loader';
 import { useAlert } from '@/context/AlertContext';
 import { triggerRateAppPrompt } from '@/hooks/useRateApp';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
     const router = useRouter();
     const { signOut } = useAuth();
     const showAlert = useAlert();
+    const insets = useSafeAreaInsets();
 
     const [loading, setLoading] = useState(true);
     const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
@@ -109,7 +111,10 @@ export default function ProfileScreen() {
     return (
         <ScrollView
             style={[styles.container, { backgroundColor: BrandColors.offWhite }]}
-            contentContainerStyle={styles.contentContainer}
+            contentContainerStyle={[
+                styles.contentContainer,
+                { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 30 }
+            ]}
             showsVerticalScrollIndicator={false}
         >
             {/* ── Header ── */}
@@ -210,8 +215,6 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     contentContainer: {
-        paddingTop: 60,
-        paddingBottom: 40,
         paddingHorizontal: 20,
     },
     loadingContainer: {

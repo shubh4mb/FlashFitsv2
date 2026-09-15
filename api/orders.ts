@@ -106,12 +106,12 @@ export const confirmClothSelection = async (payload: { orderId: string; items: a
  * Create a final Razorpay order for kept items (T&B flow)
  * Sends items with tryStatus to backend, gets Razorpay order details back
  */
-export const finalpaymentInitiate = async (payload: { orderId: string; items: any[] }) => {
+export const finalpaymentInitiate = async (payload: { orderId: string; items: any[]; couponCode?: string }) => {
     try {
-        const { orderId, items } = payload;
+        const { orderId, items, couponCode } = payload;
         const res = await api.post(
             `/user/order/createFinalPaymentOrder/${orderId}`,
-            { items }
+            { items, couponCode }
         );
         return res.data?.data || res.data;
     } catch (error: any) {

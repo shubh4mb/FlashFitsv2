@@ -127,6 +127,26 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
   const handleChange = (text: string, index: number) => {
     if (error) clearError();
 
+    // Handle multi-character paste or iOS SMS auto-fill (e.g. "123456")
+    const cleanDigits = text.replace(/[^0-9]/g, "");
+    if (cleanDigits.length > 1) {
+      const newOtp = [...otp];
+      for (let i = 0; i < OTP_LENGTH; i++) {
+        if (cleanDigits[i]) {
+          newOtp[i] = cleanDigits[i];
+          animateBox(i);
+        }
+      }
+      setOtp(newOtp);
+      const lastIndex = Math.min(cleanDigits.length - 1, OTP_LENGTH - 1);
+      inputs.current[lastIndex]?.focus();
+
+      if (newOtp.every((d) => d !== "")) {
+        setTimeout(() => handleVerifyOtp(newOtp.join("")), 300);
+      }
+      return;
+    }
+
     if (text.length > 1) {
       text = text.slice(-1);
     }
@@ -357,7 +377,9 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
                       error && styles.errorBorder,
                     ]}
                     keyboardType="number-pad"
-                    maxLength={1}
+                    textContentType="oneTimeCode"
+                    autoComplete="one-time-code"
+                    maxLength={OTP_LENGTH}
                     value={digit}
                     onChangeText={(text) => handleChange(text, index)}
                     onKeyPress={(e) => handleKeyPress(e, index)}

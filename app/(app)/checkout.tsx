@@ -419,7 +419,12 @@ export default function CheckoutScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {/* Checkout Type Badge */}
         <View style={[styles.typeBadge, { backgroundColor: isTB ? '#DCFCE7' : '#F3E8FF' }]}>
           <Ionicons name={isTB ? 'home' : 'cube'} size={16} color={isTB ? '#166534' : '#7C3AED'} />

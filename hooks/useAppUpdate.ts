@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '@/api/axiosConfig';
@@ -34,7 +34,7 @@ export function useAppUpdate() {
     try {
       setIsChecking(true);
       const res = await api.get('/user/app-version', {
-        params: { app: 'customer' },
+        params: { app: 'customer', platform: Platform.OS },
       });
 
       const policy: VersionPolicy = res.data;

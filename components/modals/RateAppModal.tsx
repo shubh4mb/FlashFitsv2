@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Linking,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +15,18 @@ import { router } from 'expo-router';
 import { BrandColors, Typography } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const DEFAULT_STORE_URL = Platform.select({
+  ios: 'itms-apps://itunes.apple.com/app/com.flashfits.app',
+  android: 'market://details?id=com.flashfits.app',
+  default: 'https://theflashfits.com',
+});
+
+const DEFAULT_WEB_URL = Platform.select({
+  ios: 'https://apps.apple.com/app/com.flashfits.app',
+  android: 'https://play.google.com/store/apps/details?id=com.flashfits.app',
+  default: 'https://theflashfits.com',
+});
 
 export interface RateAppModalProps {
   visible: boolean;
@@ -27,10 +40,20 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
   visible,
   onClose,
   onRateSuccess,
-  storeUrl = 'market://details?id=com.flashfits.app',
-  webUrl = 'https://play.google.com/store/apps/details?id=com.flashfits.app',
+  storeUrl,
+  webUrl,
 }) => {
   const [selectedRating, setSelectedRating] = useState<number>(0);
+  const isIos = Platform.OS === 'ios';
+  const storeName = isIos ? 'App Store' : 'Google Play';
+
+  const effectiveStoreUrl = (isIos && storeUrl?.startsWith('market://')) 
+    ? DEFAULT_STORE_URL 
+    : (storeUrl || DEFAULT_STORE_URL);
+
+  const effectiveWebUrl = (isIos && webUrl?.includes('play.google.com')) 
+    ? DEFAULT_WEB_URL 
+    : (webUrl || DEFAULT_WEB_URL);
 
   if (!visible) return null;
 
@@ -39,25 +62,25 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const handleOpenPlayStore = async () => {
+  const handleOpenStore = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
-      if (storeUrl) {
-        const canOpen = await Linking.canOpenURL(storeUrl);
+      if (effectiveStoreUrl) {
+        const canOpen = await Linking.canOpenURL(effectiveStoreUrl).catch(() => false);
         if (canOpen) {
-          await Linking.openURL(storeUrl);
+          await Linking.openURL(effectiveStoreUrl);
           onRateSuccess?.();
           onClose();
           return;
         }
       }
-      if (webUrl) {
-        await Linking.openURL(webUrl);
+      if (effectiveWebUrl) {
+        await Linking.openURL(effectiveWebUrl);
       }
     } catch (error) {
-      console.warn('Failed to open Play Store for rating:', error);
-      if (webUrl) {
-        await Linking.openURL(webUrl);
+      console.warn('Failed to open store for rating:', error);
+      if (effectiveWebUrl) {
+        await Linking.openURL(effectiveWebUrl);
       }
     }
     onRateSuccess?.();
@@ -113,7 +136,7 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
           {/* Subtitle / Description */}
           <Text style={styles.subtitleText}>
             {isHighRating
-              ? 'Your support means everything to us. Would you mind taking a moment to rate us on Google Play?'
+              ? `Your support means everything to us. Would you mind taking a moment to rate us on ${storeName}?`
               : isLowRating
               ? "We're sorry your experience wasn't 5-star worthy. Let us know how we can make it right for you."
               : 'Tap a star below to rate your shopping and delivery experience.'}
@@ -166,10 +189,10 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.85}
                   style={styles.primaryButton}
-                  onPress={handleOpenPlayStore}
+                  onPress={handleOpenStore}
                 >
                   <Text style={styles.primaryButtonText}>
-                    {selectedRating >= 4 ? 'Rate on Google Play ⭐' : 'Rate on Google Play'}
+                    {selectedRating >= 4 ? `Rate on ${storeName} ⭐` : `Rate on ${storeName}`}
                   </Text>
                   <Ionicons name="open-outline" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
                 </TouchableOpacity>
