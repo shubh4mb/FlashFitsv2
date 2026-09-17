@@ -262,7 +262,7 @@ export default function HomeScreen() {
               <View style={{ padding: 20 }}>
                 <View style={styles.footer}>
                   <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
-                  <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                  <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
                   <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
                 </View>
               </View>

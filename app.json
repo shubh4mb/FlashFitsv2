@@ -4,7 +4,7 @@
     "slug": "FlashFits",
     "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./assets/images/favicon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "flashfits",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -34,10 +34,10 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/favicon.png",
-        "backgroundImage": "./assets/images/favicon.png",
-        "monochromeImage": "./assets/images/favicon.png"
+        "backgroundColor": "#3CDCF4",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -98,7 +98,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "https://ef2d-2405-201-f001-8ff-ac70-a615-593c-f090.ngrok-free.app",
+      "BACKEND_URL": "http://[IP_ADDRESS]",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

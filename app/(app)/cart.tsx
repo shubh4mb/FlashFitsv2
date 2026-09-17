@@ -415,7 +415,7 @@ export default function CartScreen() {
                 <Ionicons name="flash-outline" size={60} color={theme.primary} />
               </View>
               <ThemedText style={styles.emptyTitle}>Your Try & Buy Cart is Empty!</ThemedText>
-              <Text style={styles.emptyDesc}>Experience fashion in a flash! Add items from nearby stores to try them at home before you buy.</Text>
+              <Text style={styles.emptyDesc}>Just minutes, just fashion! Add items from nearby stores to try them at home before you buy.</Text>
               <TouchableOpacity style={[styles.exploreButton, { backgroundColor: theme.primary }]} onPress={() => router.push('/(tabs)' as any)}>
                 <Text style={styles.exploreText}>Explore Nearby Shops</Text>
               </TouchableOpacity>
@@ -761,7 +761,7 @@ export default function CartScreen() {
 
                         <View style={styles.footer}>
                           <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
-                          <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                          <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
                           <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
                         </View>
                       </Animated.ScrollView>
@@ -854,7 +854,7 @@ export default function CartScreen() {
 
                 <View style={styles.footer}>
                   <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
-                  <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                  <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
                   <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
                 </View>
               </Animated.ScrollView>

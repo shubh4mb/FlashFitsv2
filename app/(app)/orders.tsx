@@ -311,7 +311,7 @@ const OrdersScreen = () => {
 
       <View style={styles.footer}>
         <Image source={logo} style={styles.footerLogo} blurRadius={3} resizeMode="contain" />
-        <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+        <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
         <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
       </View>
     </View>

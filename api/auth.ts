@@ -21,6 +21,72 @@ export const verifyOtp = async (data: {
     return response.data;
 };
 
+/**
+ * Send OTP for email registration
+ */
+export const registerSendOtp = async (data: {
+    name?: string;
+    email: string;
+    password: string;
+    referralCode?: string;
+}) => {
+    const response = await api.post('/auth/register-send-otp', data);
+    return response.data;
+};
+
+/**
+ * Verify OTP and complete email registration
+ */
+export const registerVerifyOtp = async (data: {
+    email: string;
+    otp: string;
+}) => {
+    const response = await api.post('/auth/register-verify-otp', data);
+    return response.data;
+};
+
+/**
+ * Email and password login for customers
+ */
+export const emailLogin = async (data: {
+    email: string;
+    password: string;
+}) => {
+    const response = await api.post('/auth/login', data);
+    return response.data;
+};
+
+/**
+ * Resend OTP for email registration or password reset
+ */
+export const resendEmailOtp = async (data: {
+    email: string;
+    purpose?: 'email_register' | 'password_reset';
+}) => {
+    const response = await api.post('/auth/resend-email-otp', data);
+    return response.data;
+};
+
+/**
+ * Send password reset OTP to email
+ */
+export const forgotPasswordSendOtp = async (email: string) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+};
+
+/**
+ * Reset password using email OTP
+ */
+export const resetPasswordWithOtp = async (data: {
+    email: string;
+    otp: string;
+    newPassword: string;
+}) => {
+    const response = await api.post('/auth/reset-password', data);
+    return response.data;
+};
+
 export const checkDeliveryAvailability = async (lat: number, lng: number) => {
     const response = await api.post('/user/checkDeliveryAvailability', { lat, lng });
     console.log(response.data, "response.data");

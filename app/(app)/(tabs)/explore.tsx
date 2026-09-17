@@ -247,7 +247,7 @@ export default function ExploreScreen() {
             {products.length > 0 && (
               <View style={{ padding: 20, alignItems: 'center' }}>
                 <Image source={logo} style={styles.footerLogo} contentFit="contain" />
-                <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
                 <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
               </View>
             )}

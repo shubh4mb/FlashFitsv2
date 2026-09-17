@@ -4,11 +4,17 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { updateAuthToken } from '../api/axiosConfig';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 
+interface UserData {
+    name?: string;
+    email?: string;
+    phoneNumber?: string;
+}
+
 interface AuthContextType {
     isAuthenticated: boolean;
     isLoading: boolean;
     hasSeenOnboarding: boolean;
-    signIn: (token: string, userId: string, refreshToken?: string, isNewUser?: boolean) => Promise<void>;
+    signIn: (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => Promise<void>;
     signOut: () => Promise<void>;
     completeOnboarding: () => void;
 }
@@ -57,13 +63,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loadToken();
     }, []);
 
-    const signIn = async (token: string, userId: string, refreshToken?: string, isNewUser?: boolean) => {
+    const signIn = async (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => {
         try {
             await SecureStore.setItemAsync('token', token);
             await SecureStore.setItemAsync('userId', userId);
             
             if (refreshToken) {
                 await SecureStore.setItemAsync('refreshToken', refreshToken);
+            }
+
+            if (userData?.email) {
+                await SecureStore.setItemAsync('userEmail', userData.email);
+            }
+            if (userData?.name) {
+                await SecureStore.setItemAsync('userName', userData.name);
+            }
+            if (userData?.phoneNumber) {
+                await SecureStore.setItemAsync('phoneNumber', userData.phoneNumber);
             }
 
             if (isNewUser) {
@@ -109,6 +125,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await SecureStore.deleteItemAsync('token');
             await SecureStore.deleteItemAsync('userId');
             await SecureStore.deleteItemAsync('refreshToken');
+            await SecureStore.deleteItemAsync('userEmail');
+            await SecureStore.deleteItemAsync('userName');
+            await SecureStore.deleteItemAsync('phoneNumber');
             
             // Clean up Google session if active
             try {

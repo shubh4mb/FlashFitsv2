@@ -27,6 +27,8 @@ export default function ProfileScreen() {
 
     const [loading, setLoading] = useState(true);
     const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
+    const [userEmail, setUserEmail] = useState<string | null>(null);
+    const [userName, setUserName] = useState<string | null>(null);
 
     useEffect(() => {
         loadProfileData();
@@ -35,7 +37,11 @@ export default function ProfileScreen() {
     const loadProfileData = async () => {
         try {
             const phone = await SecureStore.getItemAsync('phoneNumber');
+            const email = await SecureStore.getItemAsync('userEmail');
+            const name = await SecureStore.getItemAsync('userName');
             setPhoneNumber(phone);
+            setUserEmail(email);
+            setUserName(name);
         } catch (error) {
             console.error('Profile data load error:', error);
         } finally {
@@ -137,9 +143,9 @@ export default function ProfileScreen() {
                         <Ionicons name="person" size={22} color="#fff" />
                     </View>
                     <View style={styles.userInfo}>
-                        <Text style={styles.phoneLabel}>ACCOUNT</Text>
-                        <Text style={[styles.phoneText, { color: BrandColors.matteBlack }]}>
-                            {phoneNumber ? `+91 ${phoneNumber}` : 'Not available'}
+                        <Text style={styles.phoneLabel}>{userName ? userName.toUpperCase() : 'ACCOUNT'}</Text>
+                        <Text style={[styles.phoneText, { color: BrandColors.matteBlack }]} numberOfLines={1}>
+                            {userEmail || (phoneNumber ? `+91 ${phoneNumber}` : 'FlashFits Member')}
                         </Text>
                     </View>
                 </View>
@@ -203,7 +209,7 @@ export default function ProfileScreen() {
 
             <View style={styles.footer}>
                 <Image source={logo} style={styles.footerLogo} blurRadius={3} resizeMode="contain" />
-                <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+                <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
                 <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
             </View>
         </ScrollView>

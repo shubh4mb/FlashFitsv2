@@ -12,16 +12,18 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
-import { verifyOtp, sendOtp } from "../../api/auth";
+import { verifyOtp, sendOtp, registerVerifyOtp, resendEmailOtp } from "../../api/auth";
 import * as SecureStore from 'expo-secure-store';
 
 const OTP_LENGTH = 6;
 
 interface OtpInputProps {
-  phone: string;
+  phone?: string;
+  email?: string;
+  mode?: 'phone' | 'email';
 }
 
-const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
+const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mode = 'email' }) => {
   const router = useRouter();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [error, setError] = useState(false);
@@ -200,16 +202,39 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
         return;
       }
 
-      const fullPhone = `+91${phone}`;
+      let response;
+      if (mode === 'email') {
+        response = await registerVerifyOtp({ email, otp: enteredOtp });
+        if (response.user?.name) {
+          await SecureStore.setItemAsync('userName', response.user.name);
+        }
+        await SecureStore.setItemAsync('userEmail', email);
+      } else {
+        const fullPhone = `+91${phone}`;
+        response = await verifyOtp({ phone: fullPhone, otp: enteredOtp });
+        await SecureStore.setItemAsync('phoneNumber', phone);
+      }
 
-      // Call the real verify API
-      const response = await verifyOtp({ phone: fullPhone, otp: enteredOtp });
+      const authData = (response && (response as any).token)
+        ? response
+        : ((response as any)?.data?.token ? (response as any).data : response);
 
-      // Save phone number for profile display
-      await SecureStore.setItemAsync('phoneNumber', phone);
+      if (authData?.user?.name) {
+        await SecureStore.setItemAsync('userName', authData.user.name);
+      }
 
       // Sign in with the real token from the server
-      await signIn(response.token, response.userId, response.refreshToken, response.isNewUser);
+      await signIn(
+        authData.token,
+        authData.userId,
+        authData.refreshToken,
+        authData.isNewUser,
+        {
+          name: authData.user?.name,
+          email: authData.user?.email || email,
+          phoneNumber: authData.user?.phoneNumber || phone,
+        }
+      );
 
     } catch (err: any) {
       console.error("OTP verification failed:", err);
@@ -255,8 +280,12 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
       setIsResending(true);
       clearError();
 
-      const fullPhone = `+91${phone}`;
-      await sendOtp(fullPhone);
+      if (mode === 'email') {
+        await resendEmailOtp({ email, purpose: 'email_register' });
+      } else {
+        const fullPhone = `+91${phone}`;
+        await sendOtp(fullPhone);
+      }
 
       setTimer(30);
       setOtp(Array(OTP_LENGTH).fill(""));
@@ -324,13 +353,15 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
           </TouchableOpacity>
 
           <View style={styles.headerContent}>
-            <Text style={styles.headerLabel}>VERIFY DETAILS</Text>
-            <Text style={styles.headerPhone}>Code sent to +91-{phone}</Text>
+            <Text style={styles.headerLabel}>{mode === 'email' ? 'VERIFY EMAIL' : 'VERIFY DETAILS'}</Text>
+            <Text style={styles.headerPhone} numberOfLines={1}>
+              {mode === 'email' ? `Code sent to ${email}` : `Code sent to +91-${phone}`}
+            </Text>
           </View>
 
           <View style={styles.phoneIllustration}>
             <MaterialCommunityIcons
-              name="cellphone-message"
+              name={mode === 'email' ? "email-outline" : "cellphone-message"}
               size={28}
               color="#1A1A1A"
             />
@@ -348,9 +379,11 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
           ]}
         >
           <View style={styles.card}>
-            <Text style={styles.title}>Enter Verification Code</Text>
+            <Text style={styles.title}>{mode === 'email' ? 'Verify Your Email' : 'Enter Verification Code'}</Text>
             <Text style={styles.subtitle}>
-              We've sent a {OTP_LENGTH}-digit code to your phone
+              {mode === 'email'
+                ? `We've sent a ${OTP_LENGTH}-digit code to ${email}`
+                : `We've sent a ${OTP_LENGTH}-digit code to your phone`}
             </Text>
 
             {/* OTP Input */}
@@ -516,7 +549,9 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone }) => {
             onPress={handleBackButtonPress}
             activeOpacity={0.7}
           >
-            <Text style={styles.secondaryButtonText}>Change Phone Number</Text>
+            <Text style={styles.secondaryButtonText}>
+              {mode === 'email' ? 'Change Email Address' : 'Change Phone Number'}
+            </Text>
           </TouchableOpacity>
         </View>
 

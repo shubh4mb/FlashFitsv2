@@ -233,7 +233,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
             </Animated.View>
             {/* Tagline Reveal */}
             <Animated.View style={[styles.taglineWrapper, taglineStyle]}>
-              <Text style={styles.taglineText}>FASHION IN A FLASH</Text>
+              <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
               <Text style={styles.subTaglineText}>TRY & BUY</Text>
             </Animated.View>
           </View>

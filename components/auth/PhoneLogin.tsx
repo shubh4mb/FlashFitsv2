@@ -1,13 +1,15 @@
-import { AntDesign } from "@expo/vector-icons";
+import { AntDesign, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Easing,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -18,7 +20,14 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { sendOtp, googleLogin, appleLogin } from "../../api/auth";
+import {
+  emailLogin,
+  registerSendOtp,
+  googleLogin,
+  appleLogin,
+  forgotPasswordSendOtp,
+  resetPasswordWithOtp
+} from "../../api/auth";
 import logo from "../../assets/images/logo/logo.png";
 import { useAuth } from "../../context/AuthContext";
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
@@ -64,7 +73,7 @@ interface MovingAssetProps {
 function MovingAsset({ source, minX, maxX, minY, maxY, baseScale, isLowSpec }: MovingAssetProps) {
   const floatAnimX = useRef(new Animated.Value(0)).current;
   const floatAnimY = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0.75)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(baseScale)).current;
 
@@ -154,13 +163,37 @@ export default function PhoneLogin() {
   const router = useRouter();
   const { signIn } = useAuth();
   const insets = useSafeAreaInsets();
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [isFocused, setIsFocused] = useState(false);
-  const [isReferralFocused, setIsReferralFocused] = useState(false);
+
+  // Mode: 'signin' or 'register'
+  const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
+
+  // Input states
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [referralCode, setReferralCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Focus states
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+
+  // Status & loading
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [referralCode, setReferralCode] = useState("");
   const [isAppleAuthAvailable, setIsAppleAuthAvailable] = useState(false);
+
+  // Forgot Password Modal state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
+  const [forgotError, setForgotError] = useState("");
+
+  // Tab switch animation
+  const tabSlideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (Platform.OS === 'ios') {
@@ -218,17 +251,14 @@ export default function PhoneLogin() {
     GoogleSignin.configure(GOOGLE_AUTH_CONFIG);
   }, []);
 
-  // ── Animations ─────────────────────────────────────────────────────
+  // ── Entrance Animations ─────────────────────────────────────────────
   const logoScale = useRef(new Animated.Value(0)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const cardSlide = useRef(new Animated.Value(50)).current;
+  const cardSlide = useRef(new Animated.Value(40)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
-  const inputScale = useRef(new Animated.Value(1)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
-  const progressWidth = useRef(new Animated.Value(0)).current;
   const errorOpacity = useRef(new Animated.Value(0)).current;
 
-  // Entrance
   useEffect(() => {
     Animated.parallel([
       Animated.spring(logoScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: true }),
@@ -237,16 +267,6 @@ export default function PhoneLogin() {
       Animated.timing(cardOpacity, { toValue: 1, duration: 600, delay: 150, useNativeDriver: true }),
     ]).start();
   }, []);
-
-  // Progress bar
-  useEffect(() => {
-    Animated.spring(progressWidth, {
-      toValue: phoneNumber.length / 10,
-      tension: 80,
-      friction: 8,
-      useNativeDriver: false,
-    }).start();
-  }, [phoneNumber]);
 
   // Error animation
   useEffect(() => {
@@ -257,14 +277,160 @@ export default function PhoneLogin() {
     }).start();
   }, [errorMessage]);
 
-  // Clear error when user types
-  useEffect(() => {
-    if (errorMessage && phoneNumber.length > 0) {
-      setErrorMessage("");
-    }
-  }, [phoneNumber]);
+  const switchAuthMode = (mode: 'signin' | 'register') => {
+    setAuthMode(mode);
+    setErrorMessage("");
+    Animated.spring(tabSlideAnim, {
+      toValue: mode === 'signin' ? 0 : 1,
+      tension: 65,
+      friction: 8,
+      useNativeDriver: false,
+    }).start();
+  };
 
-  // ── Handlers ───────────────────────────────────────────────────────
+  // ── Submit Handlers ────────────────────────────────────────────────
+  const handleEmailLogin = async () => {
+    if (!email.trim() || !password) {
+      setErrorMessage("Please enter both email and password.");
+      return;
+    }
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      Animated.sequence([
+        Animated.timing(buttonScale, { toValue: 0.96, duration: 80, useNativeDriver: true }),
+        Animated.timing(buttonScale, { toValue: 1, duration: 80, useNativeDriver: true }),
+      ]).start();
+
+      const res = await emailLogin({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      const authData = (res && (res as any).token) ? res : ((res as any)?.data?.token ? (res as any).data : res);
+      if (authData && authData.token) {
+        const { token, refreshToken, userId, isNewUser, user } = authData;
+        await signIn(token, userId, refreshToken, isNewUser, {
+          name: user?.name,
+          email: user?.email || email.trim().toLowerCase(),
+          phoneNumber: user?.phoneNumber,
+        });
+      } else {
+        setErrorMessage("Sign-in failed. Please check your credentials.");
+      }
+    } catch (error: any) {
+      console.error("Email sign-in failed:", error);
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error.message ||
+        "Invalid email or password.";
+      setErrorMessage(apiMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailRegister = async () => {
+    if (!email.trim()) {
+      setErrorMessage("Please enter your email address.");
+      return;
+    }
+    if (!password || password.length < 6) {
+      setErrorMessage("Password must be at least 6 characters long.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      Animated.sequence([
+        Animated.timing(buttonScale, { toValue: 0.96, duration: 80, useNativeDriver: true }),
+        Animated.timing(buttonScale, { toValue: 1, duration: 80, useNativeDriver: true }),
+      ]).start();
+
+      const cleanEmail = email.trim().toLowerCase();
+
+      await registerSendOtp({
+        name: name.trim(),
+        email: cleanEmail,
+        password,
+        referralCode: referralCode.trim() ? referralCode.trim().toUpperCase() : undefined,
+      });
+
+      // Route to OTP verification screen with email mode
+      router.push({
+        pathname: "/(auth)/otpVerification",
+        params: {
+          email: cleanEmail,
+          mode: "email",
+        },
+      });
+    } catch (error: any) {
+      console.error("Email registration send OTP failed:", error);
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error.message ||
+        "Failed to send verification code. Please try again.";
+      setErrorMessage(apiMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Forgot Password Handlers ───────────────────────────────────────
+  const handleForgotPasswordSend = async () => {
+    if (!forgotEmail.trim()) {
+      setForgotError("Please enter your email address.");
+      return;
+    }
+    try {
+      setForgotLoading(true);
+      setForgotError("");
+      await forgotPasswordSendOtp(forgotEmail.trim().toLowerCase());
+      setForgotStep(2);
+      setForgotMessage("Verification code sent! Check your inbox.");
+    } catch (err: any) {
+      setForgotError(err?.response?.data?.message || "Failed to send reset code.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async () => {
+    if (!forgotOtp.trim() || forgotOtp.trim().length !== 6) {
+      setForgotError("Please enter the 6-digit reset code.");
+      return;
+    }
+    if (!forgotNewPassword || forgotNewPassword.length < 6) {
+      setForgotError("New password must be at least 6 characters.");
+      return;
+    }
+    try {
+      setForgotLoading(true);
+      setForgotError("");
+      await resetPasswordWithOtp({
+        email: forgotEmail.trim().toLowerCase(),
+        otp: forgotOtp.trim(),
+        newPassword: forgotNewPassword,
+      });
+      setShowForgotModal(false);
+      setForgotStep(1);
+      setForgotOtp("");
+      setForgotNewPassword("");
+      setAuthMode('signin');
+      setErrorMessage("Password reset successfully! Please sign in with your new password.");
+    } catch (err: any) {
+      setForgotError(err?.response?.data?.message || "Failed to reset password.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // ── Social Sign-In ────────────────────────────────────────────────
   const handleGoogleSignIn = async () => {
     try {
       setIsLoading(true);
@@ -295,8 +461,12 @@ export default function PhoneLogin() {
       const res = await googleLogin(idToken, referralCode);
       const authData = (res && (res as any).token) ? res : ((res as any)?.data?.token ? (res as any).data : res);
       if (authData && authData.token) {
-        const { token, refreshToken, userId, isNewUser } = authData;
-        await signIn(token, userId, refreshToken, isNewUser);
+        const { token, refreshToken, userId, isNewUser, user } = authData;
+        await signIn(token, userId, refreshToken, isNewUser, {
+          name: user?.name,
+          email: user?.email,
+          phoneNumber: user?.phoneNumber,
+        });
       } else {
         setErrorMessage("Google Sign-in failed. Please try again.");
       }
@@ -341,14 +511,17 @@ export default function PhoneLogin() {
 
       const authData = (res && (res as any).token) ? res : ((res as any)?.data?.token ? (res as any).data : res);
       if (authData && authData.token) {
-        const { token, refreshToken, userId, isNewUser } = authData;
-        await signIn(token, userId, refreshToken, isNewUser);
+        const { token, refreshToken, userId, isNewUser, user } = authData;
+        await signIn(token, userId, refreshToken, isNewUser, {
+          name: user?.name,
+          email: user?.email,
+          phoneNumber: user?.phoneNumber,
+        });
       } else {
         setErrorMessage("Apple Sign-in failed. Please try again.");
       }
     } catch (error: any) {
       if (error.code === 'ERR_REQUEST_CANCELED') {
-        // User cancelled Apple sign in sheet
         return;
       }
       console.error("Apple Sign-In error:", error);
@@ -358,297 +531,423 @@ export default function PhoneLogin() {
     }
   };
 
-  const handleSendOTP = async () => {
-    try {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      Animated.sequence([
-        Animated.timing(buttonScale, { toValue: 0.96, duration: 80, useNativeDriver: true }),
-        Animated.timing(buttonScale, { toValue: 1, duration: 80, useNativeDriver: true }),
-      ]).start();
-
-      // Prepend +91 country code
-      const fullPhone = `+91${phoneNumber}`;
-
-      await sendOtp(fullPhone);
-
-      router.replace({
-        pathname: "/(auth)/otpVerification",
-        params: { phone: phoneNumber },
-      });
-    } catch (error: any) {
-      console.error("Send OTP failed:", error);
-
-      // Extract error message from API response
-      const apiMessage =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        null;
-
-      const status = error?.response?.status;
-
-      if (apiMessage) {
-        setErrorMessage(apiMessage);
-      } else if (status === 429) {
-        setErrorMessage("Too many requests. Please wait before trying again.");
-      } else if (!error?.response) {
-        setErrorMessage("Network error. Please check your connection.");
-      } else {
-        setErrorMessage("Something went wrong. Please try again.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleFocus = () => {
-    setIsFocused(true);
-    Animated.spring(inputScale, { toValue: 1.015, tension: 80, friction: 7, useNativeDriver: true }).start();
-  };
-  const handleBlur = () => {
-    setIsFocused(false);
-    Animated.spring(inputScale, { toValue: 1, tension: 80, friction: 7, useNativeDriver: true }).start();
-  };
-
-  const handleReferralFocus = () => {
-    setIsReferralFocused(true);
-  };
-  const handleReferralBlur = () => {
-    setIsReferralFocused(false);
-  };
-
-  const progressPct = progressWidth.interpolate({
+  const tabPillLeft = tabSlideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["0%", "100%"],
+    outputRange: ["2%", "51%"],
   });
 
-  // ── Render ─────────────────────────────────────────────────────────
   return (
     <View style={styles.centerWrapper}>
-      {/* Sibling absolute background layout */}
-      <LinearGradient colors={["#ffffffff", "#ffffffff", "#ffffffff"]} style={[StyleSheet.absoluteFillObject, { zIndex: -2 }]} />
+      {/* Absolute background */}
+      <LinearGradient
+        colors={["#FFFFFF", "#F8FAFC", "#F1F5F9"]}
+        style={[StyleSheet.absoluteFillObject, { zIndex: -2 }]}
+      />
 
-      {/* Floating Assets in Background */}
+      {/* Floating Assets */}
       {randomAssets.map((asset, index) => (
         <MovingAsset key={index} {...asset} isLowSpec={isLowSpec} />
       ))}
 
       <KeyboardAvoidingView
         style={{ flex: 1, width: "100%" }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.select({ ios: 0, android: 20 })}
       >
-          <ScrollView
-            contentContainerStyle={[
-              styles.scrollContainer,
-              {
-                paddingTop: Math.max(insets.top, 24),
-                paddingBottom: Math.max(insets.bottom, 24) + 24,
-              }
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContainer,
+            {
+              paddingTop: Math.max(insets.top, 24),
+              paddingBottom: Math.max(insets.bottom, 24) + 24,
+            }
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* ── LOGO ── */}
+          <Animated.View
+            style={[
+              styles.logoWrapper,
+              { opacity: logoOpacity, transform: [{ scale: logoScale }] },
             ]}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            keyboardShouldPersistTaps="handled"
           >
-            {/* ── LOGO ── */}
-            <Animated.View
-              style={[
-                styles.logoWrapper,
-                { opacity: logoOpacity, transform: [{ scale: logoScale }] },
-              ]}
-            >
-              <Image
-                source={logo}
-                style={styles.logo}
-                resizeMode="contain"
-              />
-            </Animated.View>
+            <Image source={logo} style={styles.logo} resizeMode="contain" />
+          </Animated.View>
 
-            {/* ── CARD ── */}
-            <Animated.View
-              style={[
-                styles.cardWrapper,
-                { opacity: cardOpacity, transform: [{ translateY: cardSlide }] },
-              ]}
-            >
-              <View style={styles.card}>
-                {/* Welcome header for Google Sign-In */}
-                <Text style={styles.welcomeTitle}>Welcome Back</Text>
-                <Text style={styles.welcomeSubtitle}>Sign in to continue to FlashFits</Text>
+          {/* ── CARD ── */}
+          <Animated.View
+            style={[
+              styles.cardWrapper,
+              { opacity: cardOpacity, transform: [{ translateY: cardSlide }] },
+            ]}
+          >
+            <View style={styles.card}>
+              {/* Mode Toggle Switcher */}
+              <View style={styles.tabContainer}>
+                <Animated.View
+                  style={[
+                    styles.tabIndicator,
+                    { left: tabPillLeft },
+                  ]}
+                />
+                <TouchableOpacity
+                  style={styles.tabButton}
+                  onPress={() => switchAuthMode('signin')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.tabText,
+                      authMode === 'signin' && styles.tabTextActive,
+                    ]}
+                  >
+                    Sign In
+                  </Text>
+                </TouchableOpacity>
 
-                {/* Referral Code Input */}
+                <TouchableOpacity
+                  style={styles.tabButton}
+                  onPress={() => switchAuthMode('register')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.tabText,
+                      authMode === 'register' && styles.tabTextActive,
+                    ]}
+                  >
+                    Create Account
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.welcomeTitle}>
+                {authMode === 'signin' ? "Welcome Back" : "Join FlashFits"}
+              </Text>
+              <Text style={styles.welcomeSubtitle}>
+                {authMode === 'signin'
+                  ? "Enter your email & password to sign in"
+                  : "Create an account to get fast doorstep delivery"}
+              </Text>
+
+              {/* Error Message */}
+              {errorMessage ? (
+                <Animated.View style={[styles.errorBox, { opacity: errorOpacity }]}>
+                  <AntDesign name="exclamation-circle" size={14} color="#EF4444" />
+                  <Text style={styles.errorText}>{errorMessage}</Text>
+                </Animated.View>
+              ) : null}
+
+              {/* ── Form Inputs ── */}
+              {authMode === 'register' && (
                 <View
                   style={[
                     styles.inputBox,
-                    {
-                      borderColor: isReferralFocused ? "#78787cff" : "#e2e8f0",
-                      backgroundColor: isReferralFocused ? "#ffffff" : "#f8fafc",
-                    },
+                    focusedInput === 'name' && styles.inputBoxFocused,
                   ]}
                 >
+                  <Ionicons name="person-outline" size={18} color="#64748B" style={styles.inputIcon} />
                   <TextInput
-                    style={styles.phoneInput}
+                    style={styles.textInput}
+                    placeholder="Full Name"
+                    placeholderTextColor="#94A3B8"
+                    value={name}
+                    onChangeText={setName}
+                    onFocus={() => setFocusedInput('name')}
+                    onBlur={() => setFocusedInput(null)}
+                    editable={!isLoading}
+                    autoCapitalize="words"
+                  />
+                </View>
+              )}
+
+              <View
+                style={[
+                  styles.inputBox,
+                  focusedInput === 'email' && styles.inputBoxFocused,
+                ]}
+              >
+                <Ionicons name="mail-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Email Address"
+                  placeholderTextColor="#94A3B8"
+                  value={email}
+                  onChangeText={setEmail}
+                  onFocus={() => setFocusedInput('email')}
+                  onBlur={() => setFocusedInput(null)}
+                  editable={!isLoading}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View
+                style={[
+                  styles.inputBox,
+                  focusedInput === 'password' && styles.inputBoxFocused,
+                ]}
+              >
+                <Ionicons name="lock-closed-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={authMode === 'signin' ? "Password" : "Password (min. 6 characters)"}
+                  placeholderTextColor="#94A3B8"
+                  value={password}
+                  onChangeText={setPassword}
+                  onFocus={() => setFocusedInput('password')}
+                  onBlur={() => setFocusedInput(null)}
+                  editable={!isLoading}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeButton}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={19}
+                    color="#64748B"
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {authMode === 'signin' ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setForgotEmail(email);
+                    setForgotStep(1);
+                    setForgotError("");
+                    setForgotMessage("");
+                    setShowForgotModal(true);
+                  }}
+                  style={styles.forgotBtn}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </TouchableOpacity>
+              ) : (
+                <View
+                  style={[
+                    styles.inputBox,
+                    focusedInput === 'referral' && styles.inputBoxFocused,
+                  ]}
+                >
+                  <Ionicons name="gift-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.textInput}
                     placeholder="Referral Code (Optional)"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor="#94A3B8"
                     value={referralCode}
                     onChangeText={setReferralCode}
-                    onFocus={handleReferralFocus}
-                    onBlur={handleReferralBlur}
+                    onFocus={() => setFocusedInput('referral')}
+                    onBlur={() => setFocusedInput(null)}
                     editable={!isLoading}
                     autoCapitalize="characters"
                   />
                 </View>
+              )}
 
-                {/* Apple Sign-In Button (iOS Only) */}
-                {Platform.OS === 'ios' && isAppleAuthAvailable && (
-                  <Animated.View style={{ transform: [{ scale: buttonScale }], marginTop: 12, marginBottom: 4 }}>
-                    <AppleAuthentication.AppleAuthenticationButton
-                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                      cornerRadius={16}
-                      style={{ width: "100%", height: 50 }}
-                      onPress={handleAppleSignIn}
-                    />
-                  </Animated.View>
-                )}
-
-                {/* Google Sign-In Button */}
-                <Animated.View style={{ transform: [{ scale: buttonScale }], marginVertical: 8 }}>
-                  <TouchableOpacity
-                    style={styles.googleBtn}
-                    disabled={isLoading}
-                    onPress={handleGoogleSignIn}
-                    activeOpacity={0.85}
-                  >
-                    <AntDesign name="google" size={20} color="#000000" />
-                    <Text style={styles.googleBtnText}>
-                      {isLoading ? "Signing in..." : "Continue with Google"}
-                    </Text>
-                  </TouchableOpacity>
-                </Animated.View>
-
-                {/* Error Message */}
-                {errorMessage ? (
-                  <Animated.View style={[styles.errorBox, { opacity: errorOpacity }]}>
-                    <AntDesign name="exclamation-circle" size={14} color="#EF4444" />
-                    <Text style={styles.errorText}>{errorMessage}</Text>
-                  </Animated.View>
-                ) : null}
-
-                {/* Phone Login Code preserved for future use when OTP service is ready */}
-                {/* 
-                <Text style={styles.label}>Phone Number</Text>
-
-                <Animated.View
-                  style={[
-                    styles.inputBox,
-                    {
-                      transform: [{ scale: inputScale }],
-                      borderColor: errorMessage
-                        ? "#EF4444"
-                        : isFocused
-                          ? "#78787cff"
-                          : "#e2e8f0",
-                      backgroundColor: errorMessage
-                        ? "#FEF2F2"
-                        : isFocused
-                          ? "#ffffff"
-                          : "#f8fafc",
-                    },
-                  ]}
+              {/* Action Button */}
+              <Animated.View style={{ transform: [{ scale: buttonScale }], marginTop: 6 }}>
+                <TouchableOpacity
+                  style={styles.mainBtn}
+                  disabled={isLoading}
+                  onPress={authMode === 'signin' ? handleEmailLogin : handleEmailRegister}
+                  activeOpacity={0.85}
                 >
-                  <TouchableOpacity style={styles.countryPicker}>
-                    <Image
-                      source={{ uri: "https://flagcdn.com/w40/in.png" }}
-                      style={styles.flag}
-                    />
-                    <Text style={styles.code}>+91</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.divider} />
-
-                  <TextInput
-                    style={styles.phoneInput}
-                    placeholder="Phone Number"
-                    placeholderTextColor="#94a3b8"
-                    keyboardType="phone-pad"
-                    value={phoneNumber}
-                    onChangeText={(t) => {
-                      const clean = t.replace(/[^0-9]/g, "");
-                      if (clean.length <= 10) setPhoneNumber(clean);
-                    }}
-                    onFocus={handleFocus}
-                    onBlur={handleBlur}
-                    maxLength={10}
-                    editable={!isLoading}
-                  />
-                </Animated.View>
-
-                <View style={styles.progressBox}>
-                  <View style={styles.progressHeader}>
-                    <Text style={styles.progressTxt}>Progress</Text>
-                    <Text style={styles.progressNum}>{phoneNumber.length}/10</Text>
-                  </View>
-                  <View style={styles.progressTrack}>
-                    <Animated.View style={[styles.progressFill, { width: progressPct }]} />
-                  </View>
-                </View>
-
-                <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
-                  <TouchableOpacity
-                    style={[
-                      styles.continueBtn,
-                      phoneNumber.length === 10 ? styles.continueActive : styles.continueDisabled,
-                    ]}
-                    disabled={phoneNumber.length !== 10 || isLoading}
-                    onPress={handleSendOTP}
-                    activeOpacity={0.85}
+                  <LinearGradient
+                    colors={["#0F172A", "#1E293B"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.mainBtnGradient}
                   >
-                    <LinearGradient
-                      colors={
-                        phoneNumber.length === 10
-                          ? ["rgba(0, 0, 0, 1)", 'rgba(0, 0, 0, 0.93)', "rgba(0, 0, 0, 0.61)"]
-                          : ["#eee", "#eee"]
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.gradientBtn}
-                    >
-                      <Text
-                        style={[
-                          styles.continueTxt,
-                          phoneNumber.length === 10 ? styles.txtActive : styles.txtDisabled,
-                        ]}
-                      >
-                        {isLoading ? "Sending OTP..." : "Continue"}
-                      </Text>
-                      {phoneNumber.length === 10 && !isLoading && (
-                        <AntDesign name="right" size={20} color="#fff" />
-                      )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </Animated.View>
-                */}
-              </View>
-            </Animated.View>
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Text style={styles.mainBtnText}>
+                          {authMode === 'signin' ? "Sign In" : "Send Verification Code"}
+                        </Text>
+                        <AntDesign name="arrow-right" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </Animated.View>
 
-            {/* ── Terms ── */}
-            <View style={styles.termsBox}>
-              <Text style={styles.terms}>
-                By continuing, you agree to our{" "}
-                <Text style={styles.link}>Terms of Service</Text> and{" "}
-                <Text style={styles.link}>Privacy Policy</Text>
-              </Text>
+              {authMode === 'register' && (
+                <Text style={styles.registerOtpNotice}>
+                  We'll send a 6-digit verification code to your email.
+                </Text>
+              )}
+
+              {/* ── Social Login Divider ── */}
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {/* Apple Sign-In Button (iOS Only) */}
+              {Platform.OS === 'ios' && isAppleAuthAvailable && (
+                <View style={{ marginBottom: 10 }}>
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                    cornerRadius={16}
+                    style={{ width: "100%", height: 50 }}
+                    onPress={handleAppleSignIn}
+                  />
+                </View>
+              )}
+
+              {/* Google Sign-In Button */}
+              <TouchableOpacity
+                style={styles.googleBtn}
+                disabled={isLoading}
+                onPress={handleGoogleSignIn}
+                activeOpacity={0.85}
+              >
+                <AntDesign name="google" size={19} color="#0F172A" />
+                <Text style={styles.googleBtnText}>Continue with Google</Text>
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+          </Animated.View>
+
+          {/* ── Terms ── */}
+          <View style={styles.termsBox}>
+            <Text style={styles.terms}>
+              By continuing, you agree to our{" "}
+              <Text style={styles.link}>Terms of Service</Text> and{" "}
+              <Text style={styles.link}>Privacy Policy</Text>
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* ── Forgot Password Modal ── */}
+      <Modal
+        visible={showForgotModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowForgotModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.modalContentWrapper}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Reset Password</Text>
+                <TouchableOpacity
+                  onPress={() => setShowForgotModal(false)}
+                  style={styles.modalCloseBtn}
+                >
+                  <Ionicons name="close" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              {forgotError ? (
+                <View style={styles.modalErrorBox}>
+                  <AntDesign name="exclamation-circle" size={14} color="#EF4444" />
+                  <Text style={styles.modalErrorText}>{forgotError}</Text>
+                </View>
+              ) : null}
+
+              {forgotMessage ? (
+                <View style={styles.modalSuccessBox}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                  <Text style={styles.modalSuccessText}>{forgotMessage}</Text>
+                </View>
+              ) : null}
+
+              {forgotStep === 1 ? (
+                <>
+                  <Text style={styles.modalSubtitle}>
+                    Enter your account email to receive a 6-digit password reset code.
+                  </Text>
+                  <View style={styles.modalInputBox}>
+                    <Ionicons name="mail-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Email Address"
+                      placeholderTextColor="#94A3B8"
+                      value={forgotEmail}
+                      onChangeText={setForgotEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={styles.modalActionBtn}
+                    disabled={forgotLoading}
+                    onPress={handleForgotPasswordSend}
+                  >
+                    {forgotLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.modalActionBtnText}>Send Reset Code</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.modalSubtitle}>
+                    Enter the 6-digit code sent to <Text style={{ fontWeight: '700', color: '#0F172A' }}>{forgotEmail}</Text> and your new password.
+                  </Text>
+                  <View style={styles.modalInputBox}>
+                    <Ionicons name="key-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="6-Digit Reset Code"
+                      placeholderTextColor="#94A3B8"
+                      value={forgotOtp}
+                      onChangeText={setForgotOtp}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                    />
+                  </View>
+                  <View style={styles.modalInputBox}>
+                    <Ionicons name="lock-closed-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="New Password (min. 6 chars)"
+                      placeholderTextColor="#94A3B8"
+                      value={forgotNewPassword}
+                      onChangeText={setForgotNewPassword}
+                      secureTextEntry
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={styles.modalActionBtn}
+                    disabled={forgotLoading}
+                    onPress={handleResetPasswordSubmit}
+                  >
+                    {forgotLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.modalActionBtnText}>Update Password</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
   floatingAsset: {
     position: "absolute",
     top: 0,
@@ -664,59 +963,136 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingBottom: 48,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   centerWrapper: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-
-  /* ── LOGO ── */
-  logoWrapper: { marginBottom: 10, alignItems: "center" },
-  logo: { width: width * 0.55, height: 80 },
-
-  /* ── CARD ── */
-  cardWrapper: { width: "100%", marginBottom: 32 },
-  card: {
-    backgroundColor: "transparent",
-    borderRadius: 32,
-    padding: 28,
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 22,
+    paddingBottom: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  label: {
+  /* ── LOGO ── */
+  logoWrapper: { marginBottom: 12, alignItems: "center" },
+  logo: { width: width * 0.52, height: 75 },
+
+  /* ── CARD ── */
+  cardWrapper: { width: "100%", marginBottom: 20 },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    padding: 24,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+
+  /* ── TAB SWITCHER ── */
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 16,
+    height: 44,
+    padding: 3,
+    marginBottom: 20,
+    position: "relative",
+  },
+  tabIndicator: {
+    position: "absolute",
+    top: 3,
+    bottom: 3,
+    width: "47%",
+    backgroundColor: "#0F172A",
+    borderRadius: 13,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+  },
+  tabText: {
     fontSize: 14,
+    fontWeight: "600",
+    color: "#64748B",
+    fontFamily: "Manrope-SemiBold",
+  },
+  tabTextActive: {
+    color: "#FFFFFF",
     fontWeight: "700",
-    color: "#0F0F0F",
-    marginBottom: 8,
     fontFamily: "Manrope-Bold",
   },
 
-  /* ── INPUT ── */
+  welcomeTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 4,
+    fontFamily: "Manrope-Bold",
+  },
+  welcomeSubtitle: {
+    fontSize: 13,
+    color: "#64748B",
+    textAlign: "center",
+    marginBottom: 16,
+    fontFamily: "Manrope-Medium",
+    lineHeight: 19,
+  },
+
+  /* ── INPUT BOX ── */
   inputBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1.5,
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 52,
     marginBottom: 12,
   },
-  countryPicker: { flexDirection: "row", alignItems: "center", },
-  flag: { width: 28, height: 20, borderRadius: 4, marginRight: 8 },
-  code: { fontSize: 17, fontWeight: "700", color: "#1e293b", marginRight: 6 },
-  divider: { width: 1, height: 28, backgroundColor: "#cbd5e1", marginLeft: 2 },
-  phoneInput: {
+  inputBoxFocused: {
+    borderColor: "#0F172A",
+    backgroundColor: "#FFFFFF",
+  },
+  inputIcon: {
+    marginRight: 8,
+  },
+  textInput: {
     flex: 1,
-    fontSize: 17,
-    marginLeft: 5,
+    fontSize: 15,
+    color: "#0F172A",
+    fontWeight: "500",
+    fontFamily: "Manrope-Medium",
+  },
+  eyeButton: {
+    padding: 4,
+  },
+
+  forgotBtn: {
+    alignSelf: "flex-end",
+    marginBottom: 12,
+    marginTop: -4,
+    paddingVertical: 4,
+  },
+  forgotText: {
+    fontSize: 13,
+    color: "#475569",
     fontWeight: "600",
-    color: "#1e293b",
     fontFamily: "Manrope-SemiBold",
   },
 
@@ -726,7 +1102,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginBottom: 12,
-    paddingHorizontal: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FEE2E2",
   },
   errorText: {
     fontSize: 13,
@@ -736,70 +1117,173 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  /* ── PROGRESS ── */
-  progressBox: { marginBottom: 24 },
-  progressHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  progressTxt: { fontSize: 12, color: "#64748b", fontWeight: "500" },
-  progressNum: { fontSize: 12, color: "#64748b", fontWeight: "600" },
-  progressTrack: { height: 6, backgroundColor: "#e2e8f0", borderRadius: 3, overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: "#04002aff", borderRadius: 3 },
-
-  /* ── BUTTON ── */
-  continueBtn: { borderRadius: 20, overflow: "hidden", shadowColor: "#000" },
-  continueActive: { shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } },
-  continueDisabled: { shadowOpacity: 0, elevation: 0 },
-  gradientBtn: {
+  /* ── PRIMARY BUTTON ── */
+  mainBtn: {
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  mainBtnGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 18,
-    gap: 8,
+    paddingVertical: 16,
   },
-  continueTxt: { fontSize: 18, fontWeight: "700", fontFamily: "Manrope-Bold" },
-  txtActive: { color: "#ffffff" },
-  txtDisabled: { color: "#888" },
-
-  /* ── GOOGLE SIGN-IN ── */
-  welcomeTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0F0F0F",
-    textAlign: "center",
-    marginBottom: 6,
+  mainBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
     fontFamily: "Manrope-Bold",
   },
-  welcomeSubtitle: {
-    fontSize: 14,
-    color: "#64748b",
+  registerOtpNotice: {
+    fontSize: 12,
+    color: "#64748B",
     textAlign: "center",
-    marginBottom: 20,
+    marginTop: 8,
     fontFamily: "Manrope-Medium",
   },
+
+  /* ── DIVIDER ── */
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 18,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E2E8F0",
+  },
+  dividerText: {
+    paddingHorizontal: 12,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#94A3B8",
+    fontFamily: "Manrope-SemiBold",
+  },
+
+  /* ── GOOGLE BUTTON ── */
   googleBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
-    borderColor: "#e2e8f0",
-    borderRadius: 20,
-    paddingVertical: 18,
-    gap: 12,
-    backgroundColor: "#ffffff",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    paddingVertical: 14,
+    gap: 10,
+    backgroundColor: "#FFFFFF",
   },
   googleBtnText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
-    color: "#0F0F0F",
+    color: "#0F172A",
     fontFamily: "Manrope-Bold",
   },
 
   /* ── TERMS ── */
   termsBox: { alignItems: "center", paddingHorizontal: 16 },
-  terms: { fontSize: 13, color: "#64748b", textAlign: "center", lineHeight: 19 },
-  link: { color: "#1e293b", fontWeight: "700" },
+  terms: { fontSize: 12, color: "#64748B", textAlign: "center", lineHeight: 18 },
+  link: { color: "#0F172A", fontWeight: "700" },
+
+  /* ── MODAL STYLES ── */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  modalContentWrapper: {
+    width: "100%",
+    maxWidth: 400,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#0F172A",
+    fontFamily: "Manrope-Bold",
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#64748B",
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  modalInputBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 50,
+    marginBottom: 12,
+  },
+  modalActionBtn: {
+    backgroundColor: "#0F172A",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  modalActionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "Manrope-Bold",
+  },
+  modalErrorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    padding: 10,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  modalErrorText: {
+    color: "#EF4444",
+    fontSize: 13,
+    flex: 1,
+  },
+  modalSuccessBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    padding: 10,
+    backgroundColor: "#ECFDF5",
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  modalSuccessText: {
+    color: "#065F46",
+    fontSize: 13,
+    flex: 1,
+  },
 });

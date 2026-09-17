@@ -65,7 +65,7 @@ export default function AboutScreen() {
                 <View style={styles.heroSection}>
                     <Image source={logo} style={styles.heroLogo} resizeMode="contain" />
                     <View style={[styles.taglineBox, { backgroundColor: theme.primary + '0A' }]}>
-                        <Text style={[styles.tagline, { color: theme.primary }]}>FASHION IN A FLASH</Text>
+                        <Text style={[styles.tagline, { color: theme.primary }]}>JUST MINUTES, JUST FASHION</Text>
                     </View>
                 </View>
 

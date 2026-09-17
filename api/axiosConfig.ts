@@ -70,9 +70,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
-    // Do not trigger token refresh for public endpoints
-    const isPublicEndpoint = originalRequest.url?.includes('auth/send-otp') || 
-                             originalRequest.url?.includes('auth/verify-otp') ||
+    // Do not trigger token refresh for public / auth endpoints
+    const isPublicEndpoint = originalRequest.url?.includes('auth/') || 
                              originalRequest.url?.includes('user/checkDeliveryAvailability');
 
     if (error.response?.status === 401 && !originalRequest._retry && !isPublicEndpoint) {
