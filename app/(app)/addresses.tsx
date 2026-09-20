@@ -18,6 +18,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import logo from '@/assets/images/logo/logo.png';
+import BrandFooter from '@/components/common/BrandFooter';
 import { getAddresses, deleteAddress, Address } from '@/api/address';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography } from '@/constants/theme';
@@ -183,11 +184,7 @@ const AddressesScreen = () => {
           <Text style={styles.addButtonText}>Add New Address</Text>
         </TouchableOpacity>
 
-        <View style={styles.footer}>
-            <Image source={logo} style={styles.footerLogo} blurRadius={3} resizeMode="contain" />
-            <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-            <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
-        </View>
+        <BrandFooter />
       </Animated.ScrollView>
     </PremiumRefreshWrapper>
     </View>
@@ -364,35 +361,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: Typography.fontFamily.bold,
     color: '#fff',
-  },
-  // ── Footer
-  footer: {
-    alignItems: 'center',
-    marginTop: 32,
-    marginBottom: 40,
-  },
-  versionText: {
-    fontSize: 8,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
-  },
-  taglineText: {
-    fontSize: 12,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
-    opacity: 0.6,
-    textShadowColor: 'rgba(209, 213, 219, 0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
-  },
-  footerLogo: {
-    width: 140,
-    height: 60,
-    opacity: 0.25,
   },
 });
 

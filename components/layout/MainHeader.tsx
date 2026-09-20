@@ -2,7 +2,8 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Image } from "expo-image";
 import {
     Animated,
     Dimensions,
@@ -99,11 +100,17 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
     const isInteractingRef = useRef(false);
     const resumeTimeoutRef = useRef<any>(null);
     const categoryFadeAnim = useRef(new Animated.Value(1)).current;
+    const isInitialGenderMount = useRef(true);
 
-    const visibleCategories = categories.filter((cat) => {
+    const visibleCategories = useMemo(() => {
         const genderKey = selectedGender.toUpperCase();
-        return cat.allowedGenders ? cat.allowedGenders.includes(genderKey) : true;
-    });
+        const filtered = categories.filter((cat) => {
+            const genders: string[] = cat.allowedGenders || cat.allowedGender || [];
+            if (!Array.isArray(genders) || genders.length === 0) return true;
+            return genders.some((g: string) => String(g).toUpperCase() === genderKey);
+        });
+        return filtered.length > 0 ? filtered : categories;
+    }, [categories, selectedGender]);
 
     const scheduleResume = (delay = 1500) => {
         if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
@@ -122,18 +129,21 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
             try {
                 setLoading(true);
                 const response = await fetchCategories();
-                // Based on axiosConfig's response unwrapper, response is already the data object
-                const allCategories = response?.categories || [];
+                // Defensive unwrapping: support response.categories, response.data.categories, or array directly
+                const allCategories = response?.categories || response?.data?.categories || (Array.isArray(response) ? response : []);
                 // Filter only level 0 (top-level) and active categories
                 const topLevel = allCategories.filter((cat: any) => cat.level === 0 && cat.isActive);
                 setCategories(topLevel);
                 if (topLevel.length > 0) {
                     setSelectedCategoryId(topLevel[0]._id);
                 }
+                scrollPosRef.current = 0;
+                categoryScrollRef.current?.scrollTo({ x: 0, animated: false });
             } catch (error) {
                 console.error("Failed to load categories:", error);
             } finally {
                 setLoading(false);
+                categoryFadeAnim.setValue(1);
             }
         };
 
@@ -141,16 +151,33 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
     }, [refreshKey]);
 
     useEffect(() => {
+        if (isInitialGenderMount.current) {
+            isInitialGenderMount.current = false;
+            categoryFadeAnim.setValue(1);
+            return;
+        }
+
         // Reset scroll position on gender switch
         scrollPosRef.current = 0;
         categoryScrollRef.current?.scrollTo({ x: 0, animated: false });
 
         categoryFadeAnim.setValue(0);
-        Animated.timing(categoryFadeAnim, {
+        const animation = Animated.timing(categoryFadeAnim, {
             toValue: 1,
-            duration: 350,
+            duration: 300,
             useNativeDriver: true,
-        }).start();
+        });
+
+        animation.start(({ finished }) => {
+            if (!finished) {
+                categoryFadeAnim.setValue(1);
+            }
+        });
+
+        return () => {
+            animation.stop();
+            categoryFadeAnim.setValue(1);
+        };
     }, [selectedGender]);
 
     // Continuous auto-glide that seamlessly pauses during manual swipe and resumes
@@ -579,7 +606,9 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                 : [...visibleCategories, ...visibleCategories, ...visibleCategories].map((cat, idx) => {
                                     const isActive = selectedCategoryId === cat._id;
                                     const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
-                                    const logoUrl = cat.logos?.[genderKey]?.url || cat.logo?.url || cat.image?.url;
+                                    const logoUrl = (cat.logos?.[genderKey]?.url && typeof cat.logos[genderKey].url === 'string' && cat.logos[genderKey].url.trim() !== '')
+                                        ? cat.logos[genderKey].url
+                                        : (cat.logo?.url || cat.image?.url || null);
 
                                     return (
                                         <TouchableOpacity
@@ -589,24 +618,25 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                             onPress={() => {
                                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                 router.push({
-                                                    pathname: '/search-results' as any,
+                                                    pathname: '/(app)/(tabs)/categories' as any,
                                                     params: {
                                                         categoryId: cat._id,
-                                                        gender: selectedGender.toUpperCase(),
                                                     }
                                                 });
                                             }}
                                         >
                                             <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
                                                 {logoUrl ? (
-                                                    <Animated.Image
+                                                    <Image
                                                         source={{ uri: logoUrl }}
                                                         style={styles.categoryLogo}
-                                                        resizeMode="contain"
+                                                        contentFit="contain"
+                                                        cachePolicy="memory-disk"
+                                                        transition={150}
                                                     />
                                                 ) : (
                                                     <View style={styles.placeholderLogo}>
-                                                        <Text style={styles.placeholderText}>{cat.name[0]}</Text>
+                                                        <Text style={styles.placeholderText}>{cat.name ? cat.name[0] : '?'}</Text>
                                                     </View>
                                                 )}
                                             </View>

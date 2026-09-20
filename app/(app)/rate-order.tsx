@@ -29,7 +29,7 @@ interface ReviewableItem {
 }
 
 export default function RateOrderScreen() {
-  const { orderId } = useLocalSearchParams<{ orderId: string }>();
+  const { orderId, initialRating } = useLocalSearchParams<{ orderId: string; initialRating?: string }>();
   const router = useRouter();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
@@ -40,7 +40,10 @@ export default function RateOrderScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // Form State
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState<number>(() => {
+    const num = Number(initialRating);
+    return num >= 1 && num <= 5 ? num : 0;
+  });
   const [title, setTitle] = useState("");
   const [comment, setComment] = useState("");
   const [images, setImages] = useState<string[]>([]);

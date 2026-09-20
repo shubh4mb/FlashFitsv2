@@ -155,7 +155,16 @@ export default function MerchantLogosSection({
                 merchant={merchant}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push({ pathname: '/merchant/[id]', params: { id: merchant._id, fromExplore: 'false', isWarehouse: merchant.isWarehouse ? 'true' : 'false' } } as any);
+                  const isWh = merchant.isWarehouse || merchant.shopName?.toLowerCase().includes('warehouse') || merchant.shopName?.toLowerCase().includes('mart');
+                  router.push({
+                    pathname: '/merchant/[id]',
+                    params: {
+                      id: merchant._id,
+                      fromExplore: 'false',
+                      shopName: merchant.shopName,
+                      isWarehouse: isWh ? 'true' : 'false',
+                    }
+                  } as any);
                 }}
                 subInfoText={distanceStr}
                 subInfoIcon="location-outline"

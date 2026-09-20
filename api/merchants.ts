@@ -18,7 +18,7 @@ export const fetchMerchants = async (lat?: number, lng?: number, gender?: string
 };
 
 export const fetchMerchantById = async (id: string, lat?: number, lng?: number) => {
-    if (!id || id === 'flashmart' || id.includes('warehouse') || id.length !== 24) {
+    if (!id || id === 'flashmart') {
         return null;
     }
     try {

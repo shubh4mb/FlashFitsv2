@@ -306,6 +306,41 @@ const ProductDetailPage = () => {
   const isOnline = product?.isOnline !== false && product?.merchantId?.isOnline !== false;
   const productIsNearby = isNearby;
 
+  const isWarehouseDelivered = useMemo(() => {
+    if (selectedFulfillmentMode === 'directStore') return false;
+    return !!(
+      selectedFulfillmentMode === 'flashmart' ||
+      product?.isWarehouseListing ||
+      product?.source === 'warehouse' ||
+      product?.merchantId?.fulfillmentType === 'warehouse' ||
+      product?.merchantId?.isWarehouse
+    );
+  }, [selectedFulfillmentMode, product]);
+
+  const handleNavigateMerchant = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isWarehouseDelivered) {
+      const brandId = product?.merchantId?._id || product?.merchantId || product?.sourceMerchantId;
+      if (brandId) {
+        const brandName = product?.merchantId?.shopName || product?.sourceMerchantName || product?.brandId?.name || '';
+        router.push({
+          pathname: '/(app)/(tabs)/flashmart',
+          params: { brandId: String(brandId), brandName: String(brandName) },
+        } as any);
+      } else {
+        router.push('/(app)/(tabs)/flashmart' as any);
+      }
+    } else {
+      const storeId = product?.shopMerchantId || product?.merchantId?._id || product?.merchantId;
+      if (storeId) {
+        router.push({
+          pathname: '/merchant/[id]',
+          params: { id: String(storeId), isWarehouse: 'false' },
+        } as any);
+      }
+    }
+  };
+
   const showFeedback = () => {
     setShowAddedFeedback(true);
     Animated.sequence([
@@ -642,25 +677,27 @@ const ProductDetailPage = () => {
             )}
           </View>
 
-          {/* Merchant / FlashMart Section */}
+          {/* Merchant / Brand Section */}
           <TouchableOpacity
             style={styles.merchantSection}
-            onPress={() => {
-              if (product.isWarehouseListing && product.availableInShop && product.shopMerchantId) {
-                router.push(`/merchant/${product.shopMerchantId}` as any);
-              } else if (product.merchantId?._id) {
-                router.push(`/merchant/${product.merchantId._id}` as any);
-              }
-            }}
+            onPress={handleNavigateMerchant}
             activeOpacity={0.7}
           >
             <View style={styles.merchantLogoContainer}>
-              {product.isWarehouseListing ? (
-                <Image
-                  source={flashfitsLogo}
-                  style={styles.merchantLogo}
-                  contentFit="contain"
-                />
+              {isWarehouseDelivered ? (
+                product.merchantId?.logo?.url ? (
+                  <Image
+                    source={{ uri: product.merchantId.logo.url }}
+                    style={styles.merchantLogo}
+                    contentFit="contain"
+                  />
+                ) : (
+                  <Image
+                    source={flashfitsLogo}
+                    style={styles.merchantLogo}
+                    contentFit="contain"
+                  />
+                )
               ) : (
                 <Image
                   source={{ uri: product.merchantId?.logo?.url }}
@@ -671,12 +708,15 @@ const ProductDetailPage = () => {
             </View>
             <View style={styles.merchantInfo}>
               <Text style={styles.merchantLabel}>
-                {product.isWarehouseListing ? 'Dispatched from' : 'Sold by'}
+                {isWarehouseDelivered ? 'Dispatched from Warehouse' : 'Sold by'}
               </Text>
-              <Text style={styles.merchantName}>
-                {product.isWarehouseListing
-                  ? `FF Warehouse • ${product.sourceMerchantName || product.merchantId?.shopName || 'Partner Store'}`
-                  : product.merchantId?.shopName}
+              <Text style={styles.merchantName} numberOfLines={1}>
+                {isWarehouseDelivered
+                  ? `FF Warehouse • ${product.merchantId?.shopName || product.sourceMerchantName || 'Partner Brand'}`
+                  : (product.merchantId?.shopName || product.shopMerchantName || 'Partner Store')}
+              </Text>
+              <Text style={{ fontSize: 11, color: isWarehouseDelivered ? '#475569' : '#64748B', fontFamily: Typography.fontFamily.medium, marginTop: 1 }}>
+                {isWarehouseDelivered ? '⚡ Warehouse Brand · Express Delivery' : '🏪 Retail Store · Try & Buy Available'}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
@@ -721,7 +761,10 @@ const ProductDetailPage = () => {
               </View>
               {product.shopMerchantId && (
                 <TouchableOpacity
-                  onPress={() => router.push(`/merchant/${product.shopMerchantId}` as any)}
+                  onPress={() => router.push({
+                    pathname: '/merchant/[id]',
+                    params: { id: String(product.shopMerchantId), isWarehouse: 'false' }
+                  } as any)}
                   style={{ backgroundColor: '#059669', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 }}
                   activeOpacity={0.8}
                 >

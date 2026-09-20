@@ -1,5 +1,6 @@
 import { createRazorpayOrder, verifyPayment } from '@/api/orders';
 import logo from '@/assets/images/logo/logo.png';
+import BrandFooter from '@/components/common/BrandFooter';
 import AddressSelectorModal from '@/components/common/AddressSelectorModal';
 import CartItem from '@/components/common/CartItem';
 import CouponInput from '@/components/common/CouponInput';
@@ -447,12 +448,16 @@ export default function CartScreen() {
                 const productDiscount = Math.round(Number(mTotals?.discount || Math.max(0, itemMrpTotal - itemSubtotal)));
                 const offerDiscount = Math.round(Number(mOffers?.totalDiscount || 0));
                 const discountedItemsTotal = Math.max(0, itemSubtotal - offerDiscount);
-                const rawDeliveryCharge = Math.round(Number(mTotals?.totalDeliveryCharge || 0));
-                const deliveryFee = mOffers?.freeDelivery ? 0 : rawDeliveryCharge;
-                const returnFee = Math.round(Number(mTotals?.totalReturnCharge || 0));
+                const rawDeliveryCharge = Math.round(Number(mTotals?.rawDeliveryCharge || mTotals?.totalDeliveryCharge || 0));
+                const isFreeDelivery = Boolean(mOffers?.freeDelivery || mTotals?.freeDelivery);
+                const isFreeReturn = Boolean(mOffers?.freeReturn || mOffers?.freeDelivery || mTotals?.freeReturn || mTotals?.freeDelivery);
+                const isFreeWaiting = Boolean(mOffers?.freeWaiting || mOffers?.freeDelivery || mTotals?.freeWaiting || mTotals?.freeDelivery);
+                const deliveryFee = isFreeDelivery ? 0 : rawDeliveryCharge;
+                const rawReturnFee = Math.round(Number(mTotals?.rawReturnCharge || mTotals?.totalReturnCharge || 0));
+                const returnFee = isFreeReturn ? 0 : rawReturnFee;
                 const tipAmount = Math.round(Number(deliveryTip || 0));
                 const estimatedMaxTotal = discountedItemsTotal + deliveryFee + returnFee + tipAmount;
-                const totalSavings = (itemMrpTotal > itemSubtotal ? productDiscount : 0) + offerDiscount + (mOffers?.freeDelivery ? rawDeliveryCharge : 0);
+                const totalSavings = (itemMrpTotal > itemSubtotal ? productDiscount : 0) + offerDiscount + (isFreeDelivery ? rawDeliveryCharge : 0) + (isFreeReturn ? rawReturnFee : 0);
 
                 return (
                   <View key={mc.merchantId} style={{ width: SCREEN_WIDTH, flex: 1 }}>
@@ -662,32 +667,61 @@ export default function CartScreen() {
                               <View style={styles.billRow}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                   <Text style={styles.billLabel}>Delivery Partner Fee</Text>
-                                  {mOffers?.freeDelivery && (
+                                  {isFreeDelivery && (
                                     <View style={styles.freeBadge}>
                                       <Text style={styles.freeBadgeText}>OFFER</Text>
                                     </View>
                                   )}
                                 </View>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                  {mOffers?.freeDelivery && rawDeliveryCharge > 0 && (
+                                  {isFreeDelivery && rawDeliveryCharge > 0 && (
                                     <Text style={styles.strikethroughPrice}>₹{rawDeliveryCharge}</Text>
                                   )}
-                                  <Text style={[styles.billValue, mOffers?.freeDelivery && { color: '#10B981', fontWeight: '700' }]}>
-                                    {mOffers?.freeDelivery ? 'FREE' : `₹${deliveryFee}`}
+                                  <Text style={[styles.billValue, isFreeDelivery && { color: '#10B981', fontWeight: '700' }]}>
+                                    {isFreeDelivery ? 'FREE' : `₹${deliveryFee}`}
                                   </Text>
                                 </View>
                               </View>
 
                               {/* Return Handling Fee */}
-                              {returnFee > 0 && (
-                                <>
-                                  <View style={styles.billRow}>
-                                    <Text style={styles.billLabel}>Doorstep Return Handling</Text>
-                                    <Text style={styles.billValue}>₹{returnFee}</Text>
-                                  </View>
-                                  <Text style={styles.billSubText}>* 100% waived if all items are kept</Text>
-                                </>
+                              <View style={styles.billRow}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={styles.billLabel}>Doorstep Return Handling</Text>
+                                  {isFreeReturn && (
+                                    <View style={styles.freeBadge}>
+                                      <Text style={styles.freeBadgeText}>OFFER</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  {isFreeReturn && rawReturnFee > 0 && (
+                                    <Text style={styles.strikethroughPrice}>₹{rawReturnFee}</Text>
+                                  )}
+                                  <Text style={[styles.billValue, isFreeReturn && { color: '#10B981', fontWeight: '700' }]}>
+                                    {isFreeReturn ? 'FREE' : `₹${returnFee}`}
+                                  </Text>
+                                </View>
+                              </View>
+                              {isFreeReturn ? (
+                                <Text style={[styles.billSubText, { color: '#10B981', fontWeight: '600' }]}>* 100% free returns with coupon</Text>
+                              ) : (
+                                <Text style={styles.billSubText}>* 100% waived if all items are kept</Text>
                               )}
+
+                              {/* Rider Waiting Time Fee */}
+                              <View style={styles.billRow}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={styles.billLabel}>Rider Trial Waiting Time</Text>
+                                  {isFreeWaiting && (
+                                    <View style={[styles.freeBadge, { backgroundColor: '#EDE9FE' }]}>
+                                      <Text style={[styles.freeBadgeText, { color: '#7C3AED' }]}>FREE</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <Text style={[styles.billValue, isFreeWaiting && { color: '#10B981', fontWeight: '700' }]}>
+                                  {isFreeWaiting ? 'FREE (Unlimited)' : '10 mins free'}
+                                </Text>
+                              </View>
 
                               {/* Rider Tip */}
                               {tipAmount > 0 && (
@@ -759,11 +793,7 @@ export default function CartScreen() {
                           </View>
                         </View>
 
-                        <View style={styles.footer}>
-                          <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
-                          <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-                          <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
-                        </View>
+                        <BrandFooter />
                       </Animated.ScrollView>
                     </PremiumRefreshWrapper>
                   </View>
@@ -852,11 +882,7 @@ export default function CartScreen() {
                   </View>
                 </View>
 
-                <View style={styles.footer}>
-                  <Image source={logo} style={styles.footerLogo} blurRadius={3} contentFit="contain" />
-                  <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-                  <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
-                </View>
+                <BrandFooter />
               </Animated.ScrollView>
             </PremiumRefreshWrapper>
           )
@@ -1103,33 +1129,6 @@ const styles = StyleSheet.create({
   emptyDesc: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 18, marginBottom: 20 },
   exploreButton: { paddingHorizontal: 28, paddingVertical: 12, borderRadius: 14 },
   exploreText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  footer: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  versionText: {
-    fontSize: 8,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2,
-    marginTop: 2,
-  },
-  taglineText: {
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2,
-    marginTop: 2,
-    opacity: 0.6,
-    textShadowColor: 'rgba(209, 213, 219, 0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
-  },
-  footerLogo: {
-    width: 110,
-    height: 48,
-    opacity: 0.25,
-  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255, 255, 255, 0.7)',

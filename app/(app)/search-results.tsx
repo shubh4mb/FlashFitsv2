@@ -178,7 +178,7 @@ export default function SearchResultsScreen() {
     const loadCategories = async () => {
       try {
         const res = await fetchCategories();
-        setCategories(res.categories || []);
+        setCategories(res?.categories || res?.data?.categories || (Array.isArray(res) ? res : []));
       } catch (error) {
         console.error('Failed to load categories:', error);
       }

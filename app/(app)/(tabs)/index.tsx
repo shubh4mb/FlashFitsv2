@@ -1,5 +1,5 @@
 import { fetchHomeFeedData } from '@/api/home';
-import logo from '@/assets/images/logo/logo.png';
+import BrandFooter from '@/components/common/BrandFooter';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import Skeleton from '@/components/common/Skeleton';
 import MainHeader from '@/components/layout/MainHeader';
@@ -259,13 +259,7 @@ export default function HomeScreen() {
               <TryGuaranteeBanner />
 
               {/* Brand Footer */}
-              <View style={{ padding: 20 }}>
-                <View style={styles.footer}>
-                  <Image source={logo} style={styles.footerLogo} resizeMode="contain" />
-                  <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-                  <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
-                </View>
-              </View>
+              <BrandFooter />
             </>
           )}
 
@@ -281,34 +275,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-  },
-  footer: {
-    alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 40,
-  },
-  versionText: {
-    fontSize: 8,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
-  },
-  taglineText: {
-    fontSize: 12,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
-    opacity: 0.6,
-    textShadowColor: 'rgba(209, 213, 219, 0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
-  },
-  footerLogo: {
-    width: 140,
-    height: 60,
-    opacity: 0.25,
   },
   promptContainer: {
     paddingHorizontal: 28,

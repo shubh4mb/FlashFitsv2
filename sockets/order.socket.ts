@@ -41,10 +41,25 @@ export const listenOrderUpdates = async (callback: (data: any) => void) => {
     const socket = await initSocket();
     socket.off('orderUpdate');
     socket.off('trialPhaseStart');
+    socket.off('trialPhaseEnded');
+    socket.off('cashCollected');
+    socket.off('photoVerified');
 
     socket.on('orderUpdate', (updateData: any) => {
         console.log('📦 Order update:', updateData);
         callback(updateData);
+    });
+    socket.on('trialPhaseStart', (data: any) => {
+        callback(data);
+    });
+    socket.on('trialPhaseEnded', (data: any) => {
+        callback(data);
+    });
+    socket.on('cashCollected', (data: any) => {
+        callback(data);
+    });
+    socket.on('photoVerified', (data: any) => {
+        callback(data);
     });
 };
 
@@ -53,6 +68,9 @@ export const removeOrderListeners = () => {
     if (socket) {
         socket.off('orderUpdate');
         socket.off('trialPhaseStart');
+        socket.off('trialPhaseEnded');
+        socket.off('cashCollected');
+        socket.off('photoVerified');
     }
 };
 

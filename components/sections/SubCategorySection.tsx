@@ -50,7 +50,7 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
       try {
         setLoading(true);
         const response = await fetchCategories();
-        setCategories(response?.categories || []);
+        setCategories(response?.categories || response?.data?.categories || (Array.isArray(response) ? response : []));
         setError(false);
       } catch (err) {
         console.error('Failed to load categories in SubCategorySection:', err);

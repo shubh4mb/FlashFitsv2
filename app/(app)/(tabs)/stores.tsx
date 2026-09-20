@@ -28,6 +28,7 @@ import * as Haptics from 'expo-haptics';
 import { ThemedView } from '@/components/common/themed-view';
 import Skeleton from '@/components/common/Skeleton';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
+import BrandFooter from '@/components/common/BrandFooter';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 100) / 4; // 4 columns with 20px horizontal padding and 20px gap
@@ -204,7 +205,15 @@ export default function StoresScreen() {
       merchant={store}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.push({ pathname: '/merchant/[id]', params: { id: store._id, isWarehouse: store.isWarehouse ? 'true' : 'false' } } as any);
+        const isWh = store.isWarehouse || store.shopName?.toLowerCase().includes('warehouse') || store.shopName?.toLowerCase().includes('mart');
+        router.push({
+          pathname: '/merchant/[id]',
+          params: {
+            id: store._id,
+            shopName: store.shopName,
+            isWarehouse: isWh ? 'true' : 'false',
+          }
+        } as any);
       }}
       subInfoText={distanceStr}
       subInfoIcon="location-outline"
@@ -257,7 +266,15 @@ export default function StoresScreen() {
                     merchant={merchant}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({ pathname: '/merchant/[id]', params: { id: merchant._id, isWarehouse: merchant.isWarehouse ? 'true' : 'false' } } as any);
+                      const isWh = merchant.isWarehouse || merchant.shopName?.toLowerCase().includes('warehouse') || merchant.shopName?.toLowerCase().includes('mart');
+                      router.push({
+                        pathname: '/merchant/[id]',
+                        params: {
+                          id: merchant._id,
+                          shopName: merchant.shopName,
+                          isWarehouse: isWh ? 'true' : 'false',
+                        }
+                      } as any);
                     }}
                     subInfoText={distanceStr}
                     subInfoIcon="location-outline"
@@ -268,6 +285,12 @@ export default function StoresScreen() {
             )}
           </View>
         </View>
+
+        {/* Brand Footer */}
+        <BrandFooter />
+
+        {/* Bottom Tab Bar Spacer */}
+        <View style={{ height: 110 }} />
       </Animated.ScrollView>
     </PremiumRefreshWrapper>
     </ThemedView>

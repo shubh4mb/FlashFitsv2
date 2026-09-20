@@ -45,8 +45,8 @@ const GENDER_ICON_MAP: Record<string, any> = {
 
 export default function MerchantDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { id, fromExplore, isWarehouse } = useLocalSearchParams<{
-    id: string; fromExplore?: string; isWarehouse?: string;
+  const { id, fromExplore, isWarehouse, shopName } = useLocalSearchParams<{
+    id: string; fromExplore?: string; isWarehouse?: string; shopName?: string;
   }>();
   const router = useRouter();
 
@@ -87,13 +87,25 @@ export default function MerchantDetailScreen() {
       const lat = selectedAddress?.location?.coordinates?.[1] || userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] || userLocation?.longitude;
 
-      const isKnownWarehouse =
-        isWarehouse === 'true' || id === 'flashmart' || id === 'ff-warehouse-hub' ||
-        id === 'warehouse' || id?.includes('warehouse') || (!!id && id.length !== 24);
+      const isWarehouseParam = isWarehouse === 'true';
+      const nameLower = (shopName || '').toLowerCase();
+      const idLower = (id || '').toLowerCase();
+      const isWarehouseCard =
+        isWarehouseParam ||
+        id === 'flashmart' ||
+        id === 'ff-warehouse-hub' ||
+        id === 'warehouse' ||
+        idLower.includes('warehouse') ||
+        nameLower.includes('warehouse') ||
+        nameLower.includes('flashfit mart') ||
+        nameLower.includes('flashfits mart') ||
+        nameLower.includes('kaloor');
 
-      const warehouseMerchant = {
+      const resolvedShopName = shopName || (isWarehouseCard ? 'FlashFits Warehouse Hub' : 'Store');
+
+      const defaultWarehouseMerchant = {
         _id: id || 'ff-warehouse-hub',
-        shopName: 'FlashFits Warehouse Hub',
+        shopName: resolvedShopName,
         isWarehouse: true,
         isOnline: true,
         isNearby: true,
@@ -101,17 +113,9 @@ export default function MerchantDetailScreen() {
         rating: 4.9,
         logo: { url: '' },
         backgroundImage: { url: '' },
-        genderCategory: ['MEN', 'WOMEN', 'KIDS'],
-        address: { city: 'FlashFits Hub', area: 'FlashFits Warehouse' },
+        genderCategory: ['MEN', 'WOMEN', 'KIDS', 'BOYS', 'GIRLS'],
+        address: { city: 'FlashFits Hub', area: resolvedShopName },
       };
-
-      if (isKnownWarehouse) {
-        const whRes = await fetchWarehouseProducts(selectedGender, 1, lat, lng).catch(() => null);
-        setMerchant(warehouseMerchant);
-        setProducts(whRes?.cards || whRes?.data?.cards || whRes?.products || whRes?.data || []);
-        setMerchantOffers([]);
-        return;
-      }
 
       const [mRes, pRes, oRes] = await Promise.all([
         fetchMerchantById(id as string, lat, lng).catch(() => null),
@@ -120,30 +124,40 @@ export default function MerchantDetailScreen() {
       ]);
 
       let merchantData = mRes?.merchant || mRes?.data?.merchant;
-      let isWhStore =
-        !!merchantData?.isWarehouse || merchantData?.shopName?.toLowerCase().includes('warehouse');
+      const isWhStore =
+        isWarehouseCard ||
+        !!merchantData?.isWarehouse ||
+        merchantData?.fulfillmentType === 'warehouse' ||
+        merchantData?.shopName?.toLowerCase().includes('warehouse');
 
       if (!merchantData) {
-        const whRes = await fetchWarehouseProducts(selectedGender, 1, lat, lng).catch(() => null);
-        setMerchant(warehouseMerchant);
-        setProducts(whRes?.cards || whRes?.data?.cards || whRes?.products || whRes?.data || []);
-        setMerchantOffers(oRes || []);
-        return;
+        if (isWhStore) {
+          merchantData = {
+            ...defaultWarehouseMerchant,
+            shopName: resolvedShopName,
+          };
+        }
+      } else {
+        if (isWhStore) {
+          merchantData.isWarehouse = true;
+          merchantData.fulfillmentType = 'warehouse';
+          if (!merchantData.warehouseName) {
+            merchantData.warehouseName = resolvedShopName;
+          }
+        } else if (isWarehouse === 'false') {
+          merchantData.isWarehouse = false;
+        }
       }
 
       setMerchant(merchantData);
 
       let rawProducts = pRes?.products || pRes?.data || [];
       if ((!rawProducts || rawProducts.length === 0) && isWhStore) {
-        const whRes = await fetchWarehouseProducts(selectedGender, 1, lat, lng).catch(() => null);
+        const whRes = await fetchWarehouseProducts('All', 1, lat, lng).catch(() => null);
         rawProducts = whRes?.cards || whRes?.data?.cards || whRes?.products || whRes?.data || [];
       }
 
-      setProducts(
-        isWhStore
-          ? rawProducts
-          : rawProducts.filter((p: any) => p.source !== 'warehouse' && !p.isWarehouseListing)
-      );
+      setProducts(rawProducts);
       setMerchantOffers(oRes || []);
     } catch (error) {
       console.error('Error fetching merchant details or products:', error);
@@ -174,29 +188,75 @@ export default function MerchantDetailScreen() {
     fetchData();
   }, [id, selectedAddress, userLocation]);
 
+  const isProductInGender = (p: any, targetGender: string) => {
+    if (!targetGender) return true;
+    const pGenders = Array.isArray(p.gender)
+      ? p.gender.map((g: any) => String(g).toUpperCase())
+      : [String(p.gender || '').toUpperCase()];
+
+    if (pGenders.includes('UNISEX') || pGenders.includes('ALL')) return true;
+
+    const targetUpper = targetGender.toUpperCase();
+    if (targetUpper === 'KIDS') {
+      return pGenders.some((g: string) => ['KIDS', 'BOYS', 'GIRLS'].includes(g));
+    }
+    return pGenders.includes(targetUpper);
+  };
+
   const availableGenders = useMemo(() => {
-    if (!merchant?.genderCategory) return [];
-    return merchant.genderCategory
+    const rawGenders = (merchant?.genderCategory || [])
       .map((g: string) => g.toUpperCase())
       .filter((g: string) => ['MEN', 'WOMEN', 'KIDS'].includes(g));
-  }, [merchant]);
+
+    // Also collect valid genders present on loaded products
+    const productGenders = new Set<string>();
+    (products || []).forEach((p: any) => {
+      const pGenders = Array.isArray(p.gender)
+        ? p.gender.map((g: any) => String(g).toUpperCase())
+        : [String(p.gender || '').toUpperCase()];
+      pGenders.forEach((g: string) => {
+        if (g === 'MEN' || g === 'WOMEN') productGenders.add(g);
+        if (['KIDS', 'BOYS', 'GIRLS'].includes(g)) productGenders.add('KIDS');
+        if (g === 'UNISEX' || g === 'ALL') {
+          productGenders.add('MEN');
+          productGenders.add('WOMEN');
+        }
+      });
+    });
+
+    const candidates = Array.from(new Set([...rawGenders, ...productGenders])).filter((g) =>
+      ['MEN', 'WOMEN', 'KIDS'].includes(g)
+    );
+
+    const order = ['MEN', 'WOMEN', 'KIDS'];
+    const sorted = candidates.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+
+    // If products have loaded, strictly only keep genders that have at least one product
+    if (products && products.length > 0) {
+      return sorted.filter((gender: string) =>
+        products.some((p: any) => isProductInGender(p, gender))
+      );
+    }
+
+    return sorted;
+  }, [merchant, products]);
 
   useEffect(() => {
-    if (availableGenders.length === 0) return;
+    if (availableGenders.length === 0) {
+      setLocalSelectedGender(null);
+      return;
+    }
     const globalUpper = (selectedGender as any) !== 'All' ? selectedGender.toUpperCase() : null;
-    setLocalSelectedGender(
-      globalUpper && availableGenders.includes(globalUpper) ? globalUpper : availableGenders[0]
-    );
+    if (globalUpper && availableGenders.includes(globalUpper)) {
+      setLocalSelectedGender(globalUpper);
+    } else {
+      setLocalSelectedGender(availableGenders[0]);
+    }
   }, [availableGenders, selectedGender]);
 
   const filteredProducts = useMemo(() => {
     if (!localSelectedGender) return products;
-    return products.filter((p: any) => {
-      const pGenders = Array.isArray(p.gender)
-        ? p.gender.map((g: any) => g.toUpperCase())
-        : [String(p.gender || '').toUpperCase()];
-      return pGenders.includes(localSelectedGender) || pGenders.includes('UNISEX');
-    });
+    return products.filter((p: any) => isProductInGender(p, localSelectedGender));
   }, [products, localSelectedGender]);
 
   const groupedProducts = useMemo(() => {
@@ -356,7 +416,12 @@ export default function MerchantDetailScreen() {
               )}
             </View>
 
-            {merchant.isOnline && (
+            {merchant?.fulfillmentType === 'warehouse' || merchant?.isWarehouse ? (
+              <View style={[styles.livePill, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+                <Ionicons name="flash" size={10} color="#059669" style={{ marginRight: 3 }} />
+                <Text style={[styles.liveText, { color: '#059669', fontFamily: Typography.fontFamily.bold }]}>WAREHOUSE BRAND</Text>
+              </View>
+            ) : merchant.isOnline && (
               <View style={styles.livePill}>
                 <View style={styles.liveDot} />
                 <Text style={styles.liveText}>OPEN NOW</Text>
@@ -366,12 +431,21 @@ export default function MerchantDetailScreen() {
 
           <Text style={styles.storeName} numberOfLines={2}>{merchant.shopName}</Text>
 
-          <TouchableOpacity style={styles.locationRow} onPress={handleOpenMaps} activeOpacity={0.6}>
-            <Text style={styles.locationText}>
-              {merchant.address?.area || merchant.address?.city || 'Location'} · {distanceInfo.km} km
-            </Text>
-            <Ionicons name="arrow-forward" size={11} color={MUTED} />
-          </TouchableOpacity>
+          {merchant?.fulfillmentType === 'warehouse' || merchant?.isWarehouse ? (
+            <View style={styles.locationRow}>
+              <Ionicons name="cube-outline" size={13} color="#059669" style={{ marginRight: 4 }} />
+              <Text style={[styles.locationText, { color: '#059669', fontFamily: Typography.fontFamily.medium }]}>
+                Dispatched from {merchant.warehouseName || 'FlashFits Hub'} · {distanceInfo.km} km
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.locationRow} onPress={handleOpenMaps} activeOpacity={0.6}>
+              <Text style={styles.locationText}>
+                {merchant.address?.area || merchant.address?.city || 'Location'} · {distanceInfo.km} km
+              </Text>
+              <Ionicons name="arrow-forward" size={11} color={MUTED} />
+            </TouchableOpacity>
+          )}
 
           {/* Stat strip */}
           <View style={styles.statStrip}>
@@ -505,7 +579,9 @@ export default function MerchantDetailScreen() {
             </View>
             <Text style={styles.emptyTitle}>Nothing here yet</Text>
             <Text style={styles.emptyText}>
-              No products for {localSelectedGender?.toLowerCase()} at this store.
+              {localSelectedGender
+                ? `No products for ${localSelectedGender.toLowerCase()} at this store.`
+                : 'No products currently available at this store.'}
             </Text>
           </View>
         )}

@@ -325,11 +325,13 @@ export default function CouponOffersModal({
                     >
                       {/* Left Badge Indicator */}
                       <View style={styles.cardHeaderRow}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <View
                             style={[
                               styles.categoryBadge,
-                              isCoupon
+                              (item.freeDelivery || item.type === 'FREE_DELIVERY')
+                                ? { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }
+                                : isCoupon
                                 ? { backgroundColor: '#EDE9FE', borderColor: '#DDD6FE' }
                                 : { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
                             ]}
@@ -337,10 +339,14 @@ export default function CouponOffersModal({
                             <Text
                               style={[
                                 styles.categoryBadgeText,
-                                isCoupon ? { color: '#6D28D9' } : { color: '#B45309' },
+                                (item.freeDelivery || item.type === 'FREE_DELIVERY')
+                                  ? { color: '#059669' }
+                                  : isCoupon ? { color: '#6D28D9' } : { color: '#B45309' },
                               ]}
                             >
-                              {isCoupon ? '🎟️ COUPON CODE' : '🏷️ STORE OFFER'}
+                              {(item.freeDelivery || item.type === 'FREE_DELIVERY')
+                                ? '🚚 FREE DELIVERY & RETURNS'
+                                : isCoupon ? '🎟️ COUPON CODE' : '🏷️ STORE OFFER'}
                             </Text>
                           </View>
 
@@ -355,9 +361,11 @@ export default function CouponOffersModal({
                         </View>
 
                         {/* Save amount pill */}
-                        {!!item.discountAmount && (
+                        {!!item.discountAmount ? (
                           <Text style={styles.savingsTag}>Save ₹{item.discountAmount}</Text>
-                        )}
+                        ) : (item.freeDelivery || item.type === 'FREE_DELIVERY') ? (
+                          <Text style={[styles.savingsTag, { backgroundColor: '#ECFDF5', color: '#059669' }]}>WAIVES ALL FEES</Text>
+                        ) : null}
                       </View>
 
                       {/* Main Card Body */}
@@ -374,7 +382,7 @@ export default function CouponOffersModal({
                           )}
 
                           <Text style={styles.offerDesc} numberOfLines={2}>
-                            {item.description || (item.discountValue ? `Get ${item.discountValue}${item.discountType === 'percentage' ? '%' : '₹'} off` : 'Special discount on your order')}
+                            {item.description || (item.freeDelivery ? '100% Free Delivery, Free Doorstep Returns & Free Waiting Time' : (item.discountValue ? `Get ${item.discountValue}${item.discountType === 'percentage' ? '%' : '₹'} off` : 'Special discount on your order'))}
                           </Text>
 
                           {threshold > 0 && (

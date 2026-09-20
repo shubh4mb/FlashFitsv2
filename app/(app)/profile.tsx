@@ -1,6 +1,6 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
     Image,
     ScrollView,
@@ -10,11 +10,9 @@ import {
     View,
 } from 'react-native';
 import logo from '@/assets/images/logo/logo.png';
-import * as SecureStore from 'expo-secure-store';
+import BrandFooter from '@/components/common/BrandFooter';
 import { useAuth } from '@/context/AuthContext';
-import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
-import { useGender } from '@/context/GenderContext';
-import Loader from '@/components/common/Loader';
+import { BrandColors, Typography } from '@/constants/theme';
 import { useAlert } from '@/context/AlertContext';
 import { triggerRateAppPrompt } from '@/hooks/useRateApp';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,30 +22,6 @@ export default function ProfileScreen() {
     const { signOut } = useAuth();
     const showAlert = useAlert();
     const insets = useSafeAreaInsets();
-
-    const [loading, setLoading] = useState(true);
-    const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
-    const [userEmail, setUserEmail] = useState<string | null>(null);
-    const [userName, setUserName] = useState<string | null>(null);
-
-    useEffect(() => {
-        loadProfileData();
-    }, []);
-
-    const loadProfileData = async () => {
-        try {
-            const phone = await SecureStore.getItemAsync('phoneNumber');
-            const email = await SecureStore.getItemAsync('userEmail');
-            const name = await SecureStore.getItemAsync('userName');
-            setPhoneNumber(phone);
-            setUserEmail(email);
-            setUserName(name);
-        } catch (error) {
-            console.error('Profile data load error:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleLogout = () => {
         showAlert({
@@ -106,14 +80,6 @@ export default function ProfileScreen() {
         },
     ];
 
-    if (loading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <Loader size={60} />
-            </View>
-        );
-    }
-
     return (
         <ScrollView
             style={[styles.container, { backgroundColor: BrandColors.offWhite }]}
@@ -133,41 +99,6 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
                 <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
                 <View style={{ width: 44 }} />
-            </View>
-
-            {/* ── User + Wallet Card ── */}
-            <View style={[styles.walletCard, { borderColor: '#F1F5F9', shadowColor: '#000' }]}>
-                {/* User row */}
-                <View style={styles.userRow}>
-                    <View style={[styles.phoneIconCircle, { backgroundColor: BrandColors.matteBlack }]}>
-                        <Ionicons name="person" size={22} color="#fff" />
-                    </View>
-                    <View style={styles.userInfo}>
-                        <Text style={styles.phoneLabel}>{userName ? userName.toUpperCase() : 'ACCOUNT'}</Text>
-                        <Text style={[styles.phoneText, { color: BrandColors.matteBlack }]} numberOfLines={1}>
-                            {userEmail || (phoneNumber ? `+91 ${phoneNumber}` : 'FlashFits Member')}
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Divider */}
-                <View style={[styles.divider, { backgroundColor: '#F1F5F9' }]} />
-
-                {/* Wallet row */}
-                <View style={styles.walletRow}>
-                    <View>
-                        <Text style={styles.walletLabel}>WALLET BALANCE</Text>
-                        <Text style={styles.walletAmount}>₹0.00</Text>
-                    </View>
-                    <TouchableOpacity
-                        style={[styles.addMoneyBtn, { backgroundColor: '#cbd5e1' }]}
-                        disabled={true}
-                        activeOpacity={1}
-                    >
-                        <Ionicons name="wallet-outline" size={15} color="#94a3b8" />
-                        <Text style={[styles.addMoneyText, { color: '#94a3b8' }]}>ADD MONEY</Text>
-                    </TouchableOpacity>
-                </View>
             </View>
 
             {/* ── Menu List ── */}
@@ -207,11 +138,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.logoutText, { color: BrandColors.matteBlack }]}>LOG OUT</Text>
             </TouchableOpacity>
 
-            <View style={styles.footer}>
-                <Image source={logo} style={styles.footerLogo} blurRadius={3} resizeMode="contain" />
-                <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-                <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
-            </View>
+            <BrandFooter />
         </ScrollView>
     );
 }
@@ -223,91 +150,10 @@ const styles = StyleSheet.create({
     contentContainer: {
         paddingHorizontal: 20,
     },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#fff',
-    },
-
-    // ── User + Wallet Card
-    walletCard: {
-        backgroundColor: '#fff',
-        borderRadius: 24,
-        padding: 20,
-        borderWidth: 1.5,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.08,
-        shadowRadius: 20,
-        elevation: 8,
-    },
-    userRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    phoneIconCircle: {
-        width: 48,
-        height: 48,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    userInfo: {
-        flex: 1,
-        marginLeft: 14,
-    },
-    phoneLabel: {
-        fontSize: 10,
-        fontFamily: Typography.fontFamily.bold,
-        color: '#94a3b8',
-        letterSpacing: 1.5,
-        marginBottom: 2,
-    },
-    phoneText: {
-        fontSize: 17,
-        fontFamily: Typography.fontFamily.bold,
-        letterSpacing: 0.3,
-    },
-    divider: {
-        height: 1,
-        marginVertical: 18,
-    },
-    walletRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    walletLabel: {
-        fontSize: 10,
-        fontFamily: Typography.fontFamily.bold,
-        color: '#94a3b8',
-        letterSpacing: 1.5,
-        marginBottom: 4,
-    },
-    walletAmount: {
-        fontSize: 28,
-        fontFamily: Typography.fontFamily.extraBold,
-        color: '#1a1a1a',
-    },
-    addMoneyBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: 18,
-        paddingVertical: 10,
-        borderRadius: 12,
-    },
-    addMoneyText: {
-        fontSize: 12,
-        fontFamily: Typography.fontFamily.bold,
-        color: '#fff',
-        letterSpacing: 0.8,
-    },
-
     // ── Menu
     menuContainer: {
         backgroundColor: '#fff',
-        marginTop: 20,
+        marginTop: 16,
         borderRadius: 24,
         overflow: 'hidden',
         borderWidth: 1,
@@ -365,35 +211,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontFamily: Typography.fontFamily.bold,
         letterSpacing: 1,
-    },
-
-    // ── Footer
-    footer: {
-        alignItems: 'center',
-        marginTop: 28,
-    },
-    versionText: {
-        fontSize: 8,
-        fontFamily: Typography.fontFamily.bold,
-        color: '#d1d5db',
-        letterSpacing: 2.5,
-        marginTop: 4,
-    },
-    taglineText: {
-        fontSize: 12,
-        fontFamily: Typography.fontFamily.bold,
-        color: '#d1d5db',
-        letterSpacing: 2.5,
-        marginTop: 4,
-        opacity: 0.6,
-        textShadowColor: 'rgba(209, 213, 219, 0.4)',
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: 4,
-    },
-    footerLogo: {
-        width: 140,
-        height: 60,
-        opacity: 0.25,
     },
     floatingBackBtn: {
         width: 44,

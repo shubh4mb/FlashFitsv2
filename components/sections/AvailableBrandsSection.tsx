@@ -102,38 +102,34 @@ export default function AvailableBrandsSection({
         style={styles.merchantItem}
         activeOpacity={0.8}
         onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          const isWh = item.isWarehouse || item.shopName?.toLowerCase().includes('warehouse') || item.shopName?.toLowerCase().includes('mart');
           router.push({
             pathname: '/merchant/[id]',
-            params: { id: item._id, isWarehouse: item.isWarehouse ? 'true' : 'false' }
+            params: {
+              id: item._id,
+              shopName: item.shopName,
+              isWarehouse: isWh ? 'true' : 'false',
+            }
           } as any);
         }}
       >
-        {/* Outer Glow & Gradient Ring */}
-        <LinearGradient
-          colors={['#38BDF8', '#818CF8', '#C084FC']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.logoGradientRing}
-        >
-          <View style={styles.merchantLogoContainer}>
-            {hasLogo ? (
-              <Image 
-                source={{ uri: item.logo?.url }} 
-                style={styles.merchantLogo} 
-                contentFit="contain"
-                transition={200}
-              />
-            ) : (
-              <LinearGradient
-                colors={['#1E293B', '#0F172A']}
-                style={styles.fallbackAvatar}
-              >
-                <Text style={styles.fallbackText}>{initial}</Text>
-              </LinearGradient>
-            )}
-          </View>
-        </LinearGradient>
+        <View style={styles.merchantLogoContainer}>
+          {hasLogo ? (
+            <Image 
+              source={{ uri: item.logo?.url }} 
+              style={styles.merchantLogo} 
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <LinearGradient
+              colors={['#1E293B', '#0F172A']}
+              style={styles.fallbackAvatar}
+            >
+              <Text style={styles.fallbackText}>{initial}</Text>
+            </LinearGradient>
+          )}
+        </View>
 
         {/* Verified Badge Overlay */}
         <View style={styles.verifiedBadge}>
@@ -165,9 +161,9 @@ export default function AvailableBrandsSection({
           <View style={[styles.headerIconCircle, { backgroundColor: '#EEF2FF' }]}>
             <Ionicons name="sparkles" size={16} color={theme.primary || '#4F46E5'} />
           </View>
-          <View>
-            <Text style={styles.sectionTitle}>{sectionTitle}</Text>
-            <Text style={styles.sectionSubtitle}>{sectionSubtitle}</Text>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.sectionTitle} numberOfLines={1}>{sectionTitle}</Text>
+            <Text style={styles.sectionSubtitle} numberOfLines={1}>{sectionSubtitle}</Text>
           </View>
         </View>
 
@@ -210,13 +206,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     marginBottom: 16,
+    gap: 12,
   },
   headerLeftRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flex: 1,
+  },
+  headerTextContainer: {
+    flex: 1,
   },
   headerIconCircle: {
     width: 36,
@@ -248,13 +249,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    flexShrink: 0,
   },
   explorePillText: {
     fontSize: 12,
     fontFamily: Typography.fontFamily.bold,
   },
   merchantsList: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   merchantItem: {
     alignItems: 'center',
@@ -262,37 +264,31 @@ const styles = StyleSheet.create({
     width: 76,
     position: 'relative',
   },
-  logoGradientRing: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    padding: 2.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6366F1',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
   merchantLogoContainer: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 35,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   merchantLogo: {
-    width: '68%',
-    height: '68%',
+    width: '100%',
+    height: '100%',
   },
   fallbackAvatar: {
     width: '100%',
@@ -307,7 +303,7 @@ const styles = StyleSheet.create({
   },
   verifiedBadge: {
     position: 'absolute',
-    bottom: 22,
+    bottom: 20,
     right: 2,
     backgroundColor: '#FFFFFF',
     borderRadius: 10,

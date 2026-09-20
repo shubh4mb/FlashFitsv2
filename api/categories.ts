@@ -5,12 +5,12 @@ import api from './axiosConfig';
  * Although the route is under /admin/, it is currently used by the 
  * user-facing app to retrieve the category hierarchy.
  */
-export const fetchCategories = async () => {
+export const fetchCategories = async (params?: { onlyWithProducts?: boolean; includeProductInfo?: boolean; gender?: string }) => {
     try {
-        const res = await api.get('admin/getCategories');
-        // Based on backend response structure: 
-        // return res.status(200).json(new ApiResponse(200, { categories }, "Categories retrieved"));
-        return res.data;
+        const res = await api.get('admin/getCategories', { params });
+        // Backend returns ApiResponse(200, { categories }, "Categories retrieved")
+        // which gives { statusCode: 200, data: { categories: [...] }, message: "...", success: true }
+        return res.data?.data || res.data;
     } catch (error) {
     // Auth errors are ignored gracefully
         throw error;
@@ -20,7 +20,7 @@ export const fetchCategories = async () => {
 export const fetchCategoryById = async (id: string) => {
     try {
         const res = await api.get(`admin/getCategoryById/${id}`);
-        return res.data;
+        return res.data?.data || res.data;
     } catch (error) {
         console.error(`Axios error in fetchCategoryById (${id}):`, error);
         throw error;

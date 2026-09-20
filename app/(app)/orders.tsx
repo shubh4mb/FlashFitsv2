@@ -1,5 +1,5 @@
 import { getAllOrders, getCourierOrders } from "@/api/orders";
-import logo from "@/assets/images/logo/logo.png";
+import BrandFooter from "@/components/common/BrandFooter";
 import Loader from "@/components/common/Loader";
 import PremiumRefreshWrapper from "@/components/common/PremiumRefreshWrapper";
 import { BrandColors, GenderThemes, Typography } from "@/constants/theme";
@@ -9,7 +9,6 @@ import { useGender } from "@/context/GenderContext";
 import React, { useEffect, useState } from "react";
 import {
   Animated,
-  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -126,8 +125,8 @@ const OrdersScreen = () => {
     if (activeFilter === 'All') return true;
     const s = order.orderStatus?.toLowerCase() || '';
     if (activeFilter === 'Processing') return ['pending', 'placed', 'packed', 'accepted'].includes(s);
-    if (activeFilter === 'Shipped') return ['in_transit', 'shipped', 'try_phase'].includes(s);
-    if (activeFilter === 'Delivered') return ['completed', 'delivered'].includes(s);
+    if (activeFilter === 'Shipped') return ['in_transit', 'shipped', 'try_phase'].includes(s) || (s === 'selection_made' && order.paymentStatus !== 'paid');
+    if (activeFilter === 'Delivered') return ['completed', 'delivered'].includes(s) || (s === 'selection_made' && order.paymentStatus === 'paid');
     if (activeFilter === 'Return') return ['return_in_progress', 'returned'].includes(s);
     return true;
   });
@@ -305,15 +304,10 @@ const OrdersScreen = () => {
                 );
               })}
             </Animated.View>
+            <BrandFooter />
           </Animated.ScrollView>
         </PremiumRefreshWrapper>
       )}
-
-      <View style={styles.footer}>
-        <Image source={logo} style={styles.footerLogo} blurRadius={3} resizeMode="contain" />
-        <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-        <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
-      </View>
     </View>
   );
 };
@@ -425,15 +419,5 @@ const styles = StyleSheet.create({
     shadowRadius: 8, elevation: 5,
   },
   shopNowText: { color: "#fff", fontSize: 15, fontFamily: Typography.fontFamily.bold },
-  footer: { alignItems: 'center', marginVertical: 32 },
-  versionText: {
-    fontSize: 8, fontFamily: Typography.fontFamily.bold, color: '#d1d5db',
-    letterSpacing: 2.5, marginTop: 4,
-  },
-  taglineText: {
-    fontSize: 12, fontFamily: Typography.fontFamily.bold, color: '#d1d5db',
-    letterSpacing: 2.5, marginTop: 4, opacity: 0.6,
-  },
-  footerLogo: { width: 140, height: 60, opacity: 0.25 },
 });
 

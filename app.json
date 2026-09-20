@@ -36,7 +36,7 @@
       "adaptiveIcon": {
         "backgroundColor": "#3CDCF4",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
@@ -98,7 +98,10 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "http://[IP_ADDRESS]",
+      // "BACKEND_URL": "https://api.theflashfits.com",
+      "BACKEND_URL": "https://6e61-2405-201-f001-8ff-f013-746c-3e72-c22a.ngrok-free.app
+      // 
+      // ",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

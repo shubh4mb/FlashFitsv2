@@ -13,30 +13,39 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const ACTIVE_TB_STATUSES = ['placed', 'accepted', 'packed', 'in_transit', 'try_phase'];
-const ACTIVE_COURIER_STATUSES = ['placed', 'accepted', 'packed', 'confirmed', 'shipped'];
-
-const TERMINAL_STATUSES = [
-  'completed',
-  'delivered',
-  'return_in_progress',
-  'returned',
-  'cancelled',
-  'rejected',
-  'failed',
-  'payment_failed',
-  'selection_made',
-];
+const ACTIVE_TB_STATUSES = ['placed', 'accepted', 'packed', 'in_transit', 'try_phase', 'selection_made'];
+const ACTIVE_COURIER_STATUSES = ['placed', 'accepted', 'packed', 'confirmed', 'shipped', 'in_transit'];
 
 const isOrderActive = (order: any) => {
-  // If customer delivery has already ended or completed, never show tracking banner
-  if (order.customerDeliveryStatus === 'completed' || order.customerDeliveryStatus === 'delivered') {
+  if (!order) return false;
+
+  const status = (order.orderStatus || '').toLowerCase();
+  const paymentStatus = (order.paymentStatus || '').toLowerCase();
+
+  // Cancelled, rejected, failed, or returned are permanently inactive
+  if (['cancelled', 'rejected', 'failed', 'payment_failed', 'returned'].includes(status)) {
     return false;
   }
 
-  const status = (order.orderStatus || '').toLowerCase();
-  if (TERMINAL_STATUSES.includes(status)) {
+  // Order fully completed and paid
+  if (status === 'completed') {
     return false;
+  }
+
+  // Try & Buy: Selection made (on OTP sharing screen OR on payment screen)
+  // MUST remain active as long as payment is pending / not yet completed.
+  if (status === 'selection_made') {
+    return paymentStatus !== 'paid';
+  }
+
+  // If customer delivery status is marked completed or delivered, only hide if payment has also been completed
+  if (order.customerDeliveryStatus === 'completed' || order.customerDeliveryStatus === 'delivered') {
+    return paymentStatus !== 'paid';
+  }
+
+  // If return in progress, check if payment is pending
+  if (status === 'return_in_progress') {
+    return paymentStatus !== 'paid';
   }
 
   const isCourier = order.isCourier || order._isCourier || order.deliveryMode === 'courier' || order.fulfillmentType === 'courier';
@@ -44,6 +53,34 @@ const isOrderActive = (order: any) => {
     return ACTIVE_COURIER_STATUSES.includes(status);
   }
   return ACTIVE_TB_STATUSES.includes(status);
+};
+
+const getOrderSubtitle = (order: any) => {
+  const shortId = order?._id ? String(order._id).slice(-5).toUpperCase() : '------';
+  const status = (order.orderStatus || '').toLowerCase();
+
+  if (status === 'selection_made') {
+    if (order.trialPhaseEnd || order.photoVerified || (order as any)?.isPhotoVerified) {
+      return `#${shortId} • PAYMENT PENDING`;
+    }
+    return `#${shortId} • SHARE OTP WITH RIDER`;
+  }
+  if (status === 'try_phase') {
+    return `#${shortId} • TRYING CLOTHES`;
+  }
+  if (status === 'in_transit') {
+    return `#${shortId} • RIDER ON THE WAY`;
+  }
+  if (status === 'packed') {
+    return `#${shortId} • ORDER PACKED`;
+  }
+  if (status === 'accepted') {
+    return `#${shortId} • ORDER ACCEPTED`;
+  }
+  if (status === 'placed') {
+    return `#${shortId} • ORDER PLACED`;
+  }
+  return `#${shortId} • ${order.orderStatus?.toUpperCase().replace('_', ' ') || 'ACTIVE'}`;
 };
 
 export default function ActiveOrderBanner() {
@@ -121,7 +158,7 @@ export default function ActiveOrderBanner() {
             <View style={styles.textContainer}>
               <Text style={styles.title}>Track Order</Text>
               <Text style={styles.subtitle}>
-                #{singleOrder?._id ? String(singleOrder._id).slice(-5).toUpperCase() : '------'} • {singleOrder.orderStatus?.toUpperCase().replace('_', ' ')}
+                {getOrderSubtitle(singleOrder)}
               </Text>
             </View>
           </View>
@@ -180,7 +217,7 @@ export default function ActiveOrderBanner() {
                     Order #{order?._id ? String(order._id).slice(-5).toUpperCase() : '------'}
                   </Text>
                   <Text style={styles.orderItemSub}>
-                    {order.orderStatus?.toUpperCase().replace('_', ' ')}
+                    {getOrderSubtitle(order).split(' • ')[1] || order.orderStatus?.toUpperCase().replace('_', ' ')}
                   </Text>
                 </View>
               </View>

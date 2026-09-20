@@ -10,7 +10,7 @@ import {
   Platform
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
 import { fetchCategories } from '@/api/categories';
 import MainHeader from '@/components/layout/MainHeader';
@@ -23,6 +23,7 @@ import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { Animated, NativeSyntheticEvent, NativeScrollEvent, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
 
@@ -73,9 +74,13 @@ interface Category {
   };
   image?: { url: string };
   isTriable?: boolean;
+  hasProducts?: boolean;
+  productGenders?: string[];
+  productCount?: number;
 }
 
 export default function CategoriesScreen() {
+  const { categoryId } = useLocalSearchParams<{ categoryId?: string }>();
   const { selectedGender } = useGender();
   const router = useRouter();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
@@ -109,7 +114,7 @@ export default function CategoriesScreen() {
   const loadCategories = async () => {
     try {
       setLoading(true);
-      const response = await fetchCategories();
+      const response = await fetchCategories({ includeProductInfo: true });
       const categoriesList = response?.categories || response?.data?.categories || [];
       setAllCategories(categoriesList);
 
@@ -127,6 +132,27 @@ export default function CategoriesScreen() {
     }
   };
 
+  const isMatchingGender = (gendersList?: string[]) => {
+    if (!gendersList || gendersList.length === 0) return false;
+    const backendGender = selectedGender.toUpperCase();
+    if (backendGender === 'KIDS') {
+      return gendersList.some(g => ['KIDS', 'BOYS', 'GIRLS'].includes(g.toUpperCase()));
+    }
+    return gendersList.includes(backendGender);
+  };
+
+  const hasMatchingProduct = (cat: Category) => {
+    // If backend provided productGenders array, check if current gender has products in this category
+    if (cat.productGenders && cat.productGenders.length > 0) {
+      return isMatchingGender(cat.productGenders);
+    }
+    // If hasProducts is explicitly false, it is out of stock
+    if (cat.hasProducts === false) {
+      return false;
+    }
+    return true;
+  };
+
   const mainCategories = useMemo(() => {
     const backendGender = selectedGender.toUpperCase();
     return allCategories.filter(
@@ -136,27 +162,46 @@ export default function CategoriesScreen() {
 
   const subCategories = useMemo(() => {
     if (!selectedMainId) return [];
-    const backendGender = selectedGender.toUpperCase();
-    return allCategories.filter(
-      c => c.parentId === selectedMainId && (c.allowedGenders || (c as any).allowedGender || []).includes(backendGender)
-    );
+    return allCategories.filter(c => {
+      if (c.parentId !== selectedMainId) return false;
+      const allowed = c.allowedGenders || (c as any).allowedGender || [];
+      return isMatchingGender(allowed);
+    });
   }, [allCategories, selectedMainId, selectedGender]);
 
   useEffect(() => {
+    if (categoryId && allCategories.length > 0) {
+      const target = allCategories.find(c => c._id === categoryId);
+      if (target) {
+        if (target.level === 0) {
+          setSelectedMainId(target._id);
+          return;
+        } else if (target.parentId) {
+          setSelectedMainId(target.parentId);
+          return;
+        }
+      }
+    }
+
     const isCurrentValid = mainCategories.some(c => c._id === selectedMainId);
     if (!isCurrentValid && mainCategories.length > 0) {
       setSelectedMainId(mainCategories[0]._id);
     }
-  }, [selectedGender, mainCategories]);
+  }, [categoryId, selectedGender, mainCategories, allCategories]);
 
   const handleSidebarPress = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    scrollY.setValue(0);
     setSelectedMainId(id);
   };
 
-  const getLogoUrl = (item: Category) => {
+  const getLogoUrl = (item: Category): string | null => {
     const backendGender = selectedGender.toUpperCase() as keyof NonNullable<Category['logos']>;
-    return item.logos?.[backendGender]?.url || item.logo?.url || item.image?.url;
+    const url = item.logos?.[backendGender]?.url || item.logo?.url || item.image?.url;
+    if (typeof url === 'string' && url.trim().length > 0) {
+      return url.trim();
+    }
+    return null;
   };
 
   const handleSubcategoryPress = (subCatName: string, subCategoryId: string) => {
@@ -205,11 +250,18 @@ export default function CategoriesScreen() {
                 ]}
                 onPress={() => handleSidebarPress(cat._id)}
               >
-                <Image 
-                  source={{ uri: getLogoUrl(cat) }} 
-                  style={styles.sidebarImage} 
-                  contentFit="contain"
-                />
+                {getLogoUrl(cat) ? (
+                  <Image 
+                    source={{ uri: getLogoUrl(cat)! }} 
+                    style={styles.sidebarImage} 
+                    contentFit="contain"
+                    recyclingKey={cat._id}
+                  />
+                ) : (
+                  <View style={[styles.sidebarImage, styles.placeholderImageContainer]}>
+                    <Ionicons name="shirt-outline" size={24} color="#CBD5E1" />
+                  </View>
+                )}
                 <Text 
                   style={[
                     styles.sidebarText, 
@@ -232,8 +284,10 @@ export default function CategoriesScreen() {
           onRefresh={onRefresh}
         >
           <AnimatedFlashList
+            key={selectedMainId || 'subcat_grid'}
+            extraData={selectedMainId}
             data={subCategories}
-            keyExtractor={(item: any) => item._id}
+            keyExtractor={(item: any) => `${selectedMainId}_${item._id}`}
             numColumns={2}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
@@ -277,31 +331,58 @@ export default function CategoriesScreen() {
                 <Text style={styles.emptyText}>No subcategories found</Text>
               </View>
             )}
-            renderItem={({ item, index }: { item: any, index: number }) => (
-              <TouchableOpacity
-                style={[
-                  styles.productCard, 
-                  { 
-                    width: cardSize, 
-                    height: cardSize + 40,
-                    marginBottom: 16,
-                    marginLeft: index % 2 === 1 ? 8 : 0
-                  }
-                ]}
-                onPress={() => handleSubcategoryPress(item.name, item._id)}
-                activeOpacity={0.8}
-              >
-                <View style={{ position: 'relative' }}>
-                  <Image 
-                    source={{ uri: getLogoUrl(item) }} 
-                    style={[styles.productImage, { height: cardSize }]} 
-                    contentFit="cover"
-                  />
+            renderItem={({ item, index }: { item: any, index: number }) => {
+              const isAvailable = hasMatchingProduct(item);
+              const logoUrl = getLogoUrl(item);
 
-                </View>
-                <Text style={styles.productTitle} numberOfLines={2}>{item.name}</Text>
-              </TouchableOpacity>
-            )}
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.productCard, 
+                    { 
+                      width: cardSize, 
+                      height: cardSize + 40,
+                      marginBottom: 16,
+                      marginLeft: index % 2 === 1 ? 8 : 0,
+                      opacity: isAvailable ? 1 : 0.5,
+                    }
+                  ]}
+                  disabled={!isAvailable}
+                  onPress={() => handleSubcategoryPress(item.name, item._id)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ position: 'relative' }}>
+                    {logoUrl ? (
+                      <Image 
+                        source={{ uri: logoUrl }} 
+                        recyclingKey={`${item._id}_${selectedGender}_${selectedMainId}`}
+                        style={[styles.productImage, { height: cardSize }]} 
+                        contentFit="cover"
+                        transition={150}
+                      />
+                    ) : (
+                      <View style={[styles.productImage, styles.placeholderImageContainer, { height: cardSize }]}>
+                        <Ionicons name="shirt-outline" size={cardSize * 0.35} color="#CBD5E1" />
+                      </View>
+                    )}
+                    {!isAvailable && (
+                      <View style={styles.disabledBadge}>
+                        <Text style={styles.disabledBadgeText}>OUT OF STOCK</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text 
+                    style={[
+                      styles.productTitle,
+                      !isAvailable && { color: '#94A3B8' }
+                    ]} 
+                    numberOfLines={2}
+                  >
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
           />
         </PremiumRefreshWrapper>
         </View>
@@ -388,6 +469,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F2',
     borderRadius: 12,
   },
+  placeholderImageContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
   productTitle: { 
     fontSize: 12, // slightly increased for serif legibility
     textAlign: 'center', 
@@ -433,5 +521,23 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 14,
     fontFamily: Typography.fontFamily.medium,
+  },
+  disabledBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 4,
+    right: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabledBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.5,
   }
 });

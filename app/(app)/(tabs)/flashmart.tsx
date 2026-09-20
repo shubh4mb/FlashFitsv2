@@ -8,12 +8,12 @@ import {
   Animated,
   Dimensions,
   Platform,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
-import logo from '@/assets/images/logo/logo.png';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import BrandFooter from '@/components/common/BrandFooter';
 import * as Haptics from 'expo-haptics';
 import MainHeader from '@/components/layout/MainHeader';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
@@ -32,15 +32,32 @@ const CARD_WIDTH = (SCREEN_WIDTH - 40) / 2;
 
 const CATEGORY_TAGS = ['All Items', 'Sneakers', 'T-Shirts', 'Hoodies', 'Jeans', 'Activewear', 'Accessories'];
 
+const PRICE_RANGES = [
+  { label: 'All Prices', key: null },
+  { label: 'Under ₹999', key: 'under_999' },
+  { label: '₹1,000 - ₹1,999', key: '1000_1999' },
+  { label: '₹2,000 - ₹2,999', key: '2000_2999' },
+  { label: 'Above ₹3,000', key: 'above_3000' },
+];
+
+const SORT_OPTIONS = [
+  { label: 'Recommended & Prioritized', key: 'relevance' },
+  { label: 'Price: Low to High', key: 'price_low_high' },
+  { label: 'Price: High to Low', key: 'price_high_low' },
+  { label: 'Customer Rating', key: 'rating' },
+];
+
 export default function FlashMartScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { brandId, brandName } = useLocalSearchParams<{ brandId?: string; brandName?: string }>();
+
   const { selectedGender, selectedSubGender } = useGender();
   const { selectedAddress, userLocation } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const scrollY = React.useRef(new Animated.Value(0)).current;
-  const [headerHeight, setHeaderHeight] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(insets.top > 0 ? insets.top + 95 : 145);
 
   const [products, setProducts] = useState<any[]>([]);
   const [merchants, setMerchants] = useState<any[]>([]);
@@ -48,7 +65,25 @@ export default function FlashMartScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Filter & Sort state
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(brandId || null);
+  const [selectedBrandName, setSelectedBrandName] = useState<string | null>(brandName || null);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('All Items');
+  const [selectedPriceRange, setSelectedPriceRange] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<string>('relevance');
+
+  // Modals state
+  const [isSortModalVisible, setIsSortModalVisible] = useState(false);
+  const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
+
+  // Sync with search params if navigated with new brand
+  useEffect(() => {
+    if (brandId) {
+      setSelectedBrandId(brandId);
+      if (brandName) setSelectedBrandName(brandName);
+    }
+  }, [brandId, brandName]);
 
   const loadData = useCallback(async () => {
     try {
@@ -99,28 +134,7 @@ export default function FlashMartScreen() {
     await loadData();
   };
 
-  // Filter products by selected category tag
-  const filteredProducts = useMemo(() => {
-    if (activeCategoryFilter === 'All Items') return products;
-    const searchLower = activeCategoryFilter.toLowerCase();
-    return products.filter((item) => {
-      const title = (item.title || item.name || '').toLowerCase();
-      const catName = (item.category?.name || item.category || '').toLowerCase();
-      const subCat = (item.subCategory || '').toLowerCase();
-      return (
-        title.includes(searchLower) ||
-        catName.includes(searchLower) ||
-        subCat.includes(searchLower)
-      );
-    });
-  }, [products, activeCategoryFilter]);
-
-  // Featured bestseller products (top items)
-  const featuredProducts = useMemo(() => {
-    return products.slice(0, 6);
-  }, [products]);
-
-  // Merchants/Stores whose products are stocked in the in-range dark store warehouse
+  // Connected warehouse merchants
   const connectedWarehouseMerchants = useMemo(() => {
     const isWarehouseEntity = (item: any) => {
       if (!item) return true;
@@ -142,26 +156,386 @@ export default function FlashMartScreen() {
     });
   }, [warehouseMerchants, selectedGender]);
 
+  // Resolve brand name
+  const activeBrandName = useMemo(() => {
+    if (selectedBrandName) return selectedBrandName;
+    if (!selectedBrandId) return '';
+    const found = connectedWarehouseMerchants.find((m) => String(m._id) === String(selectedBrandId));
+    if (found?.shopName) return found.shopName;
+    const foundProd = products.find(
+      (p) => String(p.merchantId?._id || p.merchantId) === String(selectedBrandId)
+    );
+    return foundProd?.merchantId?.shopName || 'Brand';
+  }, [selectedBrandId, selectedBrandName, connectedWarehouseMerchants, products]);
+
+  // Active filter count
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedBrandId) count++;
+    if (activeCategoryFilter !== 'All Items') count++;
+    if (selectedPriceRange) count++;
+    if (sortBy !== 'relevance') count++;
+    return count;
+  }, [selectedBrandId, activeCategoryFilter, selectedPriceRange, sortBy]);
+
+  const handleClearAllFilters = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedBrandId(null);
+    setSelectedBrandName(null);
+    setActiveCategoryFilter('All Items');
+    setSelectedPriceRange(null);
+    setSortBy('relevance');
+  };
+
+  const getProductPrice = (p: any) => {
+    if (p.price !== undefined && p.price !== null) return Number(p.price);
+    if (p.variants?.[0]?.price !== undefined) return Number(p.variants[0].price);
+    if (p.minPrice !== undefined) return Number(p.minPrice);
+    return 0;
+  };
+
+  // Processed and prioritized products
+  const processedProducts = useMemo(() => {
+    let list = [...products];
+
+    // 1. Filter by Category
+    if (activeCategoryFilter !== 'All Items') {
+      const searchLower = activeCategoryFilter.toLowerCase();
+      list = list.filter((item) => {
+        const title = (item.title || item.name || '').toLowerCase();
+        const catName = (item.category?.name || item.category || '').toLowerCase();
+        const subCat = (item.subCategory || '').toLowerCase();
+        return (
+          title.includes(searchLower) ||
+          catName.includes(searchLower) ||
+          subCat.includes(searchLower)
+        );
+      });
+    }
+
+    // 2. Filter by Price Range
+    if (selectedPriceRange) {
+      list = list.filter((item) => {
+        const price = getProductPrice(item);
+        if (selectedPriceRange === 'under_999') return price < 1000;
+        if (selectedPriceRange === '1000_1999') return price >= 1000 && price <= 1999;
+        if (selectedPriceRange === '2000_2999') return price >= 2000 && price <= 2999;
+        if (selectedPriceRange === 'above_3000') return price >= 3000;
+        return true;
+      });
+    }
+
+    // 3. Sorting & Brand Prioritization
+    const isMatchBrand = (p: any) => {
+      if (!selectedBrandId) return false;
+      const mid = String(p.merchantId?._id || p.merchantId || p.sourceMerchantId || '');
+      return mid === String(selectedBrandId);
+    };
+
+    if (sortBy === 'price_low_high') {
+      list.sort((a, b) => getProductPrice(a) - getProductPrice(b));
+    } else if (sortBy === 'price_high_low') {
+      list.sort((a, b) => getProductPrice(b) - getProductPrice(a));
+    } else if (sortBy === 'rating') {
+      list.sort((a, b) => (Number(b.ratings) || 0) - (Number(a.ratings) || 0));
+    } else {
+      // 'relevance' (default): Put prioritized brand's products FIRST
+      if (selectedBrandId) {
+        const brandItems = list.filter(isMatchBrand);
+        const otherItems = list.filter((p) => !isMatchBrand(p));
+        list = [...brandItems, ...otherItems];
+      }
+    }
+
+    return list;
+  }, [products, activeCategoryFilter, selectedPriceRange, selectedBrandId, sortBy]);
+
+  // Featured bestseller products (top items) - only shown when not filtered by brand
+  const featuredProducts = useMemo(() => {
+    return products.slice(0, 6);
+  }, [products]);
+
+  // ── Render Sort Modal ──
+  const renderSortModal = () => (
+    <Modal
+      visible={isSortModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setIsSortModalVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setIsSortModalVisible(false)}
+      >
+        <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Sort By</Text>
+            <TouchableOpacity onPress={() => setIsSortModalVisible(false)}>
+              <Ionicons name="close" size={22} color="#0F172A" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ paddingBottom: 24 }}>
+            {SORT_OPTIONS.map((opt) => {
+              const isSelected = sortBy === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={styles.sortOption}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setSortBy(opt.key);
+                    setIsSortModalVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.sortOptionText,
+                      isSelected && { color: '#0F172A', fontFamily: Typography.fontFamily.bold },
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                  {isSelected && <Ionicons name="checkmark-circle" size={20} color="#0F172A" />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
+  // ── Render Filter Modal ──
+  const renderFilterModal = () => (
+    <Modal
+      visible={isFilterModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setIsFilterModalVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setIsFilterModalVisible(false)}
+      >
+        <View style={[styles.modalContent, { maxHeight: '82%' }]} onStartShouldSetResponder={() => true}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Filter Products</Text>
+            <TouchableOpacity onPress={() => setIsFilterModalVisible(false)}>
+              <Ionicons name="close" size={22} color="#0F172A" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalFilterScroll} showsVerticalScrollIndicator={false}>
+            {/* 1. Brands Filter */}
+            <Text style={styles.filterSectionHeading}>Prioritize Brand</Text>
+            <View style={styles.filterTagsWrap}>
+              <TouchableOpacity
+                style={[styles.filterChip, !selectedBrandId && styles.filterChipActive]}
+                onPress={() => {
+                  setSelectedBrandId(null);
+                  setSelectedBrandName(null);
+                }}
+              >
+                <Text style={[styles.filterChipText, !selectedBrandId && styles.filterChipTextActive]}>
+                  All Brands
+                </Text>
+              </TouchableOpacity>
+              {connectedWarehouseMerchants.map((m) => {
+                const isSelected = selectedBrandId === m._id;
+                return (
+                  <TouchableOpacity
+                    key={m._id}
+                    style={[styles.filterChip, isSelected && styles.filterChipActive]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedBrandId(isSelected ? null : m._id);
+                      setSelectedBrandName(isSelected ? null : m.shopName);
+                    }}
+                  >
+                    <Text style={[styles.filterChipText, isSelected && styles.filterChipTextActive]}>
+                      {m.shopName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* 2. Category Filter */}
+            <Text style={[styles.filterSectionHeading, { marginTop: 20 }]}>Categories</Text>
+            <View style={styles.filterTagsWrap}>
+              {CATEGORY_TAGS.map((cat) => {
+                const isSelected = activeCategoryFilter === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[styles.filterChip, isSelected && styles.filterChipActive]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setActiveCategoryFilter(cat);
+                    }}
+                  >
+                    <Text style={[styles.filterChipText, isSelected && styles.filterChipTextActive]}>
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* 3. Price Range Filter */}
+            <Text style={[styles.filterSectionHeading, { marginTop: 20 }]}>Price Range</Text>
+            <View style={styles.filterTagsWrap}>
+              {PRICE_RANGES.map((pr) => {
+                const isSelected = selectedPriceRange === pr.key;
+                return (
+                  <TouchableOpacity
+                    key={pr.label}
+                    style={[styles.filterChip, isSelected && styles.filterChipActive]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedPriceRange(pr.key);
+                    }}
+                  >
+                    <Text style={[styles.filterChipText, isSelected && styles.filterChipTextActive]}>
+                      {pr.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={{ height: 20 }} />
+          </ScrollView>
+
+          {/* Modal Footer */}
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={styles.modalResetBtn}
+              onPress={handleClearAllFilters}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalResetBtnText}>Clear All</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalApplyBtn}
+              onPress={() => setIsFilterModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalApplyBtnText}>
+                Apply ({processedProducts.length} Items)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
+  // Shared Filter & Sort Bar UI
+  const renderFilterBarContent = () => (
+    <View style={styles.filterBar}>
+      <TouchableOpacity
+        style={styles.filterBarButton}
+        onPress={() => setIsSortModalVisible(true)}
+        activeOpacity={0.7}
+      >
+        <MaterialCommunityIcons name="sort-variant" size={18} color="#0F172A" />
+        <Text style={styles.filterBarButtonText} numberOfLines={1}>
+          {sortBy === 'price_low_high'
+            ? 'Price: Low-High'
+            : sortBy === 'price_high_low'
+            ? 'Price: High-Low'
+            : sortBy === 'rating'
+            ? 'Top Rated'
+            : 'Sort'}
+        </Text>
+      </TouchableOpacity>
+
+      <View style={styles.filterDivider} />
+
+      <TouchableOpacity
+        style={styles.filterBarButton}
+        onPress={() => setIsFilterModalVisible(true)}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="options-outline" size={17} color="#0F172A" />
+        <Text style={styles.filterBarButtonText}>Filter</Text>
+        {activeFilterCount > 0 && (
+          <View style={styles.filterBadge}>
+            <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {activeFilterCount > 0 && (
+        <>
+          <View style={styles.filterDivider} />
+          <TouchableOpacity
+            style={styles.clearBarButton}
+            onPress={handleClearAllFilters}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close-circle" size={15} color="#DC2626" />
+            <Text style={styles.clearBarButtonText}>Clear</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <MainHeader scrollY={scrollY} onHeaderLayout={setHeaderHeight} refreshKey={refreshKey} />
+      <MainHeader hideCategories={true} onHeaderLayout={setHeaderHeight} refreshKey={refreshKey} />
 
-      <PremiumRefreshWrapper
-        scrollY={scrollY}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-      >
-        <Animated.ScrollView
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
+      <View style={[styles.contentWrapper, { marginTop: headerHeight }]}>
+        <PremiumRefreshWrapper
+          scrollY={scrollY}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
         >
-          {/* Header Spacer to avoid layout overlap */}
-          {headerHeight > 0 && <View style={{ height: headerHeight }} />}
+          <Animated.ScrollView
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            stickyHeaderIndices={[0]}
+          >
+            {/* ── 1. Sticky Filter & Sort Bar (Pins directly below MainHeader) ── */}
+            <View style={styles.stickyFilterBarWrap}>
+              {renderFilterBarContent()}
+            </View>
 
+          {/* ── 2. Active Brand Prioritization Banner ── */}
+          {selectedBrandId && (
+            <View style={styles.activeBrandBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <Ionicons name="pricetag-outline" size={14} color="#0F172A" />
+                <Text style={styles.activeBrandBannerText} numberOfLines={1}>
+                  Showing <Text style={{ fontWeight: '800', color: '#0F172A' }}>{activeBrandName}</Text>
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSelectedBrandId(null);
+                  setSelectedBrandName(null);
+                }}
+                style={styles.clearBrandChip}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.clearBrandChipText}>Clear</Text>
+                <Ionicons name="close" size={13} color="#475569" />
+              </TouchableOpacity>
+            </View>
+          )}
 
-
-          {/* ── 3. Brands Available Section ── */}
-          {connectedWarehouseMerchants.length > 0 && (
+          {/* ── 3. Brands Available Section (Hidden when navigating with a brand) ── */}
+          {!selectedBrandId && connectedWarehouseMerchants.length > 0 && (
             <View style={{ marginTop: 8 }}>
               <AvailableBrandsSection
                 initialMerchants={connectedWarehouseMerchants}
@@ -173,61 +547,9 @@ export default function FlashMartScreen() {
             </View>
           )}
 
-          {/* ── 4. Category Filters ── */}
-          <View style={styles.filterSection}>
-            <View style={styles.filterHeaderRow}>
-              <View style={styles.filterHeaderLeft}>
-                <View style={styles.filterHeaderIconBg}>
-                  <Ionicons name="grid-outline" size={16} color={theme.primary || '#000000'} />
-                </View>
-                <View>
-                  <Text style={styles.filterSectionTitle}>Explore {selectedGender}'s Products</Text>
-                  <Text style={styles.filterSectionSub}>Doorstep fitting available in 60 mins</Text>
-                </View>
-              </View>
-              <View style={styles.filterCountBadge}>
-                <Text style={styles.filterCountText}>{filteredProducts.length} Items</Text>
-              </View>
-            </View>
 
-            {/* Category Quick Tags */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterScroll}
-            >
-              {CATEGORY_TAGS.map((cat) => {
-                const isSelected = activeCategoryFilter === cat;
-                return (
-                  <TouchableOpacity
-                    key={cat}
-                    activeOpacity={0.8}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setActiveCategoryFilter(cat);
-                    }}
-                    style={[
-                      styles.categoryChip,
-                      isSelected && styles.categoryChipSelected,
-                    ]}
-                  >
-                    {isSelected && <View style={styles.chipActiveDot} />}
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        isSelected && styles.categoryChipTextSelected,
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {/* ── 5. Express Bestsellers (Horizontal Carousel) ── */}
-          {!loading && featuredProducts.length > 0 && (
+          {/* ── 5. Express Bestsellers (Only shown when no brand filter is active) ── */}
+          {!selectedBrandId && !loading && featuredProducts.length > 0 && (
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeaderRow}>
                 <View>
@@ -256,15 +578,17 @@ export default function FlashMartScreen() {
             </View>
           )}
 
-          {/* ── 6. All Warehouse Products (2-Column Grid) ── */}
+          {/* ── 6. Products Grid (Prioritized Brand items appear first) ── */}
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeaderRow}>
               <View>
-                <Text style={styles.sectionTitle}>All Warehouse Products</Text>
+                <Text style={styles.sectionTitle}>
+                  {selectedBrandId ? `${activeBrandName} & Hub Products` : 'All Warehouse Products'}
+                </Text>
                 <Text style={styles.sectionSubtitle}>
                   {loading
                     ? 'Fetching live dark store inventory...'
-                    : `${filteredProducts.length} items available in your location`}
+                    : `${processedProducts.length} items available in your location`}
                 </Text>
               </View>
               <View style={styles.liveBadge}>
@@ -283,19 +607,26 @@ export default function FlashMartScreen() {
                   </View>
                 ))}
               </View>
-            ) : filteredProducts.length === 0 ? (
+            ) : processedProducts.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <View style={styles.emptyIconCircle}>
                   <Ionicons name="cube-outline" size={36} color="#94A3B8" />
                 </View>
                 <Text style={styles.emptyTitle}>No Warehouse Products</Text>
                 <Text style={styles.emptySub}>
-                  No items found matching "{activeCategoryFilter}" for {selectedGender}. Try selecting another filter tag!
+                  No items found matching the current filters. Try clearing your filters!
                 </Text>
+                <TouchableOpacity
+                  style={styles.emptyClearBtn}
+                  onPress={handleClearAllFilters}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.emptyClearBtnText}>Clear All Filters</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.gridContainer}>
-                {filteredProducts.map((item, index) => (
+                {processedProducts.map((item, index) => (
                   <View key={item._id || index} style={{ width: CARD_WIDTH, marginBottom: 16 }}>
                     <ProductCard
                       product={{
@@ -312,17 +643,16 @@ export default function FlashMartScreen() {
           </View>
 
           {/* ── 7. Brand Footer ── */}
-          <View style={{ padding: 20, marginTop: 10 }}>
-            <View style={styles.footer}>
-              <Image source={logo} style={styles.footerLogo} contentFit="contain" />
-              <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-              <Text style={styles.versionText}>MADE IN KERALA 🌴</Text>
-            </View>
-          </View>
+          <BrandFooter />
 
           <View style={{ height: 100 }} />
         </Animated.ScrollView>
       </PremiumRefreshWrapper>
+      </View>
+
+      {/* Modals */}
+      {renderSortModal()}
+      {renderFilterModal()}
     </View>
   );
 }
@@ -332,124 +662,141 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
+  contentWrapper: {
+    flex: 1,
+  },
 
-  /* Filters */
-  filterSection: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 16,
-    marginHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginVertical: 12,
+  /* Filter & Sort Bar */
+  stickyFilterBarWrap: {
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+    zIndex: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.04,
-        shadowRadius: 10,
+        shadowRadius: 4,
       },
       android: {
         elevation: 2,
       },
     }),
   },
-  filterHeaderRow: {
+  filterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 6,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  filterBarButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  filterBarButtonText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#0F172A',
+  },
+  filterDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 8,
+  },
+  filterBadge: {
+    backgroundColor: '#0F172A',
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+  },
+  clearBarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+  },
+  clearBarButtonText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#DC2626',
+  },
+
+  /* Active Brand Prioritization Banner */
+  activeBrandBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginBottom: 14,
-  },
-  filterHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  filterHeaderIconBg: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterSectionTitle: {
-    fontSize: 15,
-    fontFamily: Typography.fontFamily.bold,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.2,
-  },
-  filterSectionSub: {
-    fontSize: 10.5,
-    fontFamily: Typography.fontFamily.medium,
-    color: '#64748B',
-    marginTop: 1,
-  },
-  filterCountBadge: {
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
-  filterCountText: {
-    fontSize: 10.5,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#475569',
-  },
-  filterScroll: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  genderPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  genderPillText: {
-    fontSize: 12,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#475569',
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 5,
-  },
-  categoryChipSelected: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
-  },
-  chipActiveDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#10B981',
-  },
-  categoryChipText: {
-    fontSize: 11.5,
+  activeBrandBannerText: {
+    fontSize: 12.5,
     fontFamily: Typography.fontFamily.medium,
-    color: '#64748B',
+    color: '#475569',
   },
-  categoryChipTextSelected: {
-    color: '#FFFFFF',
+  clearBrandChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  clearBrandChipText: {
+    fontSize: 11,
     fontFamily: Typography.fontFamily.bold,
+    color: '#475569',
   },
+
 
   /* Sections */
   sectionContainer: {
@@ -477,23 +824,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: '#E2E8F0',
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#10B981',
+    backgroundColor: '#0F172A',
   },
   liveBadgeText: {
     fontSize: 9.5,
     fontFamily: Typography.fontFamily.extraBold,
-    color: '#059669',
+    color: '#0F172A',
     letterSpacing: 0.4,
   },
 
@@ -533,32 +880,137 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     textAlign: 'center',
     lineHeight: 18,
+    marginBottom: 14,
+  },
+  emptyClearBtn: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  emptyClearBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
   },
 
-  /* Footer */
-  footer: {
+  /* Modals */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#F1F5F9',
+  },
+  sortOptionText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#334155',
+  },
+  modalFilterScroll: {
+    paddingBottom: 12,
+  },
+  filterSectionHeading: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    marginBottom: 10,
+  },
+  filterTagsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  filterChipActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#475569',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+    fontFamily: Typography.fontFamily.bold,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  modalResetBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
   },
-  footerLogo: {
-    width: 120,
-    height: 40,
-    opacity: 0.85,
-  },
-  taglineText: {
-    fontSize: 10,
+  modalResetBtnText: {
+    fontSize: 13,
     fontFamily: Typography.fontFamily.bold,
-    letterSpacing: 2,
-    color: '#94A3B8',
-    marginTop: 6,
+    color: '#64748B',
   },
-  versionText: {
-    fontSize: 9,
-    fontFamily: Typography.fontFamily.medium,
-    letterSpacing: 1,
-    color: '#CBD5E1',
-    marginTop: 4,
+  modalApplyBtn: {
+    flex: 2,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalApplyBtnText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#FFFFFF',
   },
 });
-

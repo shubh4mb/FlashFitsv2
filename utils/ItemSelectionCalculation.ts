@@ -32,9 +32,10 @@ export function calculateFinalBilling({
     ).length;
     const allItemsKept = returnedItemsCount === 0 && orderItems.length > 0;
 
-    // Return charge applies only if there are return items
-    const effectiveReturnCharge = allItemsKept ? 0 : returnCharge;
-    const returnChargeDeduction = allItemsKept ? returnCharge : 0;
+    // Return charge applies only if there are return items and delivery is not free
+    const isReturnFree = Number(deliveryCharge) === 0 || Number(returnCharge) === 0;
+    const effectiveReturnCharge = (allItemsKept || isReturnFree) ? 0 : (Number(returnCharge) || 0);
+    const returnChargeDeduction = allItemsKept ? (Number(returnCharge) || 0) : 0;
 
     // Delivery charge and tip included
     const deliveryAndService = (Number(deliveryCharge) || 0) + (Number(effectiveReturnCharge) || 0) + (Number(deliveryTip) || 0);

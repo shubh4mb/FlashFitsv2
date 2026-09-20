@@ -1,5 +1,5 @@
 import { fetchCourierProducts } from '@/api/products';
-import logo from '@/assets/images/logo/logo.png';
+import BrandFooter from '@/components/common/BrandFooter';
 import CustomRefreshControl from '@/components/common/CustomRefreshControl';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import ProductCard from '@/components/common/ProductCard';
@@ -41,12 +41,15 @@ interface Merchant {
     url: string;
   };
   isOnline?: boolean;
+  isWarehouse?: boolean;
   rating?: number;
   stats?: {
     totalProducts?: number;
   };
   genderCategory?: string[];
   address?: {
+    city?: string;
+    street?: string;
     location?: {
       coordinates: number[]; // [lng, lat]
     };
@@ -77,13 +80,17 @@ export default function ExploreScreen() {
     const mCoords = merchant.address?.location?.coordinates;
     const userLat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
     const userLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
-    if (!mCoords || !userLat || !userLng) return null;
+    if (!mCoords || !userLat || !userLng) {
+      return merchant.address?.city || null;
+    }
     const dist = distanceInMeters(userLat, userLng, mCoords[1], mCoords[0]);
-    if (dist > 10000) return null; // Only show if under 10 km
     if (dist < 1000) {
       return `${Math.round(dist)}m`;
     }
-    return `${(dist / 1000).toFixed(1)} km`;
+    if (dist <= 50000) {
+      return `${(dist / 1000).toFixed(1)} km`;
+    }
+    return merchant.address?.city || `${(dist / 1000).toFixed(0)} km`;
   };
 
   const loadProducts = useCallback(async (pageNum: number = 1, append: boolean = false) => {
@@ -156,7 +163,18 @@ export default function ExploreScreen() {
       <View key={item._id}>
         <CompactStoreCard
           merchant={item as any}
-          onPress={() => router.push({ pathname: '/merchant/[id]', params: { id: item._id, fromExplore: 'true', isWarehouse: (item as any).isWarehouse ? 'true' : 'false' } } as any)}
+          onPress={() => {
+            const isWh = (item as any).isWarehouse || item.shopName?.toLowerCase().includes('warehouse') || item.shopName?.toLowerCase().includes('mart');
+            router.push({
+              pathname: '/merchant/[id]',
+              params: {
+                id: item._id,
+                fromExplore: 'true',
+                shopName: item.shopName,
+                isWarehouse: isWh ? 'true' : 'false',
+              }
+            } as any);
+          }}
           subInfoText={distanceStr}
           subInfoIcon="location-outline"
         />
@@ -244,13 +262,7 @@ export default function ExploreScreen() {
                 <ActivityIndicator size="small" color={theme.primary} />
               </View>
             )}
-            {products.length > 0 && (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <Image source={logo} style={styles.footerLogo} contentFit="contain" />
-                <Text style={styles.taglineText}>JUST MINUTES, JUST FASHION</Text>
-                <Text style={styles.versionText}>MADE IN INDIA ❤️</Text>
-              </View>
-            )}
+            {products.length > 0 && <BrandFooter />}
             <View style={{ height: 100 }} />
           </>
         }
@@ -351,26 +363,6 @@ const styles = StyleSheet.create({
   footerLoader: {
     paddingVertical: 20,
     alignItems: 'center',
-  },
-  footerLogo: {
-    width: 140,
-    height: 60,
-    opacity: 0.25,
-  },
-  taglineText: {
-    fontSize: 12,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
-    opacity: 0.6,
-  },
-  versionText: {
-    fontSize: 8,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#d1d5db',
-    letterSpacing: 2.5,
-    marginTop: 4,
   },
   merchantsSection: {
     marginBottom: 24,
