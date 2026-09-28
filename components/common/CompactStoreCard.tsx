@@ -29,7 +29,7 @@ interface CompactStoreCardProps {
   containerStyle?: object;
 }
 
-export default function CompactStoreCard({
+function CompactStoreCard({
   merchant,
   onPress,
   subInfoText,
@@ -65,10 +65,15 @@ export default function CompactStoreCard({
             )}
           </View>
         )}
-        {(merchant.isOnline || isWh) && (
+        {(merchant.isOnline || isWh) ? (
           <View style={[styles.onlinePill, isWh && { backgroundColor: 'rgba(56, 189, 248, 0.2)' }]}>
             <View style={[styles.onlineDot, isWh && { backgroundColor: '#38BDF8' }]} />
             <Text style={[styles.onlineText, isWh && { color: '#38BDF8' }]}>{isWh ? 'Warehouse' : 'Online'}</Text>
+          </View>
+        ) : (
+          <View style={[styles.onlinePill, { backgroundColor: 'rgba(15, 23, 42, 0.65)' }]}>
+            <View style={[styles.onlineDot, { backgroundColor: '#94A3B8' }]} />
+            <Text style={[styles.onlineText, { color: '#E2E8F0' }]}>Closed</Text>
           </View>
         )}
       </View>
@@ -251,3 +256,5 @@ const styles = StyleSheet.create({
     marginHorizontal: 6,
   },
 });
+ 
+export default React.memo(CompactStoreCard);

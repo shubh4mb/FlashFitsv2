@@ -16,6 +16,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Typography } from '@/constants/theme';
+import CouponDetailModal from './CouponDetailModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -26,6 +27,9 @@ export interface OfferItem {
   couponCode?: string;
   requiresCoupon?: boolean;
   scope?: 'admin' | 'merchant';
+  merchantName?: string;
+  storeName?: string;
+
   discountType?: 'percentage' | 'flat';
   discountValue?: number;
   discountAmount?: number;
@@ -45,8 +49,8 @@ interface CouponOffersModalProps {
   offers: OfferItem[];
   appliedOffers: any[];
   appliedCouponCode?: string | null;
-  onApplyCoupon: (code: string) => Promise<boolean | void>;
-  onApplyOffer: (offer: OfferItem) => Promise<boolean | void>;
+  onApplyCoupon: (code: string) => Promise<boolean | void | { success: boolean; message?: string }>;
+  onApplyOffer: (offer: OfferItem) => Promise<boolean | void | { success: boolean; message?: string }>;
   onRemoveOffer?: (offerId: string) => Promise<void>;
   onRemoveCoupon?: () => Promise<void>;
   themeColor?: string;
@@ -73,6 +77,8 @@ export default function CouponOffersModal({
   const [loadingOfferId, setLoadingOfferId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'all' | 'coupons' | 'offers'>('all');
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedOfferForDetail, setSelectedOfferForDetail] = useState<OfferItem | null>(null);
 
   // Separate coupons vs store offers
   const { couponList, offerList } = useMemo(() => {
@@ -103,13 +109,15 @@ export default function CouponOffersModal({
     setErrorMessage(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const res = await onApplyCoupon(inputCode.trim().toUpperCase());
-      if (res !== false) {
+      const res: any = await onApplyCoupon(inputCode.trim().toUpperCase());
+      const isSuccess = res === true || res?.success === true;
+      if (isSuccess) {
         setInputCode('');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onClose();
       } else {
-        setErrorMessage('Invalid or inapplicable coupon code');
+        const errorMsg = res?.message || 'Invalid or inapplicable coupon code';
+        setErrorMessage(errorMsg);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     } catch (err: any) {
@@ -128,15 +136,27 @@ export default function CouponOffersModal({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (item.couponCode || item.requiresCoupon) {
         const codeToApply = item.couponCode || item.title;
-        const res = await onApplyCoupon(codeToApply);
-        if (res !== false) {
+        const res: any = await onApplyCoupon(codeToApply);
+        const isSuccess = res === true || res?.success === true;
+        if (isSuccess) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           onClose();
+        } else {
+          const errorMsg = res?.message || item.reason || 'Coupon could not be applied to this cart';
+          setErrorMessage(errorMsg);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         }
       } else {
-        await onApplyOffer(item);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        onClose();
+        const res: any = await onApplyOffer(item);
+        const isSuccess = res !== false && res?.success !== false;
+        if (isSuccess) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          onClose();
+        } else {
+          const errorMsg = res?.message || item.reason || 'Offer could not be applied';
+          setErrorMessage(errorMsg);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Failed to apply offer');
@@ -350,6 +370,46 @@ export default function CouponOffersModal({
                             </Text>
                           </View>
 
+                          {(item.merchantName || item.storeName) ? (
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 3,
+                                backgroundColor: '#FEF3C7',
+                                borderColor: '#FDE68A',
+                                borderWidth: 1,
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 4,
+                              }}
+                            >
+                              <Ionicons name="storefront" size={10} color="#B45309" />
+                              <Text style={{ fontSize: 10, fontFamily: Typography.fontFamily.bold, color: '#B45309' }}>
+                                {item.merchantName || item.storeName}
+                              </Text>
+                            </View>
+                          ) : item.scope === 'admin' ? (
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 3,
+                                backgroundColor: '#EFF6FF',
+                                borderColor: '#BFDBFE',
+                                borderWidth: 1,
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 4,
+                              }}
+                            >
+                              <Ionicons name="shield-checkmark" size={10} color="#1D4ED8" />
+                              <Text style={{ fontSize: 10, fontFamily: Typography.fontFamily.bold, color: '#1D4ED8' }}>
+                                FlashFits Platform
+                              </Text>
+                            </View>
+                          ) : null}
+
                           {isApplied && (
                             <View style={styles.appliedPill}>
                               <Ionicons name="checkmark-circle" size={12} color="#10B981" />
@@ -370,7 +430,14 @@ export default function CouponOffersModal({
 
                       {/* Main Card Body */}
                       <View style={styles.cardMain}>
-                        <View style={styles.cardLeft}>
+                        <TouchableOpacity
+                          style={styles.cardLeft}
+                          activeOpacity={0.75}
+                          onPress={() => {
+                            setSelectedOfferForDetail(item);
+                            setDetailModalVisible(true);
+                          }}
+                        >
                           {isCoupon && item.couponCode ? (
                             <View style={styles.dashedCodeBox}>
                               <Text style={[styles.codeText, { color: themeColor }]}>
@@ -390,7 +457,14 @@ export default function CouponOffersModal({
                               • Applicable on orders above ₹{threshold}
                             </Text>
                           )}
-                        </View>
+
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 4 }}>
+                            <Text style={{ fontSize: 10.5, fontFamily: Typography.fontFamily.bold, color: themeColor }}>
+                              View Details & Terms
+                            </Text>
+                            <Ionicons name="chevron-forward" size={11} color={themeColor} />
+                          </View>
+                        </TouchableOpacity>
 
                         {/* Action Button */}
                         <View style={styles.cardRight}>
@@ -439,6 +513,23 @@ export default function CouponOffersModal({
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Offer / Coupon Details Modal */}
+      <CouponDetailModal
+        visible={detailModalVisible}
+        offer={selectedOfferForDetail}
+        theme={{ primary: themeColor }}
+        onClose={() => {
+          setDetailModalVisible(false);
+          setSelectedOfferForDetail(null);
+        }}
+        onApplyOffer={() => {
+          if (selectedOfferForDetail) {
+            handleApplyItem(selectedOfferForDetail);
+          }
+        }}
+        isApplied={selectedOfferForDetail ? isItemApplied(selectedOfferForDetail) : false}
+      />
     </Modal>
   );
 }

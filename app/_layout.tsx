@@ -1,3 +1,4 @@
+
 import { AddressProvider } from '@/context/AddressContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
@@ -22,6 +23,13 @@ import '../global.css';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+// Suppress console logs in production release builds to prevent bridge serialization overhead
+if (!__DEV__) {
+  console.log = () => {};
+  console.info = () => {};
+  console.debug = () => {};
+}
 
 import {
   Manrope_300Light,

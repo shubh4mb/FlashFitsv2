@@ -137,7 +137,7 @@ export default function HomeScreen() {
               </View>
               <Text style={styles.promptTitle}>Where should we deliver?</Text>
               <Text style={styles.promptSubtitle}>
-                Select a saved address or enable device location to view trending styles, partner stores, and 60-minute delivery in your area.
+                Select a saved address or enable device location to view trending styles, partner stores, and 30-minute Try at Home in your area.
               </Text>
               <View style={styles.promptButtonsRow}>
                 <TouchableOpacity

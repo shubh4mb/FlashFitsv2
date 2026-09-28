@@ -98,8 +98,14 @@ export default function ExploreScreen() {
       if (pageNum === 1) setLoading(true);
       else setLoadingMore(true);
 
-      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const lat =
+        selectedAddress?.location?.coordinates?.[1] ??
+        (selectedAddress as any)?.latitude ??
+        userLocation?.latitude;
+      const lng =
+        selectedAddress?.location?.coordinates?.[0] ??
+        (selectedAddress as any)?.longitude ??
+        userLocation?.longitude;
 
       const data = await fetchCourierProducts(apiGender, pageNum, lat, lng);
       const fetched = data?.products || [];
@@ -119,7 +125,15 @@ export default function ExploreScreen() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [apiGender, selectedAddress, userLocation]);
+  }, [
+    apiGender,
+    selectedAddress?._id,
+    selectedAddress?.location?.coordinates,
+    (selectedAddress as any)?.latitude,
+    (selectedAddress as any)?.longitude,
+    userLocation?.latitude,
+    userLocation?.longitude,
+  ]);
 
   useEffect(() => {
     loadProducts(1, false);
@@ -219,12 +233,16 @@ export default function ExploreScreen() {
             {/* Available Brands Section */}
             {merchants.length > 0 && (
               <View style={styles.merchantsSection}>
-                <View style={styles.sectionHeader}>
+                <TouchableOpacity
+                  style={styles.sectionHeader}
+                  activeOpacity={0.7}
+                  onPress={() => router.push('/(app)/(tabs)/stores' as any)}
+                >
                   <View>
                     <Text style={styles.sectionTitle}>Available Stores</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                </View>
+                </TouchableOpacity>
                 <FlashList
                   data={merchants}
                   horizontal

@@ -8,8 +8,8 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Clipboard,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/theme';
@@ -78,10 +78,10 @@ export default function MerchantCouponCarousel({
     startAutoScroll();
   };
 
-  const handleCopyCode = (code: string) => {
+  const handleCopyCode = async (code: string) => {
     if (!code) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Clipboard.setString(code);
+    await Clipboard.setStringAsync(code);
     showToast({ message: `Coupon code "${code}" copied!`, type: 'success' });
   };
 

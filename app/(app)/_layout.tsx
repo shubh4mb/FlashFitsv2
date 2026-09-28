@@ -10,6 +10,7 @@ export default function AppLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="search-results" options={{ headerShown: false }} />
+          <Stack.Screen name="recently-viewed" options={{ headerShown: false }} />
         </Stack>
         <AddressSelectorModal />
       </CampaignProvider>

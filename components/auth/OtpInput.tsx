@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import { BrandColors } from "../../constants/theme";
 import { verifyOtp, sendOtp, registerVerifyOtp, resendEmailOtp } from "../../api/auth";
 import * as SecureStore from 'expo-secure-store';
 
@@ -237,13 +238,14 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
       );
 
     } catch (err: any) {
-      console.error("OTP verification failed:", err);
-
       const status = err?.response?.status;
       const apiMessage =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         null;
+      if (__DEV__) {
+        console.warn(`[Auth] OTP verification failed (${status || 'Network Error'}):`, apiMessage || err?.message);
+      }
 
       setError(true);
       shakeInputs();
@@ -291,12 +293,13 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
       setOtp(Array(OTP_LENGTH).fill(""));
       inputs.current[0]?.focus();
     } catch (err: any) {
-      console.error("Resend OTP failed:", err);
-
       const apiMessage =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         null;
+      if (__DEV__) {
+        console.warn("[Auth] Resend OTP failed:", apiMessage || err?.message);
+      }
 
       const status = err?.response?.status;
 
@@ -363,7 +366,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
             <MaterialCommunityIcons
               name={mode === 'email' ? "email-outline" : "cellphone-message"}
               size={28}
-              color="#1A1A1A"
+              color={BrandColors.primary}
             />
           </View>
         </Animated.View>
@@ -419,10 +422,11 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
                     ref={(ref) => { inputs.current[index] = ref; }}
                     editable={!isLoading}
                     selectTextOnFocus
-                    selectionColor="#1A1A1A"
+                    selectionColor={BrandColors.primary}
                   />
                   {digit && (
                     <Animated.View
+                      pointerEvents="none"
                       style={[
                         styles.filledIndicator,
                         {
@@ -466,7 +470,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
                   <MaterialCommunityIcons
                     name="clock-outline"
                     size={16}
-                    color="#64748B"
+                    color={BrandColors.primaryDark}
                   />
                   <Text style={styles.timerText}>
                     Resend code in {formatTime(timer)}
@@ -504,7 +508,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
               <LinearGradient
                 colors={
                   isComplete && !isLoading
-                    ? ["#1A1A1A", "#2D2D2D"]
+                    ? (BrandColors.buttonGradient as unknown as [string, string])
                     : ["#F1F5F9", "#F1F5F9"]
                 }
                 start={{ x: 0, y: 0 }}
@@ -557,7 +561,7 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
 
         {/* Security Info */}
         <View style={styles.helpContainer}>
-          <MaterialCommunityIcons name="shield-check" size={16} color="#64748B" />
+          <MaterialCommunityIcons name="shield-check" size={16} color={BrandColors.primary} />
           <Text style={styles.helpText}>Your information is safe and secure</Text>
         </View>
       </LinearGradient>
@@ -604,8 +608,8 @@ const styles = StyleSheet.create({
   headerLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#64748B",
-    letterSpacing: 1,
+    color: BrandColors.primaryDark,
+    letterSpacing: 1.2,
     marginBottom: 4,
     fontFamily: "Manrope-Bold",
   },
@@ -619,14 +623,16 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: BrandColors.softCyan,
+    borderWidth: 1.5,
+    borderColor: BrandColors.softCyanBorder,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
+    shadowColor: BrandColors.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
   },
   cardContainer: {
     paddingHorizontal: 24,
@@ -682,13 +688,8 @@ const styles = StyleSheet.create({
     fontFamily: "Manrope-Bold",
   },
   otpInputFilled: {
-    borderColor: "#1A1A1A",
+    borderColor: BrandColors.primary,
     backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
   },
   errorBorder: {
     borderColor: "#EF4444",
@@ -705,7 +706,7 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: "#1A1A1A",
+    backgroundColor: BrandColors.primary,
   },
   errorContainer: {
     flexDirection: "row",
@@ -747,7 +748,7 @@ const styles = StyleSheet.create({
     fontFamily: "Manrope-Medium",
   },
   resendLink: {
-    color: "#1A1A1A",
+    color: BrandColors.primaryDark,
     fontWeight: "700",
     textDecorationLine: "underline",
   },
@@ -759,11 +760,11 @@ const styles = StyleSheet.create({
   verifyButton: {
     borderRadius: 20,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: BrandColors.primary,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.35,
     shadowRadius: 12,
-    elevation: 8,
+    elevation: 6,
   },
   verifyButtonDisabled: {
     shadowOpacity: 0,
@@ -797,10 +798,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryButtonText: {
-    color: "#64748B",
-    fontSize: 16,
+    color: BrandColors.primaryDark,
+    fontSize: 15,
     fontFamily: "Manrope-SemiBold",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   helpContainer: {
     flexDirection: "row",

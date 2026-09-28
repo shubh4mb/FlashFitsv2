@@ -10,14 +10,14 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.flashfits.app",
-      "supportsTablet": true,
+      "supportsTablet": false,
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true,
-          "NSAllowsLocalNetworking": true
+          "NSAllowsLocalNetworking": true,
+          "NSAllowsArbitraryLoadsInWebContent": true
         },
-        "NSLocationWhenInUseUsageDescription": "Allow FlashFits to use your location to show nearby stores, fast delivery options, and 60-minute Try & Buy service.",
+        "NSLocationWhenInUseUsageDescription": "Allow FlashFits to use your location to show nearby stores, fast delivery options, and 30-minute Try at Home service.",
         "NSPhotoLibraryUsageDescription": "Allow FlashFits to access your photo library to upload return proofs or product reviews.",
         "NSCameraUsageDescription": "Allow FlashFits to take photos of items for returns or reviews.",
         "ITSAppUsesNonExemptEncryption": false,
@@ -33,6 +33,7 @@
       }
     },
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#3CDCF4",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -52,13 +53,16 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "notification": {
+      "icon": "./assets/images/notification-icon.png",
+      "color": "#3CDCF4"
+    },
     "plugins": [
       "expo-router",
       [
         "expo-location",
         {
           "locationWhenInUsePermission": "Allow FlashFits to use your location for delivery services.",
-          "locationAlwaysPermission": "Allow FlashFits to use your location for delivery services.",
           "isAndroidBackgroundLocationEnabled": false
         }
       ],
@@ -69,7 +73,13 @@
           "cameraPermission": "Allow FlashFits to take photos for returns and reviews."
         }
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#3CDCF4"
+        }
+      ],
       "expo-apple-authentication",
       "expo-secure-store",
       [
@@ -91,7 +101,17 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class com.google.android.gms.** { *; }\n-dontwarn com.google.android.gms.**\n-keep class com.swmansion.reanimated.** { *; }\n-keep class com.facebook.react.turbomodule.** { *; }"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -99,9 +119,8 @@
     },
     "extra": {
       // "BACKEND_URL": "https://api.theflashfits.com",
-      "BACKEND_URL": "https://6e61-2405-201-f001-8ff-f013-746c-3e72-c22a.ngrok-free.app
-      // 
-      // ",
+      // "BACKEND_URL":"http://192.168.29.230:5000",
+      "BACKEND_URL":"https://8d43-2405-201-f001-8ff-670a-486b-b150-a8ac.ngrok-free.app",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

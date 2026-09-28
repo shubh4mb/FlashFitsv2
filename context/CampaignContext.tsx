@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 
 export interface CampaignTheme {
   primaryColor: string;
@@ -76,18 +76,18 @@ export function CampaignProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const campaignTheme = activeCampaign?.theme || null;
+  const campaignTheme = useMemo(() => activeCampaign?.theme || null, [activeCampaign]);
   const hasCampaign = activeCampaign !== null;
 
+  const contextValue = useMemo(() => ({
+    activeCampaign,
+    campaignTheme,
+    setCampaignFromCollections,
+    hasCampaign,
+  }), [activeCampaign, campaignTheme, setCampaignFromCollections, hasCampaign]);
+
   return (
-    <CampaignContext.Provider
-      value={{
-        activeCampaign,
-        campaignTheme,
-        setCampaignFromCollections,
-        hasCampaign,
-      }}
-    >
+    <CampaignContext.Provider value={contextValue}>
       {children}
     </CampaignContext.Provider>
   );

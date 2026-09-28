@@ -92,7 +92,7 @@ export const reportUnresponsiveRider = async (orderId: string) => {
 /**
  * Confirm cloth selection (Keep/Return) — initiateReturn
  */
-export const confirmClothSelection = async (payload: { orderId: string; items: any[] }) => {
+export const confirmClothSelection = async (payload: { orderId: string; items: any[]; couponCode?: string }) => {
     try {
         const res = await api.post(`/user/order/initiateReturn/${payload.orderId}`, payload);
         return res.data;
@@ -125,7 +125,7 @@ export const finalpaymentInitiate = async (payload: { orderId: string; items: an
  */
 export const finalPaymentVerify = async (paymentData: any, internalOrderId: string) => {
     try {
-        const response = await api.post('user/order/verifyFinalPayment', {
+        const response = await api.post('/user/order/verifyFinalPayment', {
             razorpay_order_id: paymentData.razorpay_order_id,
             razorpay_payment_id: paymentData.razorpay_payment_id,
             razorpay_signature: paymentData.razorpay_signature,

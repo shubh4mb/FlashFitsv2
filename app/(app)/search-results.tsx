@@ -262,11 +262,12 @@ export default function SearchResultsScreen() {
         containerStyle={styles.productCard}
         width={(width - 48) / 2}
         fromExplore={deliveryMode !== 'tryAndBuy'}
+        fromStore={!!merchantId}
         isNearby={deliveryMode === 'tryAndBuy' || item.isInstantBuyable || item.isNearby}
-        isOnline={item.isOnline !== false}
+        isOnline={merchantId ? item.isOnline : (deliveryMode === 'tryAndBuy' ? item.isOnline : true)}
       />
     </View>
-  ), [deliveryMode]);
+  ), [deliveryMode, merchantId]);
 
   // ── Footer component for FlatList ──
   const renderFooter = () => {

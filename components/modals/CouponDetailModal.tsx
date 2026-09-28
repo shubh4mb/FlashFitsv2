@@ -8,8 +8,8 @@ import {
   TouchableWithoutFeedback,
   Dimensions,
   ScrollView,
-  Clipboard,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Typography } from '@/constants/theme';
@@ -47,12 +47,12 @@ export default function CouponDetailModal({
   const primaryColor = theme?.primary || '#10B981';
   const code = offer.couponCode || offer.code;
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (!code) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Clipboard.setString(code);
-    setCopied(true);
+    await Clipboard.setStringAsync(code);
     showToast({ message: `Coupon code "${code}" copied!`, type: 'success' });
+    setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -139,6 +139,21 @@ export default function CouponDetailModal({
                     <Ionicons name="pricetag" size={24} color={primaryColor} />
                   </View>
                   <Text style={styles.offerTitle}>{offer.title}</Text>
+                  {(offer.merchantName || offer.storeName || offer.merchantId?.shopName) ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#FEF3C7', borderRadius: 6, borderWidth: 1, borderColor: '#FDE68A' }}>
+                      <Ionicons name="storefront" size={13} color="#B45309" />
+                      <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#B45309' }}>
+                        {offer.merchantName || offer.storeName || offer.merchantId?.shopName}
+                      </Text>
+                    </View>
+                  ) : offer.scope === 'admin' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#EFF6FF', borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' }}>
+                      <Ionicons name="shield-checkmark" size={13} color="#1D4ED8" />
+                      <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#1D4ED8' }}>
+                        FlashFits Platform Offer
+                      </Text>
+                    </View>
+                  ) : null}
                   {!!discountText && (
                     <View
                       style={[
@@ -199,6 +214,34 @@ export default function CouponDetailModal({
                 {/* Terms & Rules List */}
                 <View style={styles.termsSection}>
                   <Text style={styles.sectionHeaderTitle}>OFFER DETAILS & TERMS</Text>
+
+                  {(offer.merchantName || offer.storeName || offer.merchantId?.shopName) ? (
+                    <View style={styles.termRow}>
+                      <Ionicons
+                        name="storefront-outline"
+                        size={16}
+                        color={primaryColor}
+                      />
+                      <Text style={styles.termText}>
+                        Store Offer from{' '}
+                        <Text style={styles.boldText}>
+                          {offer.merchantName || offer.storeName || offer.merchantId?.shopName}
+                        </Text>
+                      </Text>
+                    </View>
+                  ) : offer.scope === 'admin' ? (
+                    <View style={styles.termRow}>
+                      <Ionicons
+                        name="shield-checkmark-outline"
+                        size={16}
+                        color={primaryColor}
+                      />
+                      <Text style={styles.termText}>
+                        Official{' '}
+                        <Text style={styles.boldText}>FlashFits Platform Promotion</Text>
+                      </Text>
+                    </View>
+                  ) : null}
 
                   {minSpend ? (
                     <View style={styles.termRow}>

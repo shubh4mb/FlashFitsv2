@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { io, Socket } from 'socket.io-client';
 import * as SecureStore from 'expo-secure-store';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.137.1:5000';
+const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'https://api.theflashfits.com';
 
 let socket: Socket | null = null;
 

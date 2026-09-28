@@ -1,4 +1,4 @@
-import React, { createContext, ReactNode, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import React, { createContext, ReactNode, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as SecureStore from 'expo-secure-store';
 import { Address, getAddresses } from "../api/address";
 import * as Location from 'expo-location';
@@ -83,6 +83,8 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
     const [locationLoading, setLocationLoading] = useState(true);
     const [isLocationOff, setIsLocationOff] = useState(false);
     const [isAddressModalVisible, setIsAddressModalVisible] = useState(false);
+    const initialMounted = useRef(false);
+    const lastCheckedCoords = useRef<string>('');
 
     const openAddressModal = useCallback(() => setIsAddressModalVisible(true), []);
     const closeAddressModal = useCallback(() => setIsAddressModalVisible(false), []);
@@ -219,29 +221,21 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 return;
             }
 
-            // 5. Reverse Geocode with Timeout
+            // 5. Native On-Device Reverse Geocode (0 external network requests, instant)
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3500);
-                const resp = await fetch(
-                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-                    {
-                        headers: { "User-Agent": "FlashFitsApp/1.0 (contact@flashfits.com)" },
-                        signal: controller.signal,
-                    }
-                );
-                clearTimeout(timeoutId);
-                const json = await resp.json();
-                const addressObj = json.address || {};
-                const shortAddress = [
-                    addressObj.suburb || addressObj.neighbourhood || addressObj.village,
-                    addressObj.city || addressObj.town || addressObj.county
-                ].filter(Boolean).join(', ') || json.display_name;
-                
-                const postcode = addressObj.postcode || '';
-                setLocationAddress(postcode ? `${shortAddress}, ${postcode}` : shortAddress);
+                const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+                if (results && results.length > 0) {
+                    const addr = results[0];
+                    const area = addr.district || addr.subregion || addr.name || addr.street;
+                    const city = addr.city || addr.region || '';
+                    const shortAddress = [area, city].filter(Boolean).join(', ');
+                    const postcode = addr.postalCode || '';
+                    setLocationAddress(postcode ? `${shortAddress || 'Current Location'}, ${postcode}` : (shortAddress || 'Current Location'));
+                } else {
+                    setLocationAddress("Current Location");
+                }
             } catch (err) {
-                console.error('Reverse geocode failed or timed out:', err);
+                console.warn('Native reverse geocode fallback:', err);
                 setLocationAddress("Current Location");
             }
 
@@ -285,7 +279,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setLocationLoading(false);
                 Alert.alert(
                     "Location Permission Required",
-                    "FlashFits needs location permission to show nearby partner stores and 60-minute delivery in your area.",
+                    "FlashFits needs location permission to show nearby partner stores and 30-minute Try at Home in your area.",
                     [
                         { text: "Cancel", style: "cancel" },
                         { 
@@ -315,6 +309,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
     }, [detectLocation, setSelectedAddress, closeAddressModal]);
     
     // Handle Logout / Auth State Changes
+    // Handle Logout / Auth State Changes (Only after initial mount)
     useEffect(() => {
         if (!isAuthenticated) {
             // Logout case
@@ -327,36 +322,45 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             setTbOffline(null);
             setIsLocationOff(false);
             setIsAddressModalVisible(false);
+            lastCheckedCoords.current = '';
             SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY).catch(e => 
                 console.error('Failed to clear address on logout:', e)
             );
         } else {
-            // On Login or App Start while authenticated
-            if (!selectedAddress) {
-                detectLocation();
-            } else {
-                refreshAddresses();
+            // Only fire if user logged in AFTER initial mount has already run
+            if (initialMounted.current) {
+                if (!selectedAddress) {
+                    detectLocation();
+                } else {
+                    refreshAddresses();
+                }
             }
         }
     }, [isAuthenticated]);
     
-    // Auto-detect & Initial Load
+    // Auto-detect & Initial Load (Single Guaranteed Boot Execution)
     useEffect(() => {
         const initialLoad = async () => {
-            const saved = await SecureStore.getItemAsync(SELECTED_ADDRESS_KEY);
-            if (saved) {
-                try {
-                    setSelectedAddressState(JSON.parse(saved));
-                } catch (e) {
-                    console.error('Failed to parse saved address:', e);
+            try {
+                const saved = await SecureStore.getItemAsync(SELECTED_ADDRESS_KEY);
+                if (saved) {
+                    try {
+                        setSelectedAddressState(JSON.parse(saved));
+                    } catch (e) {
+                        console.error('Failed to parse saved address:', e);
+                    }
                 }
+            } catch (e) {
+                console.error('Failed to load saved address on boot:', e);
+            } finally {
+                initialMounted.current = true;
+                await detectLocation();
             }
-            await detectLocation();
         };
         initialLoad();
     }, []);
 
-    // ── Sync Availability When Address/Location Changes ──
+    // ── Sync Availability When Address/Location Changes (Deduplicated) ──
     useEffect(() => {
         const updateAvailability = async () => {
             const lat = selectedAddress?.location?.coordinates?.[1] ?? 
@@ -367,6 +371,12 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                         userLocation?.longitude;
 
             if (lat !== undefined && lng !== undefined) {
+                const coordsKey = `${Number(lat).toFixed(4)}_${Number(lng).toFixed(4)}`;
+                if (lastCheckedCoords.current === coordsKey) {
+                    return; // Coordinates haven't meaningfully changed, skip duplicate network call
+                }
+                lastCheckedCoords.current = coordsKey;
+
                 try {
                     const availability = await checkDeliveryAvailability(lat, lng);
                     
@@ -380,8 +390,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                     setTbOffline(false);
                 }
             } else {
-                // If neither address nor location is chosen, reset availability to null
-                // so the app knows location is pending rather than "not serviceable"
+                lastCheckedCoords.current = '';
                 setDeliveryAvailable(null);
                 setTbAvailable(null);
                 setTbOffline(null);

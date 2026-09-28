@@ -492,9 +492,73 @@ export default function CourierTrackingScreen() {
         {/* Cancelled State */}
         {isCancelled && (
           <View style={styles.cancelledCard}>
-            <Ionicons name="close-circle" size={48} color="#EF4444" />
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Ionicons name="close" size={32} color="#EF4444" />
+            </View>
             <Text style={styles.cancelledTitle}>Order Cancelled</Text>
-            <Text style={styles.cancelledSub}>This order has been cancelled. Refund will be processed within 3-5 business days.</Text>
+            <Text style={styles.cancelledSub}>
+              {order?.paymentStatus === 'refunded'
+                ? 'This order has been cancelled and your refund has been processed.'
+                : 'This order has been cancelled. If any payment was made, your refund will reflect within 2-4 business days.'}
+            </Text>
+
+            {(order?.paymentStatus === 'refunded' || Number((order as any)?.refundAmount) > 0) && (
+              <View style={{ width: '100%', backgroundColor: '#F0FDF4', borderRadius: 12, padding: 14, marginTop: 14, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#15803D' }}>
+                      ₹{(order as any)?.refundAmount || order?.totalPayable || 0} REFUNDED
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#16A34A', textTransform: 'uppercase' }}>
+                    {(order as any).refundDetails?.method || 'ONLINE'}
+                  </Text>
+                </View>
+                {Boolean((order as any).refundDetails?.referenceNumber) && (
+                  <Text style={{ fontSize: 11, color: '#334155', fontFamily: 'monospace', marginTop: 2 }}>
+                    Ref / UTR: {(order as any).refundDetails.referenceNumber}
+                  </Text>
+                )}
+                {Boolean((order as any).refundDetails?.reason) && (
+                  <Text style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>
+                    {(order as any).refundDetails.reason}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {(order?.reason || order?.cancellationRequestReason) && (
+              <View style={{ width: '100%', backgroundColor: '#FFF1F2', borderRadius: 12, padding: 12, marginTop: 14, borderWidth: 1, borderColor: '#FFE4E6' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Ionicons name="information-circle" size={14} color="#E11D48" />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#E11D48', textTransform: 'uppercase' }}>Reason</Text>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#9F1239' }}>
+                  {order.reason || order.cancellationRequestReason}
+                </Text>
+                {order?.updatedAt && (
+                  <Text style={{ fontSize: 11, color: '#BE123C', marginTop: 4 }}>
+                    Cancelled on {new Date(order.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, width: '100%' }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: theme.primary, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => router.replace('/(app)/(tabs)' as any)}
+              >
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Continue Shopping</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => router.push({ pathname: '/(app)/help-center', params: { orderId: orderId || order?._id, category: 'refund_issue' } } as any)}
+              >
+                <Text style={{ color: '#0F172A', fontSize: 13, fontWeight: '700' }}>Need Help?</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -622,6 +686,63 @@ export default function CourierTrackingScreen() {
           </View>
         </View>
 
+        {/* Refund Status Card (For delivered or completed orders with refund) */}
+        {(order?.paymentStatus === 'refunded' || Number((order as any)?.refundAmount) > 0) && !isCancelled && (
+          <View style={[styles.card, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="wallet-outline" size={18} color="#15803D" />
+                <Text style={[styles.cardTitle, { color: '#15803D', marginBottom: 0 }]}>Refund Issued</Text>
+              </View>
+              <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#15803D' }}>REFUNDED</Text>
+              </View>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Refund Amount</Text>
+              <Text style={[styles.detailValue, { color: '#15803D', fontWeight: '800' }]}>
+                ₹{(order as any)?.refundAmount || order?.totalPayable || 0}
+              </Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Refund Mode</Text>
+              <Text style={[styles.detailValue, { textTransform: 'uppercase' }]}>
+                {(order as any).refundDetails?.method || 'Original Payment Method / Wallet'}
+              </Text>
+            </View>
+            {Boolean((order as any).refundDetails?.referenceNumber) && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Reference / UTR</Text>
+                <Text style={[styles.detailValue, { fontFamily: 'monospace' }]}>
+                  {(order as any).refundDetails.referenceNumber}
+                </Text>
+              </View>
+            )}
+            {Boolean((order as any).refundDetails?.refundedAt) && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Refund Date</Text>
+                <Text style={styles.detailValue}>
+                  {new Date((order as any).refundDetails.refundedAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </Text>
+              </View>
+            )}
+            {Boolean((order as any).refundDetails?.reason) && (
+              <View style={{ marginTop: 8, padding: 8, backgroundColor: '#FFFFFF', borderRadius: 8, borderWidth: 1, borderColor: '#DCFCE7' }}>
+                <Text style={{ fontSize: 11, color: '#475569' }}>
+                  {(order as any).refundDetails.reason}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Cancel Button */}
         {canCancel && (
           <TouchableOpacity
@@ -640,15 +761,32 @@ export default function CourierTrackingScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Return Button */}
-        {isDelivered && (!order?.returnRequest || order.returnRequest.status === 'none') && isWithinReturnWindow() && (
-          <TouchableOpacity
-            style={styles.returnBtn}
-            onPress={handleOpenReturnModal}
-          >
-            <Ionicons name="refresh-outline" size={18} color={theme.primary} />
-            <Text style={[styles.returnBtnText, { color: theme.primary }]}>Return Items</Text>
-          </TouchableOpacity>
+        {/* Return Button & Policy Banners */}
+        {isDelivered && (!order?.returnRequest || order.returnRequest.status === 'none') && (
+          isWithinReturnWindow() ? (
+            <View style={{ marginBottom: 12 }}>
+              <View style={styles.returnPolicyBanner}>
+                <Ionicons name="shield-checkmark" size={16} color="#059669" />
+                <Text style={styles.returnPolicyBannerText}>
+                  3-Day Return Window Active • Returns accepted within 3 days of delivery
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.returnBtn}
+                onPress={handleOpenReturnModal}
+              >
+                <Ionicons name="refresh-outline" size={18} color={theme.primary} />
+                <Text style={[styles.returnBtnText, { color: theme.primary }]}>Return Items</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.returnExpiredBanner}>
+              <Ionicons name="time-outline" size={16} color="#64748B" />
+              <Text style={styles.returnExpiredBannerText}>
+                3-Day Return Window Closed • Returns must be initiated within 3 days of delivery. For damaged or defective items, reach out to Help Center.
+              </Text>
+            </View>
+          )
         )}
 
         {/* Existing Ratings */}
@@ -725,6 +863,13 @@ export default function CourierTrackingScreen() {
 
           <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <Text style={styles.modalSubtitle}>Order #{orderId?.slice(-5).toUpperCase()}</Text>
+
+            <View style={styles.modalPolicyCard}>
+              <Ionicons name="information-circle-outline" size={18} color="#0284C7" />
+              <Text style={styles.modalPolicyCardText}>
+                <Text style={{ fontWeight: '700' }}>FlashFits 3-Day Return Policy:</Text> You can return items within 3 days of delivery. Items must remain unused and unwashed with original brand tags attached. Free return pickup for defective or incorrect products.
+              </Text>
+            </View>
 
             <Text style={styles.sectionTitle}>Select items to return</Text>
             {order?.items?.map((item) => {
@@ -1024,7 +1169,61 @@ const styles = StyleSheet.create({
   },
   continueBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 
-  // Return button
+  // Return banners & button
+  returnPolicyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    marginBottom: 8,
+  },
+  returnPolicyBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#065F46',
+    flex: 1,
+  },
+  returnExpiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    marginBottom: 16,
+  },
+  returnExpiredBannerText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748B',
+    flex: 1,
+    lineHeight: 16,
+  },
+  modalPolicyCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+    marginBottom: 8,
+  },
+  modalPolicyCardText: {
+    fontSize: 12,
+    color: '#0369A1',
+    flex: 1,
+    lineHeight: 17,
+  },
   returnBtn: {
     flexDirection: 'row',
     alignItems: 'center',

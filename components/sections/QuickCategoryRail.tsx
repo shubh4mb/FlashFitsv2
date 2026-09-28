@@ -47,7 +47,7 @@ const CATEGORIES_BY_GENDER: Record<string, Array<{ id: string; label: string; qu
       label: 'Sneakers',
       query: 'Sneakers',
       image: 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=300&q=80',
-      tag: '⚡ 60M',
+      tag: '⚡ 30M',
     },
     {
       id: 'm_shirts',
@@ -88,7 +88,7 @@ const CATEGORIES_BY_GENDER: Record<string, Array<{ id: string; label: string; qu
       label: 'Footwear',
       query: 'Footwear',
       image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=300&q=80',
-      tag: '⚡ 60M',
+      tag: '⚡ 30M',
     },
     {
       id: 'w_ethnic',
@@ -151,7 +151,7 @@ export default function QuickCategoryRail({ refreshKey = 0 }: { refreshKey?: num
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Shop by Style</Text>
           <View style={styles.liveDropPill}>
-            <Text style={styles.liveDropText}>60-MIN TRIAL</Text>
+            <Text style={styles.liveDropText}>30-MIN TRIAL</Text>
           </View>
         </View>
         <TouchableOpacity
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 12,
     fontFamily: Typography.fontFamily.bold,
-    color: BrandColors.primary,
+    color: BrandColors.matteBlack,
   },
   scrollContent: {
     paddingHorizontal: 16,

@@ -6,15 +6,15 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
-  Clipboard,
   Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Typography } from '@/constants/theme';
+import { Typography, BrandColors } from '@/constants/theme';
 import { useCampaign } from '@/context/CampaignContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -127,10 +127,10 @@ export default function CampaignHeroSection() {
     } as any);
   };
 
-  const handleCopyCoupon = () => {
+  const handleCopyCoupon = async () => {
     if (!activeCampaign.attachedCouponCode) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Clipboard.setString(activeCampaign.attachedCouponCode);
+    await Clipboard.setStringAsync(activeCampaign.attachedCouponCode);
     setCopiedCoupon(true);
     setTimeout(() => setCopiedCoupon(false), 3000);
   };
@@ -242,7 +242,7 @@ export default function CampaignHeroSection() {
         style={styles.seeAllRow}
         activeOpacity={0.7}
       >
-        <Text style={[styles.seeAllText, { color: theme.primaryColor }]}>
+        <Text style={[styles.seeAllText, { color: BrandColors.matteBlack }]}>
           Explore All {activeCampaign.name} →
         </Text>
       </TouchableOpacity>

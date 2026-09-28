@@ -48,6 +48,7 @@ interface MainHeaderProps {
     scrollY?: Animated.Value;
     onHeaderLayout?: (height: number) => void;
     refreshKey?: number;
+    disableSticky?: boolean;
 }
 
 const SCROLL_DISTANCE = 75;
@@ -57,7 +58,13 @@ const capitalize = (str?: string) => {
     return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-export default function MainHeader({ hideCategories = false, scrollY, onHeaderLayout, refreshKey }: MainHeaderProps) {
+export default function MainHeader({
+    hideCategories = false,
+    scrollY,
+    onHeaderLayout,
+    refreshKey,
+    disableSticky = false,
+}: MainHeaderProps) {
     const { cart } = useCart();
     const { courierCart } = useCourierCart();
     const { wishlistIds } = useWishlist();
@@ -96,9 +103,6 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
 
     // Category Continuous Glide + Manual Swipe
     const categoryScrollRef = useRef<ScrollView>(null);
-    const scrollPosRef = useRef(0);
-    const isInteractingRef = useRef(false);
-    const resumeTimeoutRef = useRef<any>(null);
     const categoryFadeAnim = useRef(new Animated.Value(1)).current;
     const isInitialGenderMount = useRef(true);
 
@@ -111,18 +115,6 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
         });
         return filtered.length > 0 ? filtered : categories;
     }, [categories, selectedGender]);
-
-    const scheduleResume = (delay = 1500) => {
-        if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
-        resumeTimeoutRef.current = setTimeout(() => {
-            isInteractingRef.current = false;
-        }, delay);
-    };
-
-    const handleUserInteractionStart = () => {
-        isInteractingRef.current = true;
-        if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
-    };
 
     useEffect(() => {
         const loadCategories = async () => {
@@ -137,7 +129,6 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                 if (topLevel.length > 0) {
                     setSelectedCategoryId(topLevel[0]._id);
                 }
-                scrollPosRef.current = 0;
                 categoryScrollRef.current?.scrollTo({ x: 0, animated: false });
             } catch (error) {
                 console.error("Failed to load categories:", error);
@@ -150,6 +141,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
         loadCategories();
     }, [refreshKey]);
 
+    // Reset category scroll position on gender switch
     useEffect(() => {
         if (isInitialGenderMount.current) {
             isInitialGenderMount.current = false;
@@ -158,7 +150,6 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
         }
 
         // Reset scroll position on gender switch
-        scrollPosRef.current = 0;
         categoryScrollRef.current?.scrollTo({ x: 0, animated: false });
 
         categoryFadeAnim.setValue(0);
@@ -179,32 +170,6 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
             categoryFadeAnim.setValue(1);
         };
     }, [selectedGender]);
-
-    // Continuous auto-glide that seamlessly pauses during manual swipe and resumes
-    useEffect(() => {
-        if (loading || visibleCategories.length === 0) return;
-
-        const singleSetWidth = visibleCategories.length * (CATEGORY_ITEM_WIDTH + CATEGORY_GAP);
-        if (singleSetWidth <= 0) return;
-
-        const interval = setInterval(() => {
-            if (isInteractingRef.current) return;
-
-            let nextX = scrollPosRef.current + 0.65; // ~26px per second smooth flow
-            if (nextX >= singleSetWidth * 2) {
-                nextX = nextX - singleSetWidth;
-            } else if (nextX < 0) {
-                nextX = nextX + singleSetWidth;
-            }
-            scrollPosRef.current = nextX;
-            categoryScrollRef.current?.scrollTo({ x: nextX, animated: false });
-        }, 25);
-
-        return () => {
-            clearInterval(interval);
-            if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
-        };
-    }, [loading, visibleCategories.length, selectedGender]);
 
     // Gradient transition
     const gradientAnim = useRef(new Animated.Value(0)).current;
@@ -263,20 +228,20 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
         extrapolateRight: 'extend',
     }) : 0;
 
-    const topRowOpacity = scrollY ? scrollY.interpolate({
+    const topRowOpacity = (scrollY && !disableSticky) ? scrollY.interpolate({
         inputRange: [0, TOP_OFFSET * 0.7],
         outputRange: [1, 0],
         extrapolate: 'clamp',
     }) : 1;
 
-    const stickyCounterY = scrollY ? scrollY.interpolate({
+    const stickyCounterY = (scrollY && !disableSticky) ? scrollY.interpolate({
         inputRange: [0, TOP_OFFSET, TOP_OFFSET + 1],
         outputRange: [0, 0, 1],
         extrapolateLeft: 'clamp',
         extrapolateRight: 'extend'
     }) : 0;
 
-    const stickyBgOpacity = scrollY ? scrollY.interpolate({
+    const stickyBgOpacity = (scrollY && !disableSticky) ? scrollY.interpolate({
         inputRange: [TOP_OFFSET, TOP_OFFSET + 20],
         outputRange: [0, 1],
         extrapolate: 'clamp'
@@ -290,7 +255,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                 styles.stickyWrapper,
                 {
                     transform: [{ translateY: headerTranslate }],
-                    zIndex: 100,
+                    zIndex: disableSticky ? 5 : 100,
                 }
             ]}
             onLayout={(e) => onHeaderLayout?.(e.nativeEvent.layout.height)}
@@ -326,7 +291,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     <>
                                         <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} pointerEvents="none" />
                                         <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
-                                            {tbAvailable ? 'Try in 60 mins' : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery')}
+                                            {tbAvailable ? '30-Min Try at Home' : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery')}
                                         </Text>
                                     </>
                                 ) : (
@@ -489,11 +454,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                     {activeCampaign.badgeText}
                                 </Text>
                             </View>
-                        ) : (
-                            <View style={styles.micButton}>
-                                <MaterialCommunityIcons name="microphone-outline" size={16} color="#64748B" />
-                            </View>
-                        )}
+                        ) : null}
                     </TouchableOpacity>
 
                     {/* ── Compact & Professional Gender Switcher ── */}
@@ -578,23 +539,8 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                             horizontal
                             showsHorizontalScrollIndicator={false}
                             contentContainerStyle={styles.categoriesContainer}
-                            scrollEventThrottle={16}
-                            onScroll={(e) => {
-                                scrollPosRef.current = e.nativeEvent.contentOffset.x;
-                            }}
-                            onTouchStart={handleUserInteractionStart}
-                            onTouchEnd={() => scheduleResume(1500)}
-                            onTouchCancel={() => scheduleResume(1500)}
-                            onScrollBeginDrag={handleUserInteractionStart}
-                            onScrollEndDrag={(e) => {
-                                scrollPosRef.current = e.nativeEvent.contentOffset.x;
-                                scheduleResume(1500);
-                            }}
-                            onMomentumScrollBegin={handleUserInteractionStart}
-                            onMomentumScrollEnd={(e) => {
-                                scrollPosRef.current = e.nativeEvent.contentOffset.x;
-                                scheduleResume(1500);
-                            }}
+                            scrollEventThrottle={32}
+                            decelerationRate="fast"
                         >
                             {loading
                                 ? [1, 2, 3, 4, 5].map((i) => (
@@ -603,7 +549,7 @@ export default function MainHeader({ hideCategories = false, scrollY, onHeaderLa
                                         <Skeleton width={CATEGORY_ITEM_WIDTH * 0.7} height={10} />
                                     </View>
                                 ))
-                                : [...visibleCategories, ...visibleCategories, ...visibleCategories].map((cat, idx) => {
+                                : visibleCategories.map((cat, idx) => {
                                     const isActive = selectedCategoryId === cat._id;
                                     const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
                                     const logoUrl = (cat.logos?.[genderKey]?.url && typeof cat.logos[genderKey].url === 'string' && cat.logos[genderKey].url.trim() !== '')
@@ -801,14 +747,6 @@ const styles = StyleSheet.create({
         color: '#1E293B',
         fontFamily: Typography.fontFamily.bold,
         letterSpacing: 0.1,
-    },
-    micButton: {
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        backgroundColor: 'rgba(148,163,184,0.12)',
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     campaignSearchBadge: {
         paddingHorizontal: 8,

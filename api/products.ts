@@ -24,14 +24,25 @@ export const fetchTrendingProductsData = async (gender?: string, lat?: number, l
     }
 };
 
-export const fetchRecommendedProductsData = async (gender?: string, lat?: number, lng?: number) => {
+export const fetchRecommendedProductsData = async (
+    gender?: string, 
+    lat?: number, 
+    lng?: number, 
+    productIds?: string[], 
+    limit?: number
+) => {
     try {
-        const res = await api.get('user/products/recommended', {
-            params: { gender, lat, lng }
-        });
+        const params: Record<string, any> = {};
+        if (gender && gender !== 'All') params.gender = gender;
+        if (lat !== undefined && lat !== null) params.lat = lat;
+        if (lng !== undefined && lng !== null) params.lng = lng;
+        if (productIds && productIds.length > 0) params.productIds = productIds.join(',');
+        if (limit) params.limit = limit;
+
+        const res = await api.get('user/products/recommended', { params });
         return res.data;
     } catch (error) {
-    // Auth errors are ignored gracefully
+        // Auth errors are ignored gracefully
         throw error;
     }
 };

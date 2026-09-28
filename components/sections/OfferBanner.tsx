@@ -91,13 +91,23 @@ function OfferCard({ offer, theme }: { offer: Offer; theme: any }) {
 
   useEffect(() => {
     if (!offer.isFlashSale) return;
-    const timer = setInterval(() => {
+    const calculateTime = () => {
       const diff = new Date(offer.endDate).getTime() - Date.now();
-      if (diff <= 0) { setTimeLeft('Ended'); clearInterval(timer); return; }
+      if (diff <= 0) {
+        setTimeLeft('Ended');
+        return false;
+      }
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       setTimeLeft(`${h}h ${m}m left`);
-    }, 1000);
+      return true;
+    };
+
+    calculateTime();
+    const timer = setInterval(() => {
+      const active = calculateTime();
+      if (!active) clearInterval(timer);
+    }, 60000);
     return () => clearInterval(timer);
   }, [offer]);
 

@@ -155,8 +155,18 @@ const CartItem = ({ item, isCourier = false }: CartItemProps) => {
           </View>
 
           <Text style={styles.variantInfo}>
-            Size: {item.size} • Store: {item.merchantId?.shopName}
+            Size: {item.size} • Store: {item.merchantId?.shopName || 'Store'}
           </Text>
+
+          {item.isOutOfStock || (item.stockQuantity !== undefined && item.stockQuantity <= 0) ? (
+            <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700', marginTop: 2 }}>
+              ⚠️ Out of stock - please remove
+            </Text>
+          ) : (item.stockQuantity !== undefined && item.stockQuantity <= 3) ? (
+            <Text style={{ color: '#D97706', fontSize: 11, fontWeight: '600', marginTop: 2 }}>
+              Only {item.stockQuantity} left in stock
+            </Text>
+          ) : null}
 
           <View style={styles.footer}>
             <View style={styles.priceContainer}>

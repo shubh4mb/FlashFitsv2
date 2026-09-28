@@ -20,6 +20,10 @@ import { useOffers } from '@/context/OffersContext';
 import { GenderThemes } from '@/constants/theme';
 import OfferBadge from '@/components/common/OfferBadge';
 import { Offer } from '@/api/offers';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
+import { useToast } from '@/context/AlertContext';
+import CouponDetailModal from '@/components/modals/CouponDetailModal';
 
 export default function OffersScreen() {
   const insets = useSafeAreaInsets();
@@ -28,6 +32,15 @@ export default function OffersScreen() {
   const { offers, flashSales, loading, refreshOffers, refreshFlashSales } = useOffers();
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+
+  const handleOpenOfferDetail = (offer: Offer) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedOffer(offer);
+    setDetailModalVisible(true);
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -120,7 +133,12 @@ export default function OffersScreen() {
           <View key={idx} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             {section.data.map((offer) => (
-              <OfferListItem key={offer._id} offer={offer} theme={theme} />
+              <OfferListItem
+                key={offer._id}
+                offer={offer}
+                theme={theme}
+                onPress={() => handleOpenOfferDetail(offer)}
+              />
             ))}
           </View>
         ))}
@@ -128,11 +146,28 @@ export default function OffersScreen() {
         <View style={{ height: 40 }} />
       </Animated.ScrollView>
     </PremiumRefreshWrapper>
+
+    {/* Detail Modal */}
+    <CouponDetailModal
+      visible={detailModalVisible}
+      offer={selectedOffer}
+      theme={theme}
+      onClose={() => setDetailModalVisible(false)}
+    />
     </View>
   );
 }
 
-function OfferListItem({ offer, theme }: { offer: Offer; theme: any }) {
+function OfferListItem({
+  offer,
+  theme,
+  onPress,
+}: {
+  offer: Offer;
+  theme: any;
+  onPress: () => void;
+}) {
+  const showToast = useToast();
   const [timeLeft, setTimeLeft] = useState('');
   const isNotEligible = offer.eligible === false;
 
@@ -149,6 +184,15 @@ function OfferListItem({ offer, theme }: { offer: Offer; theme: any }) {
     const timer = setInterval(update, 60000);
     return () => clearInterval(timer);
   }, [offer]);
+
+  const handleCopyCode = async (e: any) => {
+    e?.stopPropagation?.();
+    if (offer.couponCode) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await Clipboard.setStringAsync(offer.couponCode);
+      showToast({ message: `Coupon code "${offer.couponCode}" copied! 📋`, type: 'success' });
+    }
+  };
 
   const discountLabel = offer.discountType === 'flat'
     ? `₹${offer.discountValue} OFF`
@@ -173,7 +217,11 @@ function OfferListItem({ offer, theme }: { offer: Offer; theme: any }) {
       : '#F1F5F9';
 
   return (
-    <View style={[styles.offerCard, isNotEligible && { opacity: 0.5 }]}>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={[styles.offerCard, isNotEligible && { opacity: 0.5 }]}
+    >
       <View style={styles.offerLeft}>
         <View style={[styles.discountCircle, { backgroundColor: isNotEligible ? '#F1F5F9' : theme.primary + '15' }]}>
           <Text style={[styles.discountText, { color: isNotEligible ? '#94A3B8' : theme.primary }]}>{discountLabel}</Text>
@@ -199,9 +247,14 @@ function OfferListItem({ offer, theme }: { offer: Offer; theme: any }) {
       </View>
       <View style={styles.offerRight}>
         {offer.couponCode ? (
-          <View style={styles.couponTag}>
+          <TouchableOpacity
+            style={styles.couponTag}
+            onPress={handleCopyCode}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="copy-outline" size={11} color="#475569" style={{ marginRight: 3 }} />
             <Text style={styles.couponTagText}>{offer.couponCode}</Text>
-          </View>
+          </TouchableOpacity>
         ) : (
           <View style={styles.autoTag}>
             <Text style={styles.autoTagText}>Auto</Text>
@@ -211,7 +264,7 @@ function OfferListItem({ offer, theme }: { offer: Offer; theme: any }) {
           <Text style={styles.timerText}>{timeLeft}</Text>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

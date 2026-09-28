@@ -39,6 +39,7 @@ export default function CouponInput({
     applyCoupon,
     removeCoupon,
     computeBestOffers,
+    setCouponCode,
   } = useOffers();
 
   const [inputCode, setInputCode] = useState('');
@@ -99,17 +100,54 @@ export default function CouponInput({
 
   // Applied list
   const appliedList = appliedOffersData?.appliedOffers || [];
-  const hasAppliedOffers = appliedList.length > 0 || !!couponCode;
+
+  // Detect if backend applied offers has a coupon
+  const backendAppliedCoupon = useMemo(() => {
+    return appliedList.find((o: any) => o.couponCode || o.requiresCoupon);
+  }, [appliedList]);
+
+  // Sync couponCode from backend cart if context doesn't have it
+  useEffect(() => {
+    if (!couponCode && backendAppliedCoupon?.couponCode) {
+      setCouponCode(backendAppliedCoupon.couponCode.toUpperCase());
+    }
+  }, [couponCode, backendAppliedCoupon, setCouponCode]);
+
+  const activeCouponCode = couponCode || backendAppliedCoupon?.couponCode;
+
+  // Is the coupon actually qualified and active in this cart?
+  const isCouponActive = useMemo(() => {
+    if (!activeCouponCode) return false;
+    return appliedList.some(
+      (o: any) =>
+        o.couponCode?.toUpperCase() === activeCouponCode.toUpperCase() ||
+        (o.requiresCoupon && (Number(o.discountApplied || o.discountAmount) > 0 || o.freeDelivery))
+    );
+  }, [appliedList, activeCouponCode]);
+
+  // If coupon was entered, but conditions are not met for this cart:
+  const ineligibleCouponReason = useMemo(() => {
+    if (activeCouponCode && !isCouponActive && appliedList.length === 0) {
+      const match = combinedOffers.find(
+        (o: any) => o.couponCode?.toUpperCase() === activeCouponCode.toUpperCase()
+      );
+      return match?.reason || 'Conditions not met for this cart';
+    }
+    return null;
+  }, [activeCouponCode, isCouponActive, appliedList.length, combinedOffers]);
+
+  const hasAppliedOffers = appliedList.length > 0 || isCouponActive;
   const totalSavings = (appliedOffersData?.totalDiscount || 0);
 
-  const handleApplyCode = async (codeOverride?: string) => {
+  const handleApplyCode = async (codeOverride?: string): Promise<{ success: boolean; message?: string }> => {
     const code = (codeOverride || inputCode).trim().toUpperCase();
-    if (!code) return false;
+    if (!code) return { success: false, message: 'Please enter a coupon code' };
 
     setLocalLoading(true);
     try {
-      const success = await applyCoupon(code, cartContext, orderType);
-      if (success) {
+      const res = await applyCoupon(code, cartContext, orderType);
+      const isSuccess = Boolean(res?.success ?? res);
+      if (isSuccess) {
         setInputCode('');
         if (orderType === 'try_and_buy') {
           await refreshCart();
@@ -117,12 +155,12 @@ export default function CouponInput({
           await refreshCourierCart();
         }
         if (onOffersUpdated) onOffersUpdated();
-        return true;
+        return { success: true, message: res?.message || 'Coupon applied successfully' };
       }
-      return false;
-    } catch (err) {
+      return { success: false, message: res?.message || couponError || 'Invalid coupon code' };
+    } catch (err: any) {
       console.error('Failed to apply coupon:', err);
-      return false;
+      return { success: false, message: err?.message || 'Failed to apply coupon' };
     } finally {
       setLocalLoading(false);
     }
@@ -207,13 +245,13 @@ export default function CouponInput({
           {/* List of Applied Items */}
           <View style={styles.appliedListContainer}>
             {/* Applied Coupon (if active) */}
-            {couponCode && (
+            {activeCouponCode && isCouponActive && (
               <View style={styles.appliedItemRow}>
                 <View style={styles.appliedItemLeft}>
                   <View style={[styles.typeBadge, styles.couponTypeBadge]}>
                     <Text style={styles.couponTypeBadgeText}>🎟️ COUPON</Text>
                   </View>
-                  <Text style={styles.appliedCodeText}>{couponCode}</Text>
+                  <Text style={styles.appliedCodeText}>{activeCouponCode}</Text>
                 </View>
                 <TouchableOpacity
                   onPress={handleRemoveCouponCode}
@@ -229,7 +267,7 @@ export default function CouponInput({
             {appliedList.map((appliedItem: any) => {
               const id = appliedItem._id || appliedItem.offerId;
               const isCouponItem = appliedItem.couponCode || appliedItem.requiresCoupon;
-              if (isCouponItem && appliedItem.couponCode === couponCode) {
+              if (isCouponItem && (appliedItem.couponCode?.toUpperCase() === activeCouponCode?.toUpperCase())) {
                 // Already rendered above
                 return null;
               }
@@ -299,6 +337,26 @@ export default function CouponInput({
             <Ionicons name="pricetags" size={16} color={themeColor} />
             <Text style={styles.headerTitle}>Coupons & Offers</Text>
           </View>
+
+          {/* Ineligible Coupon Warning Banner */}
+          {ineligibleCouponReason && activeCouponCode && (
+            <View style={styles.ineligibleBanner}>
+              <View style={styles.ineligibleLeft}>
+                <Ionicons name="alert-circle-outline" size={16} color="#D97706" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ineligibleTitle}>Coupon {activeCouponCode} not active</Text>
+                  <Text style={styles.ineligibleReason}>{ineligibleCouponReason}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={handleRemoveCouponCode}
+                style={styles.ineligibleRemoveBtn}
+                disabled={localLoading || couponLoading}
+              >
+                <Text style={styles.ineligibleRemoveText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Sleek Input Bar */}
           <View style={styles.inputRow}>
@@ -621,5 +679,45 @@ const styles = StyleSheet.create({
   changeOffersText: {
     fontSize: 11,
     fontFamily: Typography.fontFamily.bold,
+  },
+  ineligibleBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 10,
+    marginBottom: 10,
+    gap: 8,
+  },
+  ineligibleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  ineligibleTitle: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#92400E',
+  },
+  ineligibleReason: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#B45309',
+    marginTop: 1,
+  },
+  ineligibleRemoveBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#FEF3C7',
+  },
+  ineligibleRemoveText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#92400E',
   },
 });

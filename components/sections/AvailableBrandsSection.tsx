@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
 import { useAddress } from '@/context/AddressContext';
 import { fetchCourierProducts } from '@/api/products';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { GenderThemes, Typography, BrandColors } from '@/constants/theme';
 
 interface Merchant {
   _id: string;
@@ -176,8 +176,8 @@ export default function AvailableBrandsSection({
             }}
             activeOpacity={0.7}
           >
-            <Text style={[styles.explorePillText, { color: theme.primary || '#4F46E5' }]}>View All</Text>
-            <Ionicons name="chevron-forward" size={14} color={theme.primary || '#4F46E5'} />
+            <Text style={[styles.explorePillText, { color: BrandColors.matteBlack }]}>View All</Text>
+            <Ionicons name="chevron-forward" size={14} color={BrandColors.matteBlack} />
           </TouchableOpacity>
         )}
       </View>

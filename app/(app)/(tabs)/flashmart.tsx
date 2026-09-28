@@ -247,12 +247,20 @@ export default function FlashMartScreen() {
       }
     }
 
-    return list;
+    return list.map((item) => ({
+      ...item,
+      isWarehouseListing: true,
+      source: 'warehouse',
+    }));
   }, [products, activeCategoryFilter, selectedPriceRange, selectedBrandId, sortBy]);
 
   // Featured bestseller products (top items) - only shown when not filtered by brand
   const featuredProducts = useMemo(() => {
-    return products.slice(0, 6);
+    return products.slice(0, 6).map((item) => ({
+      ...item,
+      isWarehouseListing: true,
+      source: 'warehouse',
+    }));
   }, [products]);
 
   // ── Render Sort Modal ──
@@ -492,9 +500,15 @@ export default function FlashMartScreen() {
 
   return (
     <View style={styles.container}>
-      <MainHeader hideCategories={true} onHeaderLayout={setHeaderHeight} refreshKey={refreshKey} />
+      <MainHeader
+        scrollY={scrollY}
+        hideCategories={true}
+        onHeaderLayout={setHeaderHeight}
+        refreshKey={refreshKey}
+        disableSticky={true}
+      />
 
-      <View style={[styles.contentWrapper, { marginTop: headerHeight }]}>
+      <View style={styles.contentWrapper}>
         <PremiumRefreshWrapper
           scrollY={scrollY}
           refreshing={refreshing}
@@ -503,10 +517,13 @@ export default function FlashMartScreen() {
           <Animated.ScrollView
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
-            stickyHeaderIndices={[0]}
+            stickyHeaderIndices={[1]}
           >
-            {/* ── 1. Sticky Filter & Sort Bar (Pins directly below MainHeader) ── */}
-            <View style={styles.stickyFilterBarWrap}>
+            {/* ── 0. Header Spacer (allows MainHeader to scroll away) ── */}
+            <View pointerEvents="none" style={{ height: Math.max(0, headerHeight - insets.top) }} />
+
+            {/* ── 1. Sticky Filter & Sort Bar (Sticks below status bar when scrolling) ── */}
+            <View style={[styles.stickyFilterBarWrap, { paddingTop: insets.top + 2 }]}>
               {renderFilterBarContent()}
             </View>
 
@@ -565,11 +582,7 @@ export default function FlashMartScreen() {
                 {featuredProducts.map((prod, idx) => (
                   <View key={prod._id || idx} style={{ width: 160 }}>
                     <ProductCard
-                      product={{
-                        ...prod,
-                        isWarehouseListing: true,
-                        source: 'warehouse',
-                      }}
+                      product={prod}
                       width={160}
                     />
                   </View>
@@ -629,11 +642,7 @@ export default function FlashMartScreen() {
                 {processedProducts.map((item, index) => (
                   <View key={item._id || index} style={{ width: CARD_WIDTH, marginBottom: 16 }}>
                     <ProductCard
-                      product={{
-                        ...item,
-                        isWarehouseListing: true,
-                        source: 'warehouse',
-                      }}
+                      product={item}
                       width={CARD_WIDTH}
                     />
                   </View>
@@ -669,7 +678,7 @@ const styles = StyleSheet.create({
   /* Filter & Sort Bar */
   stickyFilterBarWrap: {
     backgroundColor: '#F8FAFC',
-    paddingVertical: 2,
+    paddingBottom: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#E2E8F0',
     zIndex: 10,

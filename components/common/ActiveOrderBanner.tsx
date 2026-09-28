@@ -5,8 +5,9 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllOrders } from '@/api/orders';
 import { useGender } from '@/context/GenderContext';
-import { GenderThemes } from '@/constants/theme';
+import { GenderThemes, BrandColors } from '@/constants/theme';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners } from '@/sockets/order.socket';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -21,31 +22,43 @@ const isOrderActive = (order: any) => {
 
   const status = (order.orderStatus || '').toLowerCase();
   const paymentStatus = (order.paymentStatus || '').toLowerCase();
+  const customerDeliveryStatus = (order.customerDeliveryStatus || '').toLowerCase();
 
   // Cancelled, rejected, failed, or returned are permanently inactive
   if (['cancelled', 'rejected', 'failed', 'payment_failed', 'returned'].includes(status)) {
     return false;
   }
 
-  // Order fully completed and paid
+  // Order fully completed
   if (status === 'completed') {
     return false;
   }
 
-  // Try & Buy: Selection made (on OTP sharing screen OR on payment screen)
-  // MUST remain active as long as payment is pending / not yet completed.
-  if (status === 'selection_made') {
-    return paymentStatus !== 'paid';
+  // Customer delivery status is completed or delivered -> Customer has finished delivery/handover
+  if (['completed', 'delivered'].includes(customerDeliveryStatus)) {
+    return false;
   }
 
-  // If customer delivery status is marked completed or delivered, only hide if payment has also been completed
-  if (order.customerDeliveryStatus === 'completed' || order.customerDeliveryStatus === 'delivered') {
-    return paymentStatus !== 'paid';
-  }
-
-  // If return in progress, check if payment is pending
+  // If return in progress, the customer is done (rider is returning to store)
   if (status === 'return_in_progress') {
-    return paymentStatus !== 'paid';
+    return false;
+  }
+
+  // If all items are returned and selection is made or paid
+  const items = order.items || [];
+  const allReturned = items.length > 0 && items.every((i: any) => i.tryStatus === 'returned' || i.tryStatus === 'return');
+  if (allReturned && (paymentStatus === 'paid' || customerDeliveryStatus === 'completed' || ['completed', 'return_in_progress'].includes(status))) {
+    return false;
+  }
+
+  // If payment is paid and order is in selection_made, customer already paid
+  if (paymentStatus === 'paid' && ['selection_made', 'completed', 'return_in_progress'].includes(status)) {
+    return false;
+  }
+
+  // Try & Buy: Selection made
+  if (status === 'selection_made') {
+    return paymentStatus !== 'paid' && !['completed', 'delivered'].includes(customerDeliveryStatus);
   }
 
   const isCourier = order.isCourier || order._isCourier || order.deliveryMode === 'courier' || order.fulfillmentType === 'courier';
@@ -140,6 +153,7 @@ export default function ActiveOrderBanner() {
   if (activeOrders.length === 0) return null;
 
   const dynamicBottom = (Platform.OS === 'ios' ? 85 : 90) + insets.bottom + 16;
+  const gradientColors = (theme as any)?.buttonGradient || BrandColors.buttonGradient || ['#00C2E8', '#0088B8'];
 
   // Single active order: Render original style
   if (activeOrders.length === 1) {
@@ -148,21 +162,28 @@ export default function ActiveOrderBanner() {
       <View style={[styles.stackWrapper, { bottom: dynamicBottom }]}>
         <TouchableOpacity
           activeOpacity={0.9}
-          style={[styles.container, { backgroundColor: theme.primary }]}
+          style={styles.touchableCard}
           onPress={() => handleOrderPress(singleOrder)}
         >
-          <View style={styles.leftContent}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="cube" size={18} color={theme.primary} />
+          <LinearGradient
+            colors={gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.container}
+          >
+            <View style={styles.leftContent}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="cube" size={18} color={theme.primary || '#00C2E8'} />
+              </View>
+              <View style={styles.textContainer}>
+                <Text style={styles.title}>Track Order</Text>
+                <Text style={styles.subtitle}>
+                  {getOrderSubtitle(singleOrder)}
+                </Text>
+              </View>
             </View>
-            <View style={styles.textContainer}>
-              <Text style={styles.title}>Track Order</Text>
-              <Text style={styles.subtitle}>
-                {getOrderSubtitle(singleOrder)}
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#fff" />
+            <Ionicons name="chevron-forward" size={18} color="#fff" />
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     );
@@ -174,13 +195,34 @@ export default function ActiveOrderBanner() {
       {/* Background card stack effects when collapsed */}
       {!isExpanded && (
         <>
-          <View style={[styles.stackBackCard, { backgroundColor: theme.primary, opacity: 0.3, zIndex: -2, transform: [{ translateY: 6 }, { scaleX: 0.92 }] }]} />
-          <View style={[styles.stackBackCard, { backgroundColor: theme.primary, opacity: 0.6, zIndex: -1, transform: [{ translateY: 3 }, { scaleX: 0.96 }] }]} />
+          <LinearGradient
+            colors={gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[
+              styles.stackBackCard,
+              { opacity: 0.35, zIndex: -2, transform: [{ translateY: 6 }, { scaleX: 0.92 }] },
+            ]}
+          />
+          <LinearGradient
+            colors={gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[
+              styles.stackBackCard,
+              { opacity: 0.65, zIndex: -1, transform: [{ translateY: 3 }, { scaleX: 0.96 }] },
+            ]}
+          />
         </>
       )}
 
       {isExpanded ? (
-        <View style={[styles.expandedContainer, { backgroundColor: theme.primary }]}>
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={styles.expandedContainer}
+        >
           {/* Header Toggle */}
           <TouchableOpacity
             activeOpacity={0.8}
@@ -189,7 +231,7 @@ export default function ActiveOrderBanner() {
           >
             <View style={styles.leftContent}>
               <View style={styles.iconContainer}>
-                <Ionicons name="layers" size={16} color={theme.primary} />
+                <Ionicons name="layers" size={16} color={theme.primary || '#00C2E8'} />
               </View>
               <Text style={styles.expandedTitle}>{activeOrders.length} Active Orders</Text>
             </View>
@@ -211,7 +253,7 @@ export default function ActiveOrderBanner() {
               onPress={() => handleOrderPress(order)}
             >
               <View style={styles.orderItemLeft}>
-                <Ionicons name="cube-outline" size={16} color="#fff" style={{ opacity: 0.8 }} />
+                <Ionicons name="cube-outline" size={16} color="#fff" style={{ opacity: 0.85 }} />
                 <View>
                   <Text style={styles.orderItemTitle}>
                     Order #{order?._id ? String(order._id).slice(-5).toUpperCase() : '------'}
@@ -224,23 +266,30 @@ export default function ActiveOrderBanner() {
               <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
             </TouchableOpacity>
           ))}
-        </View>
+        </LinearGradient>
       ) : (
         <TouchableOpacity
           activeOpacity={0.9}
-          style={[styles.container, { backgroundColor: theme.primary }]}
+          style={styles.touchableCard}
           onPress={toggleExpanded}
         >
-          <View style={styles.leftContent}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="layers" size={18} color={theme.primary} />
+          <LinearGradient
+            colors={gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.container}
+          >
+            <View style={styles.leftContent}>
+              <View style={styles.iconContainer}>
+                <Ionicons name="layers" size={18} color={theme.primary || '#00C2E8'} />
+              </View>
+              <View style={styles.textContainer}>
+                <Text style={styles.title}>{activeOrders.length} Active Orders</Text>
+                <Text style={styles.subtitle}>Tap to track</Text>
+              </View>
             </View>
-            <View style={styles.textContainer}>
-              <Text style={styles.title}>{activeOrders.length} Active Orders</Text>
-              <Text style={styles.subtitle}>Tap to track</Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-up" size={18} color="#fff" />
+            <Ionicons name="chevron-up" size={18} color="#fff" />
+          </LinearGradient>
         </TouchableOpacity>
       )}
     </View>
@@ -254,6 +303,14 @@ const styles = StyleSheet.create({
     width: 230,
     zIndex: 1000,
   },
+  touchableCard: {
+    borderRadius: 16,
+    shadowColor: '#0088B8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   stackBackCard: {
     position: 'absolute',
     left: 0,
@@ -262,10 +319,11 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 16,
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: '#0088B8',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
+    overflow: 'hidden',
   },
   container: {
     borderRadius: 16,
@@ -273,11 +331,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    overflow: 'hidden',
   },
   leftContent: {
     flexDirection: 'row',
@@ -309,10 +363,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 12,
     elevation: 8,
-    shadowColor: '#000',
+    shadowColor: '#0088B8',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 8,
+    overflow: 'hidden',
   },
   expandedHeader: {
     flexDirection: 'row',

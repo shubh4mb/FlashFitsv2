@@ -22,6 +22,12 @@ export interface Product {
   isNearby?: boolean;
   isOnline?: boolean;
   isInstantBuyable?: boolean;
+  isWarehouseListing?: boolean;
+  source?: string;
+  warehouseId?: any;
+  stock?: number;
+  totalStock?: number;
+  inStock?: boolean;
 }
 
 /**

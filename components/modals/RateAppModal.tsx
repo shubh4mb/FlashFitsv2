@@ -179,9 +179,17 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.7}
                   style={styles.secondaryButton}
+                  onPress={handleOpenStore}
+                >
+                  <Text style={styles.secondaryButtonText}>{`Rate on ${storeName}`}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={{ marginTop: 8, alignItems: 'center', paddingVertical: 4 }}
                   onPress={onClose}
                 >
-                  <Text style={styles.secondaryButtonText}>Close</Text>
+                  <Text style={{ fontSize: 13, color: '#94A3B8' }}>Maybe Later</Text>
                 </TouchableOpacity>
               </>
             ) : (

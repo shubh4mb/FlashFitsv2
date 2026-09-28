@@ -196,12 +196,34 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
 
   return (
     <Animated.View style={[styles.fullScreen, mainWrapperStyle]}>
-      {/* Brand Cyan Signature Gradient */}
+      {/* Reference Image Signature Palette: Cyan, Sky Luminous, Electric Glow, & Deep Ocean */}
+      {/* Layer 1: Primary Diagonal Fluid Flow matching the image background */}
       <LinearGradient
-        colors={[BrandColors.primary, BrandColors.secondary]}
+        colors={['#28DCF4', '#00C2E8', '#00A4C8', '#0088B8', '#046684']}
+        locations={[0, 0.3, 0.58, 0.8, 1]}
+        start={{ x: 0.05, y: 0.05 }}
+        end={{ x: 0.95, y: 0.95 }}
         style={StyleSheet.absoluteFillObject}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.3, y: 1 }}
+      />
+
+      {/* Layer 2: Electric Cyan Luminescent Wash matching the glowing dial ring */}
+      <LinearGradient
+        colors={['rgba(0, 245, 255, 0.4)', 'transparent', 'rgba(4, 102, 132, 0.5)']}
+        locations={[0, 0.52, 1]}
+        start={{ x: 0.1, y: 0.15 }}
+        end={{ x: 0.9, y: 0.85 }}
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
+      />
+
+      {/* Layer 3: Ambient Specular Sheen for silky seamless diffusion */}
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.22)', 'rgba(40, 220, 244, 0.25)', 'transparent', 'rgba(0, 136, 184, 0.35)']}
+        locations={[0, 0.32, 0.7, 1]}
+        start={{ x: 0, y: 0.85 }}
+        end={{ x: 1, y: 0.15 }}
+        style={StyleSheet.absoluteFillObject}
+        pointerEvents="none"
       />
 
       {/* Vertical Hero Splash Container */}

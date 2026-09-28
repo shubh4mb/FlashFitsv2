@@ -10,8 +10,8 @@ import {
   NativeScrollEvent,
   ScrollView,
   Platform,
-  Clipboard
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
@@ -127,9 +127,9 @@ export default function CampaignScreen() {
     setActiveSubTab(tabId);
   };
 
-  const handleCopyCoupon = (code: string) => {
+  const handleCopyCoupon = async (code: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Clipboard.setString(code);
+    await Clipboard.setStringAsync(code);
     setCopiedCoupon(true);
     setTimeout(() => setCopiedCoupon(false), 3000);
   };

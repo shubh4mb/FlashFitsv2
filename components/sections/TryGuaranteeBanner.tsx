@@ -12,7 +12,7 @@ import { Typography } from '@/constants/theme';
 const GUARANTEES = [
   {
     icon: 'flash-outline',
-    title: '60-Min Blitz',
+    title: '30-Min Blitz',
     sub: 'Fast doorstep drop',
   },
   {

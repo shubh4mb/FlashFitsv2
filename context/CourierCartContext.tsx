@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import * as Haptics from 'expo-haptics';
 import {
   addToCourierCart as addToCourierCartApi,
@@ -82,7 +82,7 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated]);
 
-  const addToCourierCart = async (params: AddToCourierCartParams) => {
+  const addToCourierCart = useCallback(async (params: AddToCourierCartParams) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       await addToCourierCartApi(params);
@@ -93,9 +93,9 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error;
     }
-  };
+  }, [fetchCart]);
 
-  const updateQuantity = async (cartId: string, quantity: number) => {
+  const updateQuantity = useCallback(async (cartId: string, quantity: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     let previousCart: CourierCartData | null = null;
 
@@ -121,9 +121,9 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       await fetchCart(true);
       throw error;
     }
-  };
+  }, [fetchCart]);
 
-  const removeItem = async (itemId: string) => {
+  const removeItem = useCallback(async (itemId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     let previousCart: CourierCartData | null = null;
 
@@ -147,9 +147,9 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       await fetchCart(true);
       throw error;
     }
-  };
+  }, [fetchCart]);
 
-  const clearCart = async () => {
+  const clearCart = useCallback(async () => {
     try {
       await clearCourierCartApi();
       setCourierCart({ items: [], totalItems: 0 });
@@ -157,9 +157,9 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       console.error('Clear courier cart failed:', error);
       await fetchCart();
     }
-  };
+  }, [fetchCart]);
 
-  const applyOfferCourier = async (offerId: string, targetItemIds?: string[]) => {
+  const applyOfferCourier = useCallback(async (offerId: string, targetItemIds?: string[]) => {
     try {
       setLoading(true);
       await selectOfferApi(offerId, targetItemIds);
@@ -169,9 +169,9 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchCart]);
 
-  const removeOfferCourier = async (offerId: string) => {
+  const removeOfferCourier = useCallback(async (offerId: string) => {
     try {
       setLoading(true);
       await deselectOfferApi(offerId);
@@ -181,22 +181,32 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchCart]);
+
+  const contextValue = useMemo(() => ({
+    courierCart,
+    loading,
+    addToCourierCart,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    refreshCart: fetchCart,
+    applyOfferCourier,
+    removeOfferCourier,
+  }), [
+    courierCart,
+    loading,
+    addToCourierCart,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    fetchCart,
+    applyOfferCourier,
+    removeOfferCourier,
+  ]);
 
   return (
-    <CourierCartContext.Provider
-      value={{
-        courierCart,
-        loading,
-        addToCourierCart,
-        updateQuantity,
-        removeItem,
-        clearCart,
-        refreshCart: fetchCart,
-        applyOfferCourier,
-        removeOfferCourier,
-      }}
-    >
+    <CourierCartContext.Provider value={contextValue}>
       {children}
     </CourierCartContext.Provider>
   );

@@ -5,9 +5,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  Image,
   Text,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useOffers } from '../../context/OffersContext';
 import { useRouter } from 'expo-router';
 import Skeleton from '../common/Skeleton';
@@ -72,7 +72,8 @@ export default function PromotionalCarousel() {
               <Image
                 source={{ uri: banner.bannerImage.url }}
                 style={styles.bannerImage}
-                resizeMode="cover"
+                contentFit="cover"
+                cachePolicy="memory-disk"
               />
             ) : (
               <View style={[styles.bannerImage, styles.placeholder]}>

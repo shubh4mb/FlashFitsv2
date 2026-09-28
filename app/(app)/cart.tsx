@@ -24,9 +24,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSystemStatus } from '@/hooks/useSystemStatus';
 import {
   Animated,
   Dimensions,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -43,6 +47,7 @@ export default function CartScreen() {
   const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart, applyOffer, removeOffer } = useCart();
   const showToast = useToast();
   const showAlert = useAlert();
+  const { isOrderPlacementEnabled, maintenanceTitle, maintenanceMessage, refreshSystemStatus } = useSystemStatus();
   const { courierCart, loading: courierLoading, clearCart: clearCourierCart, refreshCart: refreshCourierCart, applyOfferCourier, removeOfferCourier } = useCourierCart();
   const { selectedGender } = useGender();
   const { selectedAddress, tbAvailable, deliveryAvailable } = useAddress();
@@ -59,6 +64,8 @@ export default function CartScreen() {
   const [showRazorpay, setShowRazorpay] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [resetSwipeKey, setResetSwipeKey] = useState(0);
+  const [showTryBuyAgreementModal, setShowTryBuyAgreementModal] = useState(false);
+  const [pendingMerchantId, setPendingMerchantId] = useState<string | null>(null);
   const checkoutPromiseRef = useRef<{ resolve: (value: any) => void; reject: (reason?: any) => void } | null>(null);
   const openRazorpayCheckout = (options: any): Promise<any> => {
     return new Promise((resolve, reject) => {
@@ -158,38 +165,19 @@ export default function CartScreen() {
     useCallback(() => {
       refreshCart();
       refreshCourierCart();
-    }, [refreshCart, refreshCourierCart])
+      refreshSystemStatus();
+    }, [refreshCart, refreshCourierCart, refreshSystemStatus])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refreshCart(), refreshCourierCart()]);
+    await Promise.all([refreshCart(), refreshCourierCart(), refreshSystemStatus()]);
     setRefreshing(false);
   };
 
-  const handleTryBuyPlaceOrder = async (merchantId: string) => {
+  const executeTryBuyPlacement = async (merchantId: string) => {
     const merchantCart = cart?.merchantCarts?.find(mc => mc.merchantId === merchantId);
-    if (!merchantCart) return;
-
-    if (!selectedAddress) {
-      showToast({ message: 'Please select a delivery address.', type: 'warning' });
-      setModalVisible(true);
-      setResetSwipeKey(prev => prev + 1);
-      return;
-    }
-
-    if (merchantCart.deliveryDetails?.isEligibleForTryBuy === false) {
-      showToast({ message: 'This store is too far for Try & Buy. Please change address.', type: 'warning' });
-      setModalVisible(true);
-      setResetSwipeKey(prev => prev + 1);
-      return;
-    }
-
-    if (merchantCart.merchantDetails?.isOnline === false) {
-      showToast({ message: 'This store is currently offline.', type: 'error' });
-      setResetSwipeKey(prev => prev + 1);
-      return;
-    }
+    if (!merchantCart || !selectedAddress) return;
 
     setPlacingOrder(true);
     try {
@@ -205,14 +193,13 @@ export default function CartScreen() {
 
       if (result.isFreeOrder) {
         await refreshCart();
-        showAlert({
-          title: '✅ Order Placed!',
-          message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
+        showToast({
+          message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed successfully! 🛍️`,
           type: 'success',
-          buttons: [{
-            text: 'Go to Home',
-            onPress: () => router.replace('/(tabs)' as any),
-          }],
+        });
+        router.replace({
+          pathname: '/order-tracking' as any,
+          params: { orderId: result.orderId },
         });
 
         Notifications.scheduleNotificationAsync({
@@ -252,14 +239,13 @@ export default function CartScreen() {
 
       if (verifyResult.success) {
         await refreshCart();
-        showAlert({
-          title: '✅ Order Placed!',
-          message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed.`,
+        showToast({
+          message: `Order #${result.orderId?.slice(-6).toUpperCase()} placed successfully! 🛍️`,
           type: 'success',
-          buttons: [{
-            text: 'Go to Home',
-            onPress: () => router.replace('/(tabs)' as any),
-          }],
+        });
+        router.replace({
+          pathname: '/order-tracking' as any,
+          params: { orderId: result.orderId },
         });
 
         Notifications.scheduleNotificationAsync({
@@ -275,7 +261,17 @@ export default function CartScreen() {
       if (error?.code === 'PAYMENT_CANCELLED') {
         showToast({ message: 'Payment cancelled.', type: 'warning' });
       } else {
-        showToast({ message: error?.message || 'Payment failed. Please try again.', type: 'error' });
+        const isMaint = error?.response?.data?.isMaintenance;
+        const msg = error?.response?.data?.message || error?.message || 'Payment failed. Please try again.';
+        if (isMaint) {
+          showAlert({
+            title: maintenanceTitle || 'Maintenance in Progress',
+            message: msg,
+            type: 'warning',
+          });
+        } else {
+          showToast({ message: msg, type: 'error' });
+        }
       }
       setResetSwipeKey(prev => prev + 1);
     } finally {
@@ -283,7 +279,100 @@ export default function CartScreen() {
     }
   };
 
+  const handleTryBuyPlaceOrder = async (merchantId: string) => {
+    const merchantCart = cart?.merchantCarts?.find(mc => mc.merchantId === merchantId);
+    if (!merchantCart) return;
+
+    if (!selectedAddress) {
+      showToast({ message: 'Please select a delivery address.', type: 'warning' });
+      setModalVisible(true);
+      setResetSwipeKey(prev => prev + 1);
+      return;
+    }
+
+    if (merchantCart.deliveryDetails?.isEligibleForTryBuy === false) {
+      showToast({ message: 'This store is too far for Try & Buy. Please change address.', type: 'warning' });
+      setModalVisible(true);
+      setResetSwipeKey(prev => prev + 1);
+      return;
+    }
+
+    if (merchantCart.merchantDetails?.isOnline === false) {
+      showToast({ message: 'This store is currently offline.', type: 'error' });
+      setResetSwipeKey(prev => prev + 1);
+      return;
+    }
+
+    const hasOutOfStock = merchantCart.items?.some(
+      (item: any) => item.isOutOfStock || (item.stockQuantity !== undefined && item.stockQuantity < item.quantity)
+    );
+    if (hasOutOfStock) {
+      showToast({ message: 'Some items in this cart are out of stock. Please remove them to proceed.', type: 'error' });
+      setResetSwipeKey(prev => prev + 1);
+      return;
+    }
+
+    if (isOrderPlacementEnabled === false) {
+      showAlert({
+        title: maintenanceTitle || 'Maintenance in Progress',
+        message: maintenanceMessage || 'Live ordering is temporarily paused while we prepare for launch. Please check back soon!',
+        type: 'warning',
+      });
+      setResetSwipeKey(prev => prev + 1);
+      return;
+    }
+
+    // First-time Try & Buy check: display doorstep fitting protocol & guidance modal
+    try {
+      const hasSeenGuidance = await AsyncStorage.getItem('has_seen_try_buy_guidance');
+      if (!hasSeenGuidance) {
+        setPendingMerchantId(merchantId);
+        setShowTryBuyAgreementModal(true);
+        return;
+      }
+    } catch (e) {
+      console.log('Error reading try & buy guidance flag', e);
+    }
+
+    await executeTryBuyPlacement(merchantId);
+  };
+
+  const handleConfirmTryBuyAgreement = async () => {
+    setShowTryBuyAgreementModal(false);
+    try {
+      await AsyncStorage.setItem('has_seen_try_buy_guidance', 'true');
+    } catch (e) {
+      console.log('Error storing try & buy guidance flag', e);
+    }
+    const targetId = pendingMerchantId || currentMerchantCart?.merchantId;
+    setPendingMerchantId(null);
+    if (targetId) {
+      await executeTryBuyPlacement(targetId);
+    }
+  };
+
+  const handleCancelTryBuyAgreement = () => {
+    setShowTryBuyAgreementModal(false);
+    setPendingMerchantId(null);
+    setResetSwipeKey(prev => prev + 1);
+  };
+
   const handleStandardCheckout = () => {
+    if (isOrderPlacementEnabled === false) {
+      showAlert({
+        title: maintenanceTitle || 'Maintenance in Progress',
+        message: maintenanceMessage || 'Live ordering is temporarily paused while we prepare for launch. Please check back soon!',
+        type: 'warning',
+      });
+      return;
+    }
+    const hasOutOfStock = courierItems?.some(
+      (item: any) => item.isOutOfStock || (item.stockQuantity !== undefined && item.stockQuantity < item.quantity)
+    );
+    if (hasOutOfStock) {
+      showToast({ message: 'Some items in your cart are out of stock. Please remove them before checkout.', type: 'error' });
+      return;
+    }
     if (!selectedAddress) {
       setModalVisible(true);
       return;
@@ -309,12 +398,22 @@ export default function CartScreen() {
   const courierTotals = courierCart?.totals;
   const courierAppliedOffers = courierCart?.appliedOffers;
   const couponDiscount = appliedOffers?.totalDiscount || 0;
-  const courierTotal = courierTotals?.totalPayable || (
-    courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) +
-    (courierItems.length > 0 ? 40 : 0)
-  );
+  const courierTotal = courierTotals?.totalPayable !== undefined
+    ? courierTotals.totalPayable
+    : (
+        courierItems.reduce((acc, item) => acc + (item.price * item.quantity), 0) -
+        (courierAppliedOffers?.totalDiscount || 0) +
+        (courierAppliedOffers?.freeDelivery ? 0 : (courierItems.length > 0 ? 40 : 0))
+      );
 
   const currentMerchantCart = merchantCarts[activeIndex];
+
+  const currentHasOutOfStock = currentMerchantCart?.items?.some(
+    (i: any) => i.isOutOfStock || (i.stockQuantity !== undefined && i.stockQuantity < i.quantity)
+  );
+  const courierHasOutOfStock = courierItems?.some(
+    (i: any) => i.isOutOfStock || (i.stockQuantity !== undefined && i.stockQuantity < i.quantity)
+  );
 
 
   if ((loading || courierLoading) && merchantCarts.length === 0 && courierItems.length === 0) {
@@ -472,6 +571,23 @@ export default function CartScreen() {
                         scrollEventThrottle={16}
                         keyboardShouldPersistTaps="handled"
                       >
+                        {/* Maintenance Notice Banner */}
+                        {isOrderPlacementEnabled === false && (
+                          <View style={styles.maintenanceBanner}>
+                            <View style={styles.maintenanceHeaderRow}>
+                              <View style={styles.maintenanceIconCircle}>
+                                <Ionicons name="construct-outline" size={18} color="#D97706" />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.maintenanceTitle}>{maintenanceTitle || 'Under Maintenance'}</Text>
+                                <Text style={styles.maintenanceText}>
+                                  {maintenanceMessage || 'We are currently gearing up for launch! Live ordering is temporarily paused. Please check back soon.'}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        )}
+
                         {/* Delivery Address Header Card */}
                         <TouchableOpacity
                           style={styles.addressHeaderCard}
@@ -719,7 +835,7 @@ export default function CartScreen() {
                                   )}
                                 </View>
                                 <Text style={[styles.billValue, isFreeWaiting && { color: '#10B981', fontWeight: '700' }]}>
-                                  {isFreeWaiting ? 'FREE (Unlimited)' : '10 mins free'}
+                                  {isFreeWaiting ? 'FREE (Est. 20 mins)' : '10 mins free'}
                                 </Text>
                               </View>
 
@@ -790,6 +906,19 @@ export default function CartScreen() {
                                 <Text style={styles.tbStepDesc}>Hand unwanted items back to rider immediately</Text>
                               </View>
                             </View>
+
+                            <TouchableOpacity
+                              style={styles.tbRulesBtn}
+                              onPress={() => {
+                                setPendingMerchantId(null);
+                                setShowTryBuyAgreementModal(true);
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="information-circle-outline" size={15} color={theme.primary} />
+                              <Text style={[styles.tbRulesBtnText, { color: theme.primary }]}>View Doorstep Trial Rules & Guidance</Text>
+                              <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+                            </TouchableOpacity>
                           </View>
                         </View>
 
@@ -826,6 +955,23 @@ export default function CartScreen() {
                 scrollEventThrottle={16}
                 keyboardShouldPersistTaps="handled"
               >
+                {/* Maintenance Notice Banner */}
+                {isOrderPlacementEnabled === false && (
+                  <View style={styles.maintenanceBanner}>
+                    <View style={styles.maintenanceHeaderRow}>
+                      <View style={styles.maintenanceIconCircle}>
+                        <Ionicons name="construct-outline" size={18} color="#D97706" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.maintenanceTitle}>{maintenanceTitle || 'Under Maintenance'}</Text>
+                        <Text style={styles.maintenanceText}>
+                          {maintenanceMessage || 'We are currently gearing up for launch! Live ordering is temporarily paused. Please check back soon.'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
                 <View style={styles.standardBanner}>
                   <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
                   <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
@@ -913,14 +1059,18 @@ export default function CartScreen() {
               ) : (
                 <SwipeToBuy
                   onSwipeComplete={() => handleTryBuyPlaceOrder(currentMerchantCart.merchantId)}
-                  disabled={currentMerchantCart?.merchantDetails?.isOnline === false || placingOrder}
+                  disabled={isOrderPlacementEnabled === false || currentMerchantCart?.merchantDetails?.isOnline === false || placingOrder || currentHasOutOfStock}
                   loading={placingOrder}
                   themeColor={theme.primary}
                   resetKey={resetSwipeKey}
                   text={
-                    currentMerchantCart?.merchantDetails?.isOnline === false
-                      ? 'Shop Closed Now'
-                      : 'Swipe to Try & Buy • Pay After Trial'
+                    isOrderPlacementEnabled === false
+                      ? 'Ordering Paused (Maintenance)'
+                      : currentMerchantCart?.merchantDetails?.isOnline === false
+                        ? 'Shop Closed Now'
+                        : currentHasOutOfStock
+                          ? 'Item(s) Out of Stock • Remove to Proceed'
+                          : 'Swipe to Try & Buy • Pay After Trial'
                   }
                 />
               )}
@@ -933,11 +1083,22 @@ export default function CartScreen() {
               </View>
 
               <TouchableOpacity
-                style={[styles.checkoutBtn, { backgroundColor: theme.primary }]}
+                style={[
+                  styles.checkoutBtn,
+                  { backgroundColor: theme.primary },
+                  (isOrderPlacementEnabled === false || courierHasOutOfStock) && { opacity: 0.7, backgroundColor: '#CBD5E1' }
+                ]}
                 onPress={handleStandardCheckout}
+                disabled={isOrderPlacementEnabled === false || courierHasOutOfStock}
               >
-                <Text style={styles.checkoutBtnText}>Checkout Now</Text>
-                <Feather name="arrow-right" size={20} color="#fff" />
+                <Text style={styles.checkoutBtnText}>
+                  {isOrderPlacementEnabled === false
+                    ? 'Maintenance in Progress'
+                    : courierHasOutOfStock
+                      ? 'Items Out of Stock'
+                      : 'Checkout Now'}
+                </Text>
+                {isOrderPlacementEnabled !== false && !courierHasOutOfStock && <Feather name="arrow-right" size={20} color="#fff" />}
               </TouchableOpacity>
             </View>
           )}
@@ -953,6 +1114,114 @@ export default function CartScreen() {
         onError={handleRazorpayError}
         onClose={handleRazorpayClose}
       />
+
+      {/* ── Doorstep Try & Buy Protocol & Guidance Modal ── */}
+      <Modal
+        visible={showTryBuyAgreementModal}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCancelTryBuyAgreement}
+      >
+        <View style={styles.tbModalBackdrop}>
+          <View style={styles.tbModalCard}>
+            {/* Header */}
+            <View style={styles.tbModalHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={[styles.tbModalBadge, { backgroundColor: theme.primary + '15', borderColor: theme.primary + '30' }]}>
+                  <View style={[styles.tbModalBadgeDot, { backgroundColor: theme.primary }]} />
+                  <Text style={[styles.tbModalBadgeText, { color: theme.primary }]}>DOORSTEP TRIAL</Text>
+                </View>
+                <Text style={styles.tbModalTitle}>Try & Buy Guidelines</Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleCancelTryBuyAgreement}
+                style={styles.tbModalCloseBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.tbModalSubtitle}>
+              Please review the trial conditions before dispatching your order:
+            </Text>
+
+            <ScrollView style={styles.tbModalScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.tbRuleItem}>
+                <View style={[styles.tbRuleIcon, { backgroundColor: theme.primary + '15' }]}>
+                  <Ionicons name="timer-outline" size={20} color={theme.primary} />
+                </View>
+                <View style={styles.tbRuleTextContainer}>
+                  <Text style={styles.tbRuleHeading}>10–15 Min Fitting Window</Text>
+                  <Text style={styles.tbRuleBody}>
+                    Our delivery rider arrives in ~30 mins and will wait outside your door while you try on your items in private comfort.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.tbRuleItem}>
+                <View style={[styles.tbRuleIcon, { backgroundColor: theme.primary + '15' }]}>
+                  <Ionicons name="pricetag-outline" size={20} color={theme.primary} />
+                </View>
+                <View style={styles.tbRuleTextContainer}>
+                  <Text style={styles.tbRuleHeading}>Keep Tags & Hygiene Seals</Text>
+                  <Text style={styles.tbRuleBody}>
+                    Original tags and barcodes must remain attached. Avoid deodorant, perfume, or makeup marks during trial.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.tbRuleItem}>
+                <View style={[styles.tbRuleIcon, { backgroundColor: theme.primary + '15' }]}>
+                  <Ionicons name="card-outline" size={20} color={theme.primary} />
+                </View>
+                <View style={styles.tbRuleTextContainer}>
+                  <Text style={styles.tbRuleHeading}>₹0 Upfront • Pay After Trial</Text>
+                  <Text style={styles.tbRuleBody}>
+                    Hand unwanted garments back to the rider. Settle payment immediately via UPI, card, or cash only for what you keep.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.tbRuleItem}>
+                <View style={[styles.tbRuleIcon, { backgroundColor: theme.primary + '15' }]}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color={theme.primary} />
+                </View>
+                <View style={styles.tbRuleTextContainer}>
+                  <Text style={styles.tbRuleHeading}>Safe Return of Items</Text>
+                  <Text style={styles.tbRuleBody}>
+                    Please handle garments with care and safely return any unwanted products inside the zip cover to your delivery partner in original condition  without damage or stains.
+                  </Text>
+                </View>
+                
+              </View>
+            </ScrollView>
+
+            <View style={styles.tbModalActions}>
+              <TouchableOpacity
+                style={[styles.tbConfirmBtn, { backgroundColor: theme.primary }]}
+                onPress={pendingMerchantId ? handleConfirmTryBuyAgreement : () => setShowTryBuyAgreementModal(false)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.tbConfirmBtnText}>
+                  {pendingMerchantId ? 'I Agree & Place Order' : 'Got It'}
+                </Text>
+                <Ionicons name={pendingMerchantId ? 'arrow-forward' : 'checkmark-circle-outline'} size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+
+              {pendingMerchantId && (
+                <TouchableOpacity
+                  style={styles.tbCancelBtn}
+                  onPress={handleCancelTryBuyAgreement}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.tbCancelBtnText}>Go Back</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Loading Overlay */}
       {isUpdating && (
@@ -1336,5 +1605,176 @@ const styles = StyleSheet.create({
   changePillText: {
     fontSize: 11,
     fontWeight: '800',
+  },
+  maintenanceBanner: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    padding: 14,
+    marginBottom: 14,
+  },
+  maintenanceHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  maintenanceIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  maintenanceTitle: {
+    fontSize: 13.5,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#92400E',
+    marginBottom: 3,
+  },
+  maintenanceText: {
+    fontSize: 11.5,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#B45309',
+    lineHeight: 16,
+  },
+  tbRulesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 8,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#EDF2F7',
+  },
+  tbRulesBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  tbModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'flex-end',
+  },
+  tbModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 12,
+  },
+  tbModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  tbModalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 6,
+    gap: 5,
+  },
+  tbModalBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  tbModalBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  tbModalTitle: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  tbModalCloseBtn: {
+    padding: 4,
+  },
+  tbModalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  tbModalScroll: {
+    maxHeight: 280,
+  },
+  tbRuleItem: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    gap: 12,
+  },
+  tbRuleIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tbRuleTextContainer: {
+    flex: 1,
+  },
+  tbRuleHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 3,
+  },
+  tbRuleBody: {
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 17,
+  },
+  tbModalActions: {
+    marginTop: 16,
+    gap: 8,
+  },
+  tbConfirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  tbConfirmBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  tbCancelBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  tbCancelBtnText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

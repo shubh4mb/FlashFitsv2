@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from './AuthContext';
 
@@ -59,7 +59,7 @@ export const GenderProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated]);
 
-  const handleSetGender = async (gender: Gender) => {
+  const handleSetGender = useCallback(async (gender: Gender) => {
     setSelectedGender(gender);
     // Reset sub-gender if transitioning away from Kids
     if (gender !== 'Kids') {
@@ -73,25 +73,27 @@ export const GenderProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error('Failed to save gender:', error);
     }
-  };
+  }, []);
 
-  const handleSetSubGender = async (subGender: SubGender) => {
+  const handleSetSubGender = useCallback(async (subGender: SubGender) => {
     setSelectedSubGender(subGender);
     try {
       await SecureStore.setItemAsync('user_sub_gender', subGender);
     } catch (error) {
       console.error('Failed to save sub-gender:', error);
     }
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    selectedGender,
+    setSelectedGender: handleSetGender,
+    selectedSubGender,
+    setSelectedSubGender: handleSetSubGender,
+    isInitializing,
+  }), [selectedGender, handleSetGender, selectedSubGender, handleSetSubGender, isInitializing]);
 
   return (
-    <GenderContext.Provider value={{ 
-      selectedGender, 
-      setSelectedGender: handleSetGender, 
-      selectedSubGender, 
-      setSelectedSubGender: handleSetSubGender, 
-      isInitializing 
-    }}>
+    <GenderContext.Provider value={contextValue}>
       {children}
     </GenderContext.Provider>
   );

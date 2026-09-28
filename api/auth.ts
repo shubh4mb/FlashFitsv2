@@ -144,3 +144,12 @@ export const getReferralStats = async () => {
     return response.data;
 };
 
+/**
+ * Permanently delete user account and associated data
+ * (Apple App Store Guideline 5.1.1(v) compliance)
+ */
+export const deleteUserAccount = async () => {
+    const response = await api.delete('/user/account');
+    return response.data;
+};
+

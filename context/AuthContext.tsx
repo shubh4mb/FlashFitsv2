@@ -1,19 +1,25 @@
+
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { updateAuthToken } from '../api/axiosConfig';
+import { getUserProfile } from '../api/auth';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 
-interface UserData {
+export interface UserData {
     name?: string;
     email?: string;
     phoneNumber?: string;
+    profilePicture?: string;
 }
 
 interface AuthContextType {
     isAuthenticated: boolean;
     isLoading: boolean;
     hasSeenOnboarding: boolean;
+    user: UserData | null;
+    setUser: React.Dispatch<React.SetStateAction<UserData | null>>;
+    refreshUserProfile: () => Promise<UserData | null>;
     signIn: (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => Promise<void>;
     signOut: () => Promise<void>;
     completeOnboarding: () => void;
@@ -25,9 +31,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean>(false);
+    const [user, setUser] = useState<UserData | null>(null);
 
     // Setup Push Notifications
     const { expoPushToken, sendPushTokenToBackend } = usePushNotifications();
+
+    const refreshUserProfile = useCallback(async (): Promise<UserData | null> => {
+        try {
+            const res = await getUserProfile();
+            const profile = res?.user || res?.data?.user || res?.data || res;
+            if (profile && (profile.email || profile.name || profile.phoneNumber)) {
+                const updatedUser: UserData = {
+                    name: profile.name || undefined,
+                    email: profile.email || undefined,
+                    phoneNumber: profile.phoneNumber || undefined,
+                    profilePicture: profile.profilePicture || undefined,
+                };
+                setUser(prev => ({ ...prev, ...updatedUser }));
+                if (profile.name) await SecureStore.setItemAsync('userName', profile.name);
+                if (profile.email) await SecureStore.setItemAsync('userEmail', profile.email);
+                if (profile.phoneNumber) await SecureStore.setItemAsync('phoneNumber', profile.phoneNumber);
+                return updatedUser;
+            }
+        } catch (e) {
+            // Silently catch in case user is offline
+        }
+        return null;
+    }, []);
 
     // Auto-send token if user is already authenticated on boot and token is ready
     useEffect(() => {
@@ -45,9 +75,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                 setHasSeenOnboarding(seenOnboarding);
 
+                const [savedName, savedEmail, savedPhone] = await Promise.all([
+                    SecureStore.getItemAsync('userName'),
+                    SecureStore.getItemAsync('userEmail'),
+                    SecureStore.getItemAsync('phoneNumber'),
+                ]);
+
+                if (savedName || savedEmail || savedPhone) {
+                    setUser({
+                        name: savedName || undefined,
+                        email: savedEmail || undefined,
+                        phoneNumber: savedPhone || undefined,
+                    });
+                }
+
                 if (token) {
                     updateAuthToken(token);
                     setIsAuthenticated(true);
+                    refreshUserProfile().catch(() => {});
                 } else {
                     updateAuthToken(null);
                     setIsAuthenticated(false);
@@ -63,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loadToken();
     }, []);
 
-    const signIn = async (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => {
+    const signIn = useCallback(async (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => {
         try {
             await SecureStore.setItemAsync('token', token);
             await SecureStore.setItemAsync('userId', userId);
@@ -93,6 +138,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updateAuthToken(token);
             setIsAuthenticated(true);
 
+            if (userData) {
+                setUser(userData);
+            } else {
+                const [savedName, savedEmail, savedPhone] = await Promise.all([
+                    SecureStore.getItemAsync('userName'),
+                    SecureStore.getItemAsync('userEmail'),
+                    SecureStore.getItemAsync('phoneNumber'),
+                ]);
+                setUser({
+                    name: savedName || undefined,
+                    email: savedEmail || undefined,
+                    phoneNumber: savedPhone || undefined,
+                });
+            }
+            refreshUserProfile().catch(() => {});
+
             if (expoPushToken) {
                 sendPushTokenToBackend(expoPushToken);
             }
@@ -107,9 +168,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (error) {
             console.error('Failed to sign in', error);
         }
-    };
+    }, [expoPushToken, refreshUserProfile, sendPushTokenToBackend]);
 
-    const completeOnboarding = async () => {
+    const completeOnboarding = useCallback(async () => {
         try {
             await SecureStore.setItemAsync('hasSeenOnboarding', 'true');
             setHasSeenOnboarding(true);
@@ -118,9 +179,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error('Failed to complete onboarding', error);
             router.replace('/(app)/(tabs)');
         }
-    };
+    }, []);
 
-    const signOut = async () => {
+    const signOut = useCallback(async () => {
         try {
             await SecureStore.deleteItemAsync('token');
             await SecureStore.deleteItemAsync('userId');
@@ -143,6 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             updateAuthToken(null);
             setIsAuthenticated(false);
+            setUser(null);
 
             setTimeout(() => {
                 router.replace('/(auth)');
@@ -150,10 +212,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (error) {
             console.error('Failed to sign out', error);
         }
-    };
+    }, []);
+
+    const contextValue = useMemo(() => ({
+        isAuthenticated,
+        isLoading,
+        hasSeenOnboarding,
+        user,
+        setUser,
+        refreshUserProfile,
+        signIn,
+        signOut,
+        completeOnboarding,
+    }), [
+        isAuthenticated,
+        isLoading,
+        hasSeenOnboarding,
+        user,
+        refreshUserProfile,
+        signIn,
+        signOut,
+        completeOnboarding,
+    ]);
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, isLoading, hasSeenOnboarding, signIn, signOut, completeOnboarding }}>
+        <AuthContext.Provider value={contextValue}>
             {children}
         </AuthContext.Provider>
     );

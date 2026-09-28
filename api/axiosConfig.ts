@@ -15,7 +15,7 @@ interface ApiResponse<T = any> {
 
 // Extract base URL from Expo Constants
 const getBaseURL = (): string => {
-  const url = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.137.1:5000';
+  const url = Constants.expoConfig?.extra?.BACKEND_URL || 'https://api.theflashfits.com';
   return `${url}/api/`;
 };
 
@@ -38,12 +38,45 @@ export const updateAuthToken = (token: string | null) => {
   authToken = token;
 };
 
-// Request Interceptor: Attach bearer token
+/**
+ * App-Instance Device Identifier
+ * Privacy-compliant installation UUID (no hardware serials, MAC, or IMEI)
+ */
+let cachedDeviceId: string | null = null;
+export const getAppDeviceId = async (): Promise<string> => {
+  if (cachedDeviceId) return cachedDeviceId;
+  try {
+    let id = await SecureStore.getItemAsync('flashfits_device_id');
+    if (!id) {
+      id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+      await SecureStore.setItemAsync('flashfits_device_id', id);
+    }
+    cachedDeviceId = id;
+    return id;
+  } catch {
+    return 'flashfits-client-device';
+  }
+};
+
+// Request Interceptor: Attach bearer token and device ID
 api.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const token = authToken || await SecureStore.getItemAsync('token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const [token, deviceId] = await Promise.all([
+      authToken || SecureStore.getItemAsync('token'),
+      getAppDeviceId(),
+    ]);
+
+    if (config.headers) {
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      if (deviceId) {
+        config.headers['x-device-id'] = deviceId;
+      }
     }
     return config;
   },

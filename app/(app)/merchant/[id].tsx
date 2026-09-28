@@ -421,10 +421,15 @@ export default function MerchantDetailScreen() {
                 <Ionicons name="flash" size={10} color="#059669" style={{ marginRight: 3 }} />
                 <Text style={[styles.liveText, { color: '#059669', fontFamily: Typography.fontFamily.bold }]}>WAREHOUSE BRAND</Text>
               </View>
-            ) : merchant.isOnline && (
+            ) : merchant.isOnline ? (
               <View style={styles.livePill}>
                 <View style={styles.liveDot} />
                 <Text style={styles.liveText}>OPEN NOW</Text>
+              </View>
+            ) : (
+              <View style={[styles.livePill, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
+                <View style={[styles.liveDot, { backgroundColor: '#EF4444' }]} />
+                <Text style={[styles.liveText, { color: '#B91C1C' }]}>CLOSED NOW</Text>
               </View>
             )}
           </View>
@@ -566,6 +571,8 @@ export default function MerchantDetailScreen() {
                   width={146}
                   containerStyle={{ marginRight: 12 }}
                   fromExplore={fromExplore === 'true'}
+                  fromStore={true}
+                  isOnline={merchant?.isOnline}
                 />
               ))}
             </ScrollView>

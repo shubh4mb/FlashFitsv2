@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { GenderThemes, Typography, SectionHeaderStyles } from '../../constants/theme';
+import { GenderThemes, Typography, SectionHeaderStyles, BrandColors } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
 import { Product } from '../../utils/recentlyViewed';
 import ProductCard from '../common/ProductCard';
@@ -136,7 +136,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </View>
         <TouchableOpacity onPress={handleNavigation}>
-          <Text style={[styles.seeAll, { color: primaryAccent }]}>View All</Text>
+          <Text style={[styles.seeAll, { color: BrandColors.matteBlack }]}>View All</Text>
         </TouchableOpacity>
       </View>
 

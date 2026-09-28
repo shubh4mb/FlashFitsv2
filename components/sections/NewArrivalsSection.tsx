@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { fetchnewArrivalsProductsData } from '../../api/products';
-import { GenderThemes, Typography } from '../../constants/theme';
+import { GenderThemes, Typography, BrandColors } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
 import { Product } from '../../utils/recentlyViewed';
 import ProductCard from '../common/ProductCard';
@@ -95,7 +95,7 @@ const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
           <Text style={styles.subtitle}>Fresh styles just for you</Text>
         </View>
         <TouchableOpacity>
-          <Text style={[styles.seeAll, { color: theme.primary }]}>See All</Text>
+          <Text style={[styles.seeAll, { color: BrandColors.matteBlack }]}>See All</Text>
         </TouchableOpacity>
       </View>
 

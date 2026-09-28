@@ -4,25 +4,22 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { BlurView } from 'expo-blur';
 import React, { useEffect } from 'react';
 import {
-  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
-import Animated, { 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withSpring, 
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
   withSequence,
-  withTiming,
-  interpolateColor,
+  withSpring,
+  withTiming
 } from 'react-native-reanimated';
-import { Product } from '../../utils/recentlyViewed';
 import { GenderThemes, Typography } from '../../constants/theme';
+import { Product } from '../../utils/recentlyViewed';
 
 interface ProductCardProps {
   product: Product;
@@ -30,18 +27,20 @@ interface ProductCardProps {
   width?: number;
   containerStyle?: any;
   fromExplore?: boolean;
+  fromStore?: boolean;
   isNearby?: boolean;
   isOnline?: boolean;
 }
 
-const ProductCard = ({ 
-  product, 
-  onPress, 
-  width = 155, 
-  containerStyle, 
+const ProductCard = ({
+  product,
+  onPress,
+  width = 155,
+  containerStyle,
   fromExplore = false,
+  fromStore = false,
   isNearby = false,
-  isOnline = false 
+  isOnline
 }: ProductCardProps) => {
   const router = useRouter();
   const { toggleWishlist, isInWishlist } = useWishlist();
@@ -54,19 +53,45 @@ const ProductCard = ({
   const variant = product.variant || (Array.isArray(product.variants) && product.variants.length > 0 ? product.variants[0] : null);
   const variantIdForFav = product.variantId || variant?._id || (Array.isArray(product.variants) ? product.variants[0]?._id : null);
   const isFavorite = isInWishlist(productId, variantIdForFav);
-  
+
   // Image URL extraction: variant images array > top-level images array > variant singular image field > placeholder
-  const imageUrl = 
+  const imageUrl =
     (variant?.images && Array.isArray(variant.images) && variant.images.length > 0 ? variant.images[0].url : null) ||
     (product.images && Array.isArray(product.images) && product.images.length > 0 ? product.images[0].url : null) ||
-    variant?.image || 
+    variant?.image ||
     'https://via.placeholder.com/300';
 
   const price = variant?.price ?? product.price ?? 0;
   const mrp = variant?.mrp ?? product.mrp ?? price;
   const discount = mrp && mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
   const isTriable = variant?.isTriable ?? product.isTriable ?? false;
-  const isFast = (product.isInstantBuyable || isNearby || (product as any).isNearby);
+  const isWarehouse = !!((product as any).isWarehouseListing || (product as any).source === 'warehouse');
+
+  // A store is ONLY closed if explicitly marked offline (caller prop > product.isOnline > product.merchantId.isOnline > default open)
+  const isStoreOnline =
+    isWarehouse ||
+    (isOnline !== undefined
+      ? isOnline
+      : (product as any).isOnline !== undefined
+      ? (product as any).isOnline
+      : (product as any).merchantId?.isOnline !== undefined
+      ? (product as any).merchantId?.isOnline
+      : true);
+
+  // Real-time stock status check
+  const isOutOfStock =
+    (product as any).inStock === false ||
+    (product as any).stock === 0 ||
+    ((product as any).totalStock !== undefined && (product as any).totalStock <= 0) ||
+    (variant?.stock !== undefined && variant.stock <= 0 && (product as any).totalStock === undefined);
+
+  const isFast =
+    isStoreOnline &&
+    !isOutOfStock &&
+    (Boolean(product.isInstantBuyable) ||
+      Boolean(isNearby) ||
+      Boolean((product as any).isNearby) ||
+      (isWarehouse && (product as any).isNearby === undefined && (product as any).isInstantBuyable === undefined));
 
   const translateY = useSharedValue(0);
   const scaleValue = useSharedValue(1);
@@ -116,12 +141,13 @@ const ProductCard = ({
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={onPress || (() => router.push({ 
-        pathname: `/product/${product._id || product.id}`, 
-        params: { 
+      onPress={onPress || (() => router.push({
+        pathname: `/product/${product._id || product.id}`,
+        params: {
           fromExplore: fromExplore ? 'true' : 'false',
+          fromStore: (fromStore || (product as any).fromStore) ? 'true' : undefined,
           variantId: variantIdForFav || undefined
-        } 
+        }
       } as any))}
       style={[styles.container, width ? { width } : {}, containerStyle]}
     >
@@ -144,21 +170,29 @@ const ProductCard = ({
           <Animated.View style={[styles.wishlistIconContainer, animatedIconStyle]}>
             {/* Outline heart (Unsaved state) */}
             <Animated.View style={[StyleSheet.absoluteFill, outlineStyle, { alignItems: 'center', justifyContent: 'center' }]}>
-               <Ionicons name="heart-outline" size={16} color="#8E8E93" />
+              <Ionicons name="heart-outline" size={16} color="#8E8E93" />
             </Animated.View>
 
             {/* Solid heart (Saved state) */}
             <Animated.View style={[StyleSheet.absoluteFill, solidStyle, { alignItems: 'center', justifyContent: 'center' }]}>
-               <Ionicons name="heart" size={16} color="#8B0000" />
+              <Ionicons name="heart" size={16} color="#8B0000" />
             </Animated.View>
           </Animated.View>
         </TouchableOpacity>
 
-        {/* Delivery Time Badge */}
+        {/* Status & Delivery Time Badge */}
         <View style={styles.tryBadge}>
-          <View style={[styles.tryDot, { backgroundColor: isFast ? "#3FA65C" : "#C9A24B" }]} />
+          <View style={[styles.tryDot, {
+            backgroundColor: isOutOfStock
+              ? "#94A3B8"
+              : (!isStoreOnline && fromStore ? "#94A3B8" : (isFast ? "#3FA65C" : "#C9A24B"))
+          }]} />
           <Text style={styles.tryBadgeText}>
-            {(product as any).isWarehouseListing || (product as any).source === 'warehouse' ? "FLASHMART" : (isFast ? "20-40 MINS" : "1-7 DAYS")}
+            {isOutOfStock
+              ? "OUT OF STOCK"
+              : (!isStoreOnline && fromStore)
+                ? "STORE CLOSED"
+                : (isFast ? "20-40 MINS" : "1-7 DAYS")}
           </Text>
         </View>
       </View>
@@ -180,12 +214,6 @@ const ProductCard = ({
             </>
           )}
         </View>
-
-        {((product as any).isWarehouseListing || (product as any).source === 'warehouse') && (
-          <Text style={{ fontSize: 9.5, color: '#059669', fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
-            FF Warehouse • {(product as any).merchantId?.shopName || 'Partner Store'}
-          </Text>
-        )}
       </View>
     </TouchableOpacity>
   );
@@ -372,6 +400,8 @@ const MemoizedProductCard = React.memo(ProductCard, (prevProps, nextProps) => {
     p1.isTriable === p2.isTriable &&
     p1.isInstantBuyable === p2.isInstantBuyable &&
     p1.isNearby === p2.isNearby &&
+    (p1 as any).isWarehouseListing === (p2 as any).isWarehouseListing &&
+    (p1 as any).source === (p2 as any).source &&
     p1.images?.[0]?.url === p2.images?.[0]?.url
   );
 });

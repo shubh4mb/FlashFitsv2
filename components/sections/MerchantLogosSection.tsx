@@ -83,13 +83,13 @@ export default function MerchantLogosSection({
   const [loading, setLoading] = useState(!initialMerchants);
 
   useEffect(() => {
-    if (initialMerchants && initialMerchants.length > 0) {
+    if (initialMerchants !== undefined) {
       setMerchants(initialMerchants);
       setLoading(false);
     } else {
       loadMerchants();
     }
-  }, [refreshKey, userLocation, selectedAddress, initialMerchants]);
+  }, [refreshKey, initialMerchants]);
 
   const loadMerchants = async () => {
     try {

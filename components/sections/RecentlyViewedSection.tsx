@@ -45,17 +45,16 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const targetLat = selectedAddress?.location?.coordinates?.[1] ?? (selectedAddress as any)?.latitude ?? userLocation?.latitude;
+  const targetLng = selectedAddress?.location?.coordinates?.[0] ?? (selectedAddress as any)?.longitude ?? userLocation?.longitude;
+  const addressId = selectedAddress?._id;
+
   useEffect(() => {
     const loadRecentlyViewed = async () => {
       try {
         setLoading(true);
-
-        const lat = selectedAddress?.location?.coordinates?.[1] ?? (selectedAddress as any)?.latitude ?? userLocation?.latitude;
-        const lng = selectedAddress?.location?.coordinates?.[0] ?? (selectedAddress as any)?.longitude ?? userLocation?.longitude;
-
-        const data = await getRecentlyViewed(lat, lng);
+        const data = await getRecentlyViewed(targetLat, targetLng);
         setProducts(data);
-        console.log(data, "recently viewed");
       } catch (error) {
         console.error('Error loading recently viewed:', error);
       } finally {
@@ -64,7 +63,7 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
     };
 
     loadRecentlyViewed();
-  }, [refreshKey]);
+  }, [refreshKey, targetLat, targetLng, addressId]);
 
   const renderItem = useCallback(({ item }: { item: Product }) => (
     <ProductCard
@@ -95,7 +94,10 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
           <Text style={styles.title}>Recently Viewed</Text>
           <Text style={styles.subtitle}>Pick up where you left off</Text>
         </View>
-        <TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => router.push('/(app)/recently-viewed' as any)}
+        >
           <Text style={styles.seeAll}>View All</Text>
         </TouchableOpacity>
       </View>

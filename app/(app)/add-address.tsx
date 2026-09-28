@@ -7,7 +7,10 @@ import {
   ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Modal,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import Loader from '@/components/common/Loader';
 import * as SecureStore from 'expo-secure-store';
@@ -19,7 +22,7 @@ import { useAddress } from '../../context/AddressContext';
 import { useToast } from '@/context/AlertContext';
 
 export default function AddAddressScreen() {
-    const { setSelectedAddress, setAddresses } = useAddress();
+    const { setSelectedAddress, refreshAddresses } = useAddress();
     const params = useLocalSearchParams();
     const showToast = useToast();
     
@@ -43,11 +46,22 @@ export default function AddAddressScreen() {
         longitude: longitude,
     });
 
+    // Phone confirmation modal states
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmPhone, setConfirmPhone] = useState('');
+    const [isEditingPhone, setIsEditingPhone] = useState(false);
+    const [phoneError, setPhoneError] = useState('');
+
     const handleInputChange = (field: string, value: string) => {
+        if (field === 'phone') {
+            const cleaned = value.replace(/[^0-9]/g, '').slice(0, 10);
+            setFormData(prev => ({ ...prev, [field]: cleaned }));
+            return;
+        }
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleSubmit = async () => {
+    const handleOpenConfirmModal = () => {
         const errors: string[] = [];
 
         if (!formData.name.trim()) errors.push("Full name is required");
@@ -64,15 +78,44 @@ export default function AddAddressScreen() {
           return;
         }
 
+        setConfirmPhone(formData.phone);
+        setIsEditingPhone(false);
+        setPhoneError('');
+        setShowConfirmModal(true);
+    };
+
+    const handleCloseModal = () => {
+        if (submitting) return;
+        Keyboard.dismiss();
+        setShowConfirmModal(false);
+        setIsEditingPhone(false);
+        setPhoneError('');
+    };
+
+    const handlePhoneChangeInModal = (val: string) => {
+        const cleaned = val.replace(/[^0-9]/g, '').slice(0, 10);
+        setConfirmPhone(cleaned);
+        if (phoneError) setPhoneError('');
+    };
+
+    const handleSaveAddress = async (phoneToSave: string) => {
+        const cleanedPhone = phoneToSave.trim();
+        if (!/^[0-9]{10}$/.test(cleanedPhone)) {
+            setPhoneError("Enter a valid 10-digit phone number");
+            return;
+        }
+
+        setFormData(prev => ({ ...prev, phone: cleanedPhone }));
+
         const addressData = {
-            name: formData.name,
-            phone: formData.phone,
-            addressLine1: formData.addressLine1,
-            addressLine2: formData.addressLine2,
-            landmark: formData.landmark,
-            city: formData.city,
-            state: formData.state,
-            pincode: formData.pincode,
+            name: formData.name.trim(),
+            phone: cleanedPhone,
+            addressLine1: formData.addressLine1.trim(),
+            addressLine2: formData.addressLine2 ? formData.addressLine2.trim() : '',
+            landmark: formData.landmark ? formData.landmark.trim() : '',
+            city: formData.city.trim(),
+            state: formData.state.trim(),
+            pincode: formData.pincode.trim(),
             addressType,
             location: {
                 type: "Point",
@@ -88,8 +131,12 @@ export default function AddAddressScreen() {
             if (response?.address) {
                 await SecureStore.setItemAsync('selectedAddress', JSON.stringify(response.address));
                 setSelectedAddress(response.address);
+                if (refreshAddresses) {
+                    await refreshAddresses();
+                }
             }
-            console.log("Address added and saved to SecureStore");
+            setShowConfirmModal(false);
+            showToast({ message: "Address saved successfully!", type: 'success' });
             router.replace("/(app)/(tabs)");
         } catch (error) {
             console.error("Error saving address:", error);
@@ -207,6 +254,7 @@ export default function AddAddressScreen() {
                         placeholder="*Phone number"
                         placeholderTextColor="#999"
                         keyboardType="phone-pad"
+                        maxLength={10}
                         value={formData.phone}
                         onChangeText={(t) => handleInputChange('phone', t)}
                     />
@@ -227,7 +275,7 @@ export default function AddAddressScreen() {
 
                     <TouchableOpacity
                         style={[styles.submitButton, submitting && { opacity: 0.7 }]}
-                        onPress={handleSubmit}
+                        onPress={handleOpenConfirmModal}
                         disabled={submitting}
                     >
                         {submitting ? (
@@ -238,6 +286,236 @@ export default function AddAddressScreen() {
                     </TouchableOpacity>
                 </ScrollView>
             </KeyboardAvoidingView>
+
+            {/* Phone Confirmation & Quick Edit Modal */}
+            <Modal
+                visible={showConfirmModal}
+                transparent={true}
+                animationType="slide"
+                statusBarTranslucent
+                onRequestClose={handleCloseModal}
+            >
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    style={styles.modalOverlay}
+                >
+                    <TouchableWithoutFeedback onPress={handleCloseModal}>
+                        <View style={styles.modalBackdrop} />
+                    </TouchableWithoutFeedback>
+
+                    <View style={styles.modalSheet}>
+                        <View style={styles.dragHandle} />
+
+                        {/* Modal Header */}
+                        <View style={styles.modalHeader}>
+                            <View style={styles.modalIconBadge}>
+                                <Ionicons name="call" size={20} color="#0F0F0F" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.modalTitle}>Confirm Phone Number</Text>
+                                <Text style={styles.modalSubtitle}>
+                                    Riders will call this number for delivery and doorstep coordination.
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                onPress={handleCloseModal}
+                                disabled={submitting}
+                                style={styles.modalCloseBtn}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Ionicons name="close" size={20} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Confirmation Display or Inline Edit Card */}
+                        {!isEditingPhone ? (
+                            <View style={styles.phoneConfirmCard}>
+                                <View style={styles.phoneConfirmTop}>
+                                    <View style={styles.phoneBadgeRow}>
+                                        <Ionicons name="shield-checkmark" size={14} color="#16A34A" />
+                                        <Text style={styles.phoneConfirmBadge}>DELIVERY CONTACT</Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        style={styles.editPillBtn}
+                                        onPress={() => {
+                                            setIsEditingPhone(true);
+                                            setPhoneError('');
+                                        }}
+                                        disabled={submitting}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Feather name="edit-2" size={12} color="#0F0F0F" />
+                                        <Text style={styles.editPillText}>Edit</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                <TouchableOpacity
+                                    activeOpacity={0.8}
+                                    onPress={() => {
+                                        setIsEditingPhone(true);
+                                        setPhoneError('');
+                                    }}
+                                    style={styles.phoneDisplayRow}
+                                >
+                                    <Text style={styles.phoneCountryCode}>+91</Text>
+                                    <Text style={styles.phoneNumberLarge}>
+                                        {confirmPhone.length === 10
+                                            ? `${confirmPhone.slice(0, 5)} ${confirmPhone.slice(5)}`
+                                            : confirmPhone || '—'}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <View style={styles.phoneConfirmNotice}>
+                                    <Ionicons name="information-circle-outline" size={15} color="#64748B" />
+                                    <Text style={styles.phoneNoticeText}>
+                                        Not your number? Tap <Text style={{ fontWeight: '700', color: '#0F0F0F' }}>Edit</Text> to correct it right here.
+                                    </Text>
+                                </View>
+                            </View>
+                        ) : (
+                            <View style={styles.phoneEditCard}>
+                                <View style={styles.phoneEditHeader}>
+                                    <Text style={styles.phoneEditLabel}>Enter Correct Phone Number</Text>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            setConfirmPhone(formData.phone);
+                                            setIsEditingPhone(false);
+                                            setPhoneError('');
+                                        }}
+                                        disabled={submitting}
+                                    >
+                                        <Text style={styles.phoneCancelEditText}>Cancel</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                <View style={[styles.phoneInputRow, phoneError ? styles.phoneInputError : null]}>
+                                    <View style={styles.phoneInputPrefix}>
+                                        <Text style={styles.phonePrefixText}>🇮🇳 +91</Text>
+                                    </View>
+                                    <View style={styles.phoneInputDivider} />
+                                    <TextInput
+                                        style={styles.phoneTextInput}
+                                        value={confirmPhone}
+                                        onChangeText={handlePhoneChangeInModal}
+                                        placeholder="10-digit number"
+                                        placeholderTextColor="#94A3B8"
+                                        keyboardType="phone-pad"
+                                        maxLength={10}
+                                        autoFocus={true}
+                                        returnKeyType="done"
+                                    />
+                                    {confirmPhone.length > 0 && (
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setConfirmPhone('');
+                                                setPhoneError('');
+                                            }}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            style={styles.clearBtn}
+                                        >
+                                            <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+
+                                <View style={styles.phoneMetaRow}>
+                                    {phoneError ? (
+                                        <Text style={styles.phoneErrorText}>{phoneError}</Text>
+                                    ) : (
+                                        <Text style={styles.phoneHintText}>10-digit mobile number</Text>
+                                    )}
+                                    <Text
+                                        style={[
+                                            styles.charCountText,
+                                            confirmPhone.length === 10 && styles.charCountValid,
+                                        ]}
+                                    >
+                                        {confirmPhone.length}/10
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Modal Action Buttons */}
+                        <View style={styles.modalActions}>
+                            {!isEditingPhone ? (
+                                <>
+                                    <TouchableOpacity
+                                        style={[styles.modalConfirmBtn, submitting && { opacity: 0.7 }]}
+                                        onPress={() => handleSaveAddress(confirmPhone)}
+                                        disabled={submitting}
+                                        activeOpacity={0.8}
+                                    >
+                                        {submitting ? (
+                                            <Loader size={22} />
+                                        ) : (
+                                            <View style={styles.btnContentRow}>
+                                                <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                                                <Text style={styles.modalConfirmBtnText}>Confirm & Save Address</Text>
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.modalSecondaryBtn}
+                                        onPress={() => {
+                                            setIsEditingPhone(true);
+                                            setPhoneError('');
+                                        }}
+                                        disabled={submitting}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={styles.btnContentRow}>
+                                            <Feather name="edit-3" size={15} color="#475569" />
+                                            <Text style={styles.modalSecondaryBtnText}>Change Number</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                </>
+                            ) : (
+                                <>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.modalConfirmBtn,
+                                            (confirmPhone.length !== 10 || submitting) && { opacity: 0.7 },
+                                        ]}
+                                        onPress={() => {
+                                            if (!/^[0-9]{10}$/.test(confirmPhone)) {
+                                                setPhoneError('Please enter a valid 10-digit phone number');
+                                                return;
+                                            }
+                                            handleSaveAddress(confirmPhone);
+                                        }}
+                                        disabled={submitting}
+                                        activeOpacity={0.8}
+                                    >
+                                        {submitting ? (
+                                            <Loader size={22} />
+                                        ) : (
+                                            <View style={styles.btnContentRow}>
+                                                <Ionicons name="checkmark" size={18} color="#fff" />
+                                                <Text style={styles.modalConfirmBtnText}>Save Address</Text>
+                                            </View>
+                                        )}
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.modalSecondaryBtn}
+                                        onPress={() => {
+                                            setConfirmPhone(formData.phone);
+                                            setIsEditingPhone(false);
+                                            setPhoneError('');
+                                        }}
+                                        disabled={submitting}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={styles.modalSecondaryBtnText}>Cancel</Text>
+                                    </TouchableOpacity>
+                                </>
+                            )}
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -360,5 +638,265 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: 'bold',
+    },
+
+    /* Modal Styles */
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    },
+    modalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    modalSheet: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingHorizontal: 22,
+        paddingTop: 10,
+        paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 18,
+        elevation: 24,
+    },
+    dragHandle: {
+        width: 38,
+        height: 4,
+        backgroundColor: '#E2E8F0',
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: 16,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: 20,
+    },
+    modalIconBadge: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#F1F5F9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#0F0F0F',
+        marginBottom: 4,
+    },
+    modalSubtitle: {
+        fontSize: 13,
+        color: '#64748B',
+        lineHeight: 18,
+    },
+    modalCloseBtn: {
+        padding: 6,
+        borderRadius: 16,
+        backgroundColor: '#F1F5F9',
+        marginLeft: 8,
+    },
+
+    /* Confirmation Card */
+    phoneConfirmCard: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 18,
+        borderWidth: 1.5,
+        borderColor: '#E2E8F0',
+        padding: 18,
+        marginBottom: 20,
+    },
+    phoneConfirmTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    phoneBadgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    phoneConfirmBadge: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#64748B',
+        letterSpacing: 0.8,
+    },
+    editPillBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        borderRadius: 14,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+    },
+    editPillText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#0F0F0F',
+    },
+    phoneDisplayRow: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        gap: 8,
+        marginVertical: 4,
+    },
+    phoneCountryCode: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    phoneNumberLarge: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#0F0F0F',
+        letterSpacing: 1,
+    },
+    phoneConfirmNotice: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#F1F5F9',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        marginTop: 10,
+    },
+    phoneNoticeText: {
+        fontSize: 12,
+        color: '#64748B',
+        flex: 1,
+    },
+
+    /* Edit Phone Card */
+    phoneEditCard: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 18,
+        borderWidth: 1.5,
+        borderColor: '#CBD5E1',
+        padding: 18,
+        marginBottom: 20,
+    },
+    phoneEditHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    phoneEditLabel: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#0F0F0F',
+    },
+    phoneCancelEditText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    phoneInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: '#0F0F0F',
+        paddingHorizontal: 12,
+        height: 52,
+    },
+    phoneInputError: {
+        borderColor: '#EF4444',
+    },
+    phoneInputPrefix: {
+        paddingRight: 10,
+    },
+    phonePrefixText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#0F0F0F',
+    },
+    phoneInputDivider: {
+        width: 1,
+        height: 24,
+        backgroundColor: '#E2E8F0',
+        marginRight: 10,
+    },
+    phoneTextInput: {
+        flex: 1,
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#0F0F0F',
+        letterSpacing: 1,
+        paddingVertical: 0,
+    },
+    clearBtn: {
+        padding: 4,
+    },
+    phoneMetaRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    phoneErrorText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#EF4444',
+    },
+    phoneHintText: {
+        fontSize: 12,
+        color: '#94A3B8',
+    },
+    charCountText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#94A3B8',
+    },
+    charCountValid: {
+        color: '#16A34A',
+    },
+
+    /* Action Buttons */
+    modalActions: {
+        gap: 10,
+    },
+    modalConfirmBtn: {
+        backgroundColor: '#0F0F0F',
+        borderRadius: 16,
+        paddingVertical: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    btnContentRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    modalConfirmBtnText: {
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    modalSecondaryBtn: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 16,
+        paddingVertical: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    modalSecondaryBtnText: {
+        color: '#475569',
+        fontSize: 14,
+        fontWeight: '600',
     },
 });

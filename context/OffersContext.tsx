@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import {
   getAvailableOffers,
   getFlashSales,
@@ -24,9 +24,10 @@ interface OffersContextType {
   refreshFlashSales: () => Promise<void>;
   refreshPromotionalBanners: () => Promise<void>;
   computeBestOffers: (cartContext: any, couponCode?: string) => Promise<void>;
-  applyCoupon: (code: string, cartContext: any, orderType?: 'try_and_buy' | 'courier') => Promise<boolean>;
+  applyCoupon: (code: string, cartContext: any, orderType?: 'try_and_buy' | 'courier') => Promise<{ success: boolean; message?: string }>;
   removeCoupon: () => void;
   clearAppliedOffers: () => void;
+  setCouponCode: (code: string | null) => void;
 }
 
 const OffersContext = createContext<OffersContextType | undefined>(undefined);
@@ -83,21 +84,22 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated, couponCode]);
 
-  const applyCoupon = useCallback(async (code: string, cartContext: any, orderType?: 'try_and_buy' | 'courier'): Promise<boolean> => {
+  const applyCoupon = useCallback(async (code: string, cartContext: any, orderType?: 'try_and_buy' | 'courier'): Promise<{ success: boolean; message?: string }> => {
     setCouponLoading(true);
     setCouponError(null);
     try {
-      await applyCouponApi(code, cartContext, orderType);
+      const res = await applyCouponApi(code, cartContext, orderType);
       setCouponCode(code.toUpperCase());
       // Recompute offers with coupon applied
       const result = await getBestOffersForCart(cartContext, code);
       setAppliedOffers(result);
       setCouponLoading(false);
-      return true;
+      return { success: true, message: res?.message || 'Coupon applied successfully' };
     } catch (error: any) {
-      setCouponError(error.message || 'Invalid coupon');
+      const message = error.message || 'Invalid coupon';
+      setCouponError(message);
       setCouponLoading(false);
-      return false;
+      return { success: false, message };
     }
   }, []);
 
@@ -140,26 +142,44 @@ export const OffersProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated, refreshOffers]);
 
+  const contextValue = useMemo(() => ({
+    offers,
+    flashSales,
+    appliedOffers,
+    promotionalBanners,
+    couponCode,
+    loading,
+    couponLoading,
+    couponError,
+    refreshOffers,
+    refreshFlashSales,
+    refreshPromotionalBanners,
+    computeBestOffers,
+    applyCoupon,
+    removeCoupon,
+    clearAppliedOffers,
+    setCouponCode,
+  }), [
+    offers,
+    flashSales,
+    appliedOffers,
+    promotionalBanners,
+    couponCode,
+    loading,
+    couponLoading,
+    couponError,
+    refreshOffers,
+    refreshFlashSales,
+    refreshPromotionalBanners,
+    computeBestOffers,
+    applyCoupon,
+    removeCoupon,
+    clearAppliedOffers,
+    setCouponCode,
+  ]);
+
   return (
-    <OffersContext.Provider
-      value={{
-        offers,
-        flashSales,
-        appliedOffers,
-        promotionalBanners,
-        couponCode,
-        loading,
-        couponLoading,
-        couponError,
-        refreshOffers,
-        refreshFlashSales,
-        refreshPromotionalBanners,
-        computeBestOffers,
-        applyCoupon,
-        removeCoupon,
-        clearAppliedOffers,
-      }}
-    >
+    <OffersContext.Provider value={contextValue}>
       {children}
     </OffersContext.Provider>
   );

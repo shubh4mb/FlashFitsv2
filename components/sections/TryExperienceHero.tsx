@@ -46,11 +46,11 @@ const STEPS: StepItem[] = [
   {
     id: 2,
     step: '02',
-    title: '60-Min Blitz',
+    title: '30-Min Blitz',
     subtitle: 'Speedy doorstep drop',
     icon: 'flash',
     badge: '⚡ Live Tracking',
-    detail: 'Your dedicated delivery partner collects your selection from local verified partner stores and rushes to your location in 60 minutes.',
+    detail: 'Your dedicated delivery partner collects your selection from local verified partner stores and rushes to your location in 30 minutes.',
     tip: '💡 Tip: Real-time map tracking keeps you updated at every step.',
   },
   {
@@ -126,7 +126,7 @@ export default function TryExperienceHero() {
           <View style={styles.badgeRow}>
             <View style={styles.pulseLiveBadge}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveBadgeText}>60-MIN DOORSTEP FITTING</Text>
+              <Text style={styles.liveBadgeText}>30-MIN DOORSTEP FITTING</Text>
             </View>
             <View style={styles.brandPill}>
               <Ionicons name="sparkles" size={11} color="#F59E0B" />
@@ -150,7 +150,7 @@ export default function TryExperienceHero() {
             Experience <Text style={{ color: theme.accent || '#38BDF8' }}>Try & Buy</Text>
           </Text>
           <Text style={styles.subTitle}>
-            Your personal fitting room delivered to your doorstep in 60 mins. Keep what you love, hand back the rest instantly.
+            Your personal fitting room delivered to your doorstep in 30 mins. Keep what you love, hand back the rest instantly.
           </Text>
         </View>
 

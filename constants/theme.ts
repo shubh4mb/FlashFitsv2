@@ -1,30 +1,42 @@
+
+
 export const BrandColors = {
-  primary: "#2ED3E6",             // Vibrant Brand Cyan
-  secondary: "#5EE9F4",           // Light Brand Cyan
-  darkCyan: "#0891B2",            // Deep Rich Cyan for Tab Icons & High Contrast
-  gradient: ["#2ED3E6", "#5EE9F4"] as const, // Signature Cyan Gradient
-  softCyan: "#EBFDFF",           // Soft Cyan surface/pill background
-  softCyanBorder: "#BCEEFA",     // Soft Cyan subtle border
-  cyanDeep: "#0891B2",           // Deep cyan for high-contrast text on soft cyan
-  offWhite: "#F8F9FA",           // Premium Clean Off-White Background
+  primary: "#00C2E8",             // Vibrant Pure Cyan (Micro-nudge toward cyan)
+  secondary: "#28DCF4",           // Luminous Sky Cyan Highlight
+  electricCyan: "#00F5FF",        // Glowing Neon Cyan (Center Dial Ring & Accents)
+  darkCyan: "#0088B8",            // Deep Rich Cyan (Lower Shadows & Contrast)
+  primaryDark: "#0088B8",         // Rich darker shade of theme color for buttons & high contrast
+  primaryDeep: "#046684",         // Deep Ocean Cyan for maximum contrast
+  gradient: ["#00C2E8", "#28DCF4"] as const, // Signature Image Cyan Gradient
+  buttonGradient: ["#00C2E8", "#0088B8"] as readonly [string, string], // Signature Button Gradient (Theme color to deep shade)
+  buttonGradientDark: ["#00C2E8", "#046684"] as readonly [string, string], // High-contrast Button Gradient
+  electricGradient: ["#00F5FF", "#00C2E8"] as readonly [string, string], // Neon Electric Glow Gradient
+  heroGradient: ["#28DCF4", "#00C2E8", "#0088B8"] as readonly [string, string, string], // Image Hero Triple Gradient
+  softCyan: "#E1FAFE",           // Soft Cyan surface/pill background
+  softCyanBorder: "#AEEFFA",     // Soft Cyan subtle border
+  cyanDeep: "#0088B8",           // Deep cyan for high-contrast text on soft cyan
+  offWhite: "#F8FAFC",           // Premium Clean Off-White Background
   offWhiteAlt: "#F1F5F9",        // Secondary Off-White/Light Gray
   surface: "#FFFFFF",            // Pure White Card Surface
-  matteBlack: "#121212",         // Matte Black for Titles, Dark CTAs & Logo
-  matteBlackLight: "#1E1E1E",    // Light Matte Black / Charcoal
-  charcoal: "#27272A",           // Dark Neutral Charcoal
-  textPrimary: "#121212",        // Matte Black Text
-  textSecondary: "#52525B",      // Secondary Slate Text
-  textMuted: "#71717A",          // Muted Text
+  matteBlack: "#111418",         // Obsidian Satin Matte Black (From Hanger Body)
+  matteBlackLight: "#1A1E24",    // Light Matte Black / Charcoal
+  charcoal: "#242932",           // Dark Neutral Charcoal
+  textPrimary: "#111418",        // Matte Black Text
+  textSecondary: "#4B5563",      // Secondary Slate Text
+  textMuted: "#6B7280",          // Muted Text
   textLight: "#FFFFFF",          // White Text
-  border: "#E5E7EB",             // Standard Soft Border
+  border: "#E2E8F0",             // Standard Soft Border
   borderLight: "#F1F5F9",        // Ultra-light Border
 };
 
 export const Palette = {
   primary: BrandColors.primary,
+  primaryDark: BrandColors.primaryDark,
+  buttonGradient: BrandColors.buttonGradient,
   secondary: BrandColors.secondary,
   brandCyan: BrandColors.primary,
   brandCyanLight: BrandColors.secondary,
+  electricCyan: BrandColors.electricCyan,
   accent: BrandColors.primary,
   background: BrandColors.offWhite,
   surface: BrandColors.surface,
@@ -44,6 +56,8 @@ export const Palette = {
 export const GenderThemes = {
   Men: {
     primary: BrandColors.primary,
+    primaryDark: BrandColors.primaryDark,
+    buttonGradient: BrandColors.buttonGradient,
     secondary: BrandColors.secondary,
     background: BrandColors.offWhite,
     text: BrandColors.textPrimary,
@@ -52,7 +66,9 @@ export const GenderThemes = {
   },
   Women: {
     primary: BrandColors.primary,
-    secondary: "#BE185D",
+    primaryDark: BrandColors.primaryDark,
+    buttonGradient: BrandColors.buttonGradient,
+    secondary: BrandColors.secondary,
     background: BrandColors.offWhite,
     text: BrandColors.textPrimary,
     accent: BrandColors.primary,
@@ -60,7 +76,9 @@ export const GenderThemes = {
   },
   Kids: {
     primary: BrandColors.primary,
-    secondary: "#d95e06ff",
+    primaryDark: BrandColors.primaryDark,
+    buttonGradient: BrandColors.buttonGradient,
+    secondary: BrandColors.secondary,
     background: BrandColors.offWhite,
     text: BrandColors.textPrimary,
     accent: BrandColors.primary,
@@ -130,12 +148,14 @@ export const SectionHeaderStyles = {
     fontSize: 12,
     fontFamily: Typography.fontFamily.semiBold,
     letterSpacing: 0.1,
-    color: BrandColors.primary,
+    color: BrandColors.matteBlack,
   },
 };
 
 export const AppPalette = {
   appPrimary: BrandColors.primary,          // Brand Cyan
+  appPrimaryDark: BrandColors.primaryDark,  // Deep Rich Cyan
+  appButtonGradient: BrandColors.buttonGradient, // Button Gradient
   appSecondary: BrandColors.secondary,      // Light Cyan
   appBackground: BrandColors.offWhite,      // Clean Off-White Background
   appSurface: BrandColors.surface,          // Pure White Surface
@@ -156,6 +176,8 @@ export const AppPalette = {
 
 export const AppTheme = {
   appPrimary: AppPalette.appPrimary,
+  appPrimaryDark: AppPalette.appPrimaryDark,
+  appButtonGradient: AppPalette.appButtonGradient,
   appSecondary: AppPalette.appSecondary,
   appBackground: AppPalette.appBackground,
   appSurface: AppPalette.appSurface,

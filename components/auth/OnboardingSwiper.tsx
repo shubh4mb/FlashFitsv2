@@ -16,6 +16,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BrandColors } from '@/constants/theme';
+
 // Safe import of expo-device — native module may not be available in Expo Go or Web
 let Device: { isDevice: boolean; totalMemory?: number } = { isDevice: Platform.OS !== 'web' };
 try {
@@ -35,17 +37,17 @@ const SLIDES = [
         title: 'Style, Delivered.',
         description:
             'Order multiple sizes and styles to your doorstep. No upfront payment—just a tiny delivery fee.',
-        gradient: ['#FFFFFF', '#FAFAFA'] as const,
-        accentColor: '#000000',
+        gradient: ['#FFFFFF', '#F8FAFC'] as const,
+        accentColor: BrandColors.primary,
     },
     {
         id: '2',
         icon: 'shirt-outline',
         title: 'Try Before You Buy',
         description:
-            'Your room is the fitting room. Our rider brings your picks in 60 minutes for a relaxed home try-on.',
-        gradient: ['#FFFFFF', '#F5F5F5'] as const,
-        accentColor: '#000000',
+            'Your room is the fitting room. Our rider brings your picks in 30 minutes for a relaxed home try-on.',
+        gradient: ['#FFFFFF', '#F8FAFC'] as const,
+        accentColor: BrandColors.primary,
     },
     {
         id: '3',
@@ -53,8 +55,8 @@ const SLIDES = [
         title: 'Keep What Fits',
         description:
             "Found your perfect match? Keep it and pay securely. Smart discounts are applied instantly.",
-        gradient: ['#FFFFFF', '#FAFAFA'] as const,
-        accentColor: '#000000',
+        gradient: ['#FFFFFF', '#F8FAFC'] as const,
+        accentColor: BrandColors.primary,
     },
     {
         id: '4',
@@ -62,8 +64,8 @@ const SLIDES = [
         title: 'Instant Returns',
         description:
             "Not your vibe? Hand it back to the rider right away. Zero return hassle, zero extra cost.",
-        gradient: ['#FFFFFF', '#F5F5F5'] as const,
-        accentColor: '#000000',
+        gradient: ['#FFFFFF', '#F8FAFC'] as const,
+        accentColor: BrandColors.primary,
     },
 ];
 
@@ -163,6 +165,7 @@ function MovingAsset({ source, minX, maxX, minY, maxY, baseScale, isLowSpec }: M
 
   return (
     <Animated.View
+      pointerEvents="none"
       style={[
         styles.floatingAsset,
         {
@@ -256,13 +259,41 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
     const handleNext = () => {
         if (currentIndex < SLIDES.length - 1) {
             const nextIndex = currentIndex + 1;
-            flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
             setCurrentIndex(nextIndex);
+            flatListRef.current?.scrollToOffset({
+                offset: nextIndex * width,
+                animated: true,
+            });
+        } else {
+            onComplete();
+        }
+    };
+
+    const getItemLayout = (_: any, index: number) => ({
+        length: width,
+        offset: width * index,
+        index,
+    });
+
+    const onScrollToIndexFailed = (info: { index: number }) => {
+        setTimeout(() => {
+            flatListRef.current?.scrollToOffset({
+                offset: info.index * width,
+                animated: true,
+            });
+        }, 50);
+    };
+
+    const handleMomentumScrollEnd = (event: any) => {
+        const contentOffsetX = event.nativeEvent.contentOffset.x;
+        const index = Math.round(contentOffsetX / width);
+        if (index >= 0 && index < SLIDES.length && index !== currentIndex) {
+            setCurrentIndex(index);
         }
     };
 
     const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-        if (viewableItems.length > 0) {
+        if (viewableItems && viewableItems.length > 0 && viewableItems[0].index != null) {
             const newIndex = viewableItems[0].index;
             setCurrentIndex(newIndex);
         }
@@ -309,26 +340,61 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
             <View style={{ width }} className="flex-1 items-center justify-center px-8">
                 <Animated.View
                     style={{ transform: [{ scale: iconScaleInterp }], opacity: iconOpacity }}
-                    className="mb-12"
+                    className="mb-10"
                 >
-                    <View style={{ backgroundColor: '#00000008', shadowColor: item.accentColor, shadowOpacity: 0.1, shadowRadius: 20, elevation: 5 }} className="w-[200px] h-[200px] rounded-full items-center justify-center border border-black/5">
-                        <View style={{ backgroundColor: '#00000005' }} className="w-[150px] h-[150px] rounded-full items-center justify-center border border-black/5">
-                            <Ionicons name={item.icon as any} size={76} color={item.accentColor} />
+                    <View
+                        style={{
+                            backgroundColor: BrandColors.softCyan,
+                            borderColor: BrandColors.softCyanBorder,
+                            borderWidth: 1.5,
+                            shadowColor: BrandColors.primary,
+                            shadowOpacity: 0.22,
+                            shadowRadius: 24,
+                            shadowOffset: { width: 0, height: 8 },
+                            elevation: 6,
+                        }}
+                        className="w-[200px] h-[200px] rounded-full items-center justify-center border"
+                    >
+                        <View
+                            style={{
+                                backgroundColor: 'rgba(0, 194, 232, 0.12)',
+                                borderColor: 'rgba(0, 194, 232, 0.25)',
+                            }}
+                            className="w-[148px] h-[148px] rounded-full items-center justify-center border"
+                        >
+                            <Ionicons name={item.icon as any} size={76} color={BrandColors.primary} />
                         </View>
                     </View>
                 </Animated.View>
 
-                <Animated.View style={{ opacity: textOpacity, backgroundColor: '#00000008', borderWidth: 1, borderColor: '#00000015' }} className="px-4 py-1.5 rounded-full mb-6">
-                    <Text style={{ color: item.accentColor }} className="text-[10px] font-black tracking-[2px] uppercase">
+                <Animated.View
+                    style={{
+                        opacity: textOpacity,
+                        backgroundColor: BrandColors.softCyan,
+                        borderWidth: 1,
+                        borderColor: BrandColors.softCyanBorder,
+                    }}
+                    className="px-4 py-1.5 rounded-full mb-6"
+                >
+                    <Text
+                        style={{ color: BrandColors.cyanDeep }}
+                        className="text-[10px] font-black tracking-[2px] uppercase"
+                    >
                         STEP {index + 1} OF {SLIDES.length}
                     </Text>
                 </Animated.View>
 
-                <Animated.Text style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }} className="text-[34px] text-black font-extrabold text-center mb-5 tracking-tight leading-[42px]">
+                <Animated.Text
+                    style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }}
+                    className="text-[34px] text-[#111418] font-extrabold text-center mb-4 tracking-tight leading-[42px]"
+                >
                     {item.title}
                 </Animated.Text>
 
-                <Animated.Text style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }} className="text-[16px] text-black/60 font-medium text-center leading-[26px] px-2">
+                <Animated.Text
+                    style={{ opacity: textOpacity, transform: [{ translateY: textTranslateY }] }}
+                    className="text-[16px] text-[#4B5563] font-medium text-center leading-[26px] px-2"
+                >
                     {item.description}
                 </Animated.Text>
             </View>
@@ -343,9 +409,11 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
             <LinearGradient colors={currentSlide.gradient} style={[StyleSheet.absoluteFillObject, { zIndex: -2 }]} />
 
             {/* Floating Assets in Background */}
-            {randomAssets.map((asset, index) => (
-                <MovingAsset key={index} {...asset} isLowSpec={isLowSpec} />
-            ))}
+            <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+                {randomAssets.map((asset, index) => (
+                    <MovingAsset key={index} {...asset} isLowSpec={isLowSpec} />
+                ))}
+            </View>
 
             <View style={{ top: Math.max(top, 20) + 12 }} className="absolute left-6 z-10">
                 <Image source={logoSource} style={{ width: 110, height: 28 }} resizeMode="contain" />
@@ -354,11 +422,11 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
             {!isLastSlide && (
                 <TouchableOpacity 
                     style={{ top: Math.max(top, 20) + 10 }}
-                    className="absolute right-6 z-10 px-5 py-2 rounded-full border border-black/5 bg-black/5" 
+                    className="absolute right-6 z-10 px-4 py-1.5 rounded-full border border-slate-200 bg-white/90 shadow-sm" 
                     onPress={onComplete} 
                     activeOpacity={0.7}
                 >
-                    <Text className="text-black/80 text-[13px] font-bold tracking-widest uppercase">Skip</Text>
+                    <Text className="text-slate-700 text-[12px] font-bold tracking-widest uppercase">Skip</Text>
                 </TouchableOpacity>
             )}
 
@@ -372,6 +440,9 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
                     pagingEnabled
                     showsHorizontalScrollIndicator={false}
                     bounces={false}
+                    getItemLayout={getItemLayout}
+                    onScrollToIndexFailed={onScrollToIndexFailed}
+                    onMomentumScrollEnd={handleMomentumScrollEnd}
                     onScroll={Animated.event(
                         [{ nativeEvent: { contentOffset: { x: scrollX } } }],
                         { useNativeDriver: false }
@@ -382,8 +453,15 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
                 />
             </View>
 
-            <View style={{ paddingBottom: Math.max(bottom, 20) + 10 }} className="px-8 pt-4 w-full items-center bg-transparent">
-                <View className="flex-row items-center mb-10 gap-2.5">
+            <View
+                style={{
+                    paddingBottom: Math.max(bottom, 20) + 10,
+                    zIndex: 50,
+                    elevation: 10,
+                }}
+                className="px-8 pt-4 w-full items-center bg-transparent"
+            >
+                <View className="flex-row items-center mb-8 gap-2.5">
                     {SLIDES.map((slide, index) => {
                         const dotWidth = scrollX.interpolate({
                             inputRange: [(index - 1) * width, index * width, (index + 1) * width],
@@ -393,14 +471,24 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
 
                         const dotOpacity = scrollX.interpolate({
                             inputRange: [(index - 1) * width, index * width, (index + 1) * width],
-                            outputRange: [0.3, 1, 0.3],
+                            outputRange: [0.35, 1, 0.35],
+                            extrapolate: 'clamp',
+                        });
+
+                        const dotBg = scrollX.interpolate({
+                            inputRange: [(index - 1) * width, index * width, (index + 1) * width],
+                            outputRange: ['#CBD5E1', BrandColors.primary, '#CBD5E1'],
                             extrapolate: 'clamp',
                         });
 
                         return (
                             <Animated.View
                                 key={slide.id}
-                                style={{ width: dotWidth, opacity: dotOpacity, backgroundColor: currentSlide.accentColor }}
+                                style={{
+                                    width: dotWidth,
+                                    opacity: dotOpacity,
+                                    backgroundColor: dotBg,
+                                }}
                                 className="h-2 rounded-full"
                             />
                         );
@@ -408,23 +496,49 @@ export default function OnboardingSwiper({ onComplete }: OnboardingSwiperProps) 
                 </View>
 
                 <TouchableOpacity
-                    style={{ backgroundColor: currentSlide.accentColor }}
-                    className="flex-row items-center justify-center w-full py-4 rounded-2xl gap-2 shadow-sm"
-                    onPress={isLastSlide ? onComplete : handleNext}
-                    activeOpacity={0.85}
+                    style={{
+                        width: '100%',
+                        borderRadius: 16,
+                        overflow: 'hidden',
+                        shadowColor: BrandColors.primary,
+                        shadowOpacity: 0.35,
+                        shadowRadius: 14,
+                        shadowOffset: { width: 0, height: 6 },
+                        elevation: 5,
+                    }}
+                    onPress={handleNext}
+                    activeOpacity={0.8}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                    <Text className="text-[17px] font-bold text-white tracking-tight">
-                        {isLastSlide ? 'Get Started' : 'Next'}
-                    </Text>
-                    <Ionicons name={isLastSlide ? 'arrow-forward' : 'chevron-forward'} size={22} color="#FFFFFF" />
+                    <LinearGradient
+                        colors={BrandColors.buttonGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        pointerEvents="none"
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '100%',
+                            paddingVertical: 16,
+                            gap: 8,
+                        }}
+                    >
+                        <Text style={{ fontSize: 17, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3 }}>
+                            {isLastSlide ? 'Get Started' : 'Next'}
+                        </Text>
+                        <Ionicons name={isLastSlide ? 'arrow-forward' : 'chevron-forward'} size={20} color="#FFFFFF" />
+                    </LinearGradient>
                 </TouchableOpacity>
 
-                <View className="h-4 mt-4 w-full items-center justify-center">
-                    {isLastSlide && (
-                        <TouchableOpacity onPress={onComplete} activeOpacity={0.7} className="py-2">
-                            <Text className="text-black/50 text-sm font-semibold tracking-tight">Explore FlashFits →</Text>
+                <View className="h-6 mt-3 w-full items-center justify-center">
+                    {isLastSlide ? (
+                        <TouchableOpacity onPress={onComplete} activeOpacity={0.7} className="py-1">
+                            <Text style={{ color: BrandColors.primaryDark }} className="text-sm font-bold tracking-tight">
+                                Explore FlashFits →
+                            </Text>
                         </TouchableOpacity>
-                    )}
+                    ) : null}
                 </View>
             </View>
         </View>

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  Image,
   TextInput,
   Alert,
   ActivityIndicator,
@@ -18,13 +17,14 @@ import {
   Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { Image } from 'expo-image';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGender } from '@/context/GenderContext';
-import { GenderThemes, Typography } from '@/constants/theme';
+import { GenderThemes, Typography, BrandColors } from '@/constants/theme';
 import { getOrderById, finalpaymentInitiate, finalPaymentVerify, confirmCodSelection, reportUnresponsiveRider, confirmClothSelection } from '@/api/orders';
 import { getMyReviews } from '@/api/reviews';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners, leaveOrderRoom } from '@/sockets/order.socket';
@@ -34,6 +34,7 @@ import RazorpayWebView from '@/components/common/RazorpayWebView';
 import { useAlert, useToast } from '@/context/AlertContext';
 import { applyCoupon as applyCouponApi, getAvailableOffers } from '@/api/offers';
 import CouponOffersModal from '@/components/modals/CouponOffersModal';
+import CouponDetailModal from '@/components/modals/CouponDetailModal';
 import LiveOrderMap from '@/components/common/LiveOrderMap';
 
 // ── Types ──
@@ -79,6 +80,24 @@ const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+const formatOrderDateTime = (dateStr?: string | Date) => {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '';
+  }
 };
 
 const statusToSteps = (status?: string, deliveryRiderStatus?: string): OrderStep[] => {
@@ -175,6 +194,7 @@ interface EstimatedBillSectionProps {
   themeColor: string;
   title?: string;
   showNotice?: boolean;
+  appliedCouponCode?: string | null;
 }
 
 const EstimatedBillSection: React.FC<EstimatedBillSectionProps> = ({
@@ -188,6 +208,7 @@ const EstimatedBillSection: React.FC<EstimatedBillSectionProps> = ({
   themeColor,
   title = "Estimated Bill",
   showNotice = true,
+  appliedCouponCode = null,
 }) => {
   return (
     <View style={styles.estimateCard}>
@@ -261,7 +282,12 @@ const EstimatedBillSection: React.FC<EstimatedBillSectionProps> = ({
       {/* Discounts (if any) */}
       {discountAmount > 0 && (
         <View style={styles.estimateRow}>
-          <Text style={[styles.estimateLabel, { color: '#16A34A', fontWeight: '700' }]}>Discounts & Offers</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <Ionicons name="pricetag" size={13} color="#16A34A" />
+            <Text style={[styles.estimateLabel, { color: '#16A34A', fontWeight: '700' }]} numberOfLines={1}>
+              {appliedCouponCode ? `Coupon (${appliedCouponCode}) & Offers` : 'Discounts & Offers'}
+            </Text>
+          </View>
           <Text style={[styles.estimateValue, { color: '#16A34A', fontWeight: '800' }]}>- ₹{discountAmount}</Text>
         </View>
       )}
@@ -325,6 +351,8 @@ export default function OrderTrackingScreen() {
   const [finalPaymentMethod, setFinalPaymentMethod] = useState<'online' | 'cod'>('online');
   const [selectedStarRating, setSelectedStarRating] = useState<number>(5);
   const [offersModalVisible, setOffersModalVisible] = useState(false);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedOfferForDetails, setSelectedOfferForDetails] = useState<any | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<{
@@ -339,6 +367,10 @@ export default function OrderTrackingScreen() {
     freeDelivery?: boolean;
     freeReturn?: boolean;
     freeWaiting?: boolean;
+    merchantName?: string;
+    scope?: string;
+    conditions?: any;
+    rawOffer?: any;
   } | null>(null);
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [availableOffers, setAvailableOffers] = useState<any[]>([]);
@@ -692,36 +724,97 @@ export default function OrderTrackingScreen() {
     );
   };
 
+  // ── Item Status Predicates ──
+  const isItemKept = (item: any) => item.tryStatus === 'keep' || item.tryStatus === 'accepted';
+  const isItemReturned = (item: any) => item.tryStatus === 'returned' || item.tryStatus === 'return';
+  const isItemDecided = (item: any) => isItemKept(item) || isItemReturned(item);
+  const isAllReturned = items.length > 0 && items.every(isItemReturned);
+
   // ── Order Status Predicates ──
   const status = order?.orderStatus || '';
-  const isTryPhase = ['try_phase', 'selection_made'].includes(status);
-  const isCompleted = order?.paymentStatus === 'paid' && (['completed', 'return_in_progress'].includes(status) || status === 'selection_made');
-  const isTracking = ['placed', 'accepted', 'packed', 'in_transit'].includes(status);
+  const isCancelled =
+    status === 'cancelled' ||
+    status === 'rejected' ||
+    order?.customerDeliveryStatus === 'cancelled' ||
+    order?.deliveryRiderStatus === 'cancelled';
+  const isTryPhase = !isCancelled && ['try_phase', 'selection_made'].includes(status);
+  const isCompleted =
+    !isCancelled &&
+    (status === 'completed' ||
+      (order?.paymentStatus === 'paid' && (['completed', 'return_in_progress'].includes(status) || status === 'selection_made')) ||
+      (status === 'return_in_progress' && (order?.paymentStatus === 'paid' || order?.customerDeliveryStatus === 'completed')) ||
+      (order?.customerDeliveryStatus === 'completed' && (order?.paymentStatus === 'paid' || isAllReturned)));
+  const isTracking = !isCancelled && ['placed', 'accepted', 'packed', 'in_transit'].includes(status);
   const isRiderVerified = Boolean(order?.trialPhaseEnd || order?.photoVerified || (order as any)?.isPhotoVerified);
   const hasSubmittedSelection = isSelectionSubmitted || order?.orderStatus === 'selection_made' || isRiderVerified;
+
+  // ── Cancelled Order Calculations & Labels ──
+  const cancellationReason =
+    order?.reason ||
+    order?.cancellationRequestReason ||
+    order?.cancellationReason ||
+    (status === 'rejected'
+      ? 'Store partner was unable to accept or fulfill this order at this time.'
+      : order?.cancelledBy === 'user'
+        ? 'Cancelled by you'
+        : order?.cancelledBy === 'merchant'
+          ? 'Cancelled by store partner'
+          : order?.cancelledBy === 'admin'
+            ? 'Cancelled by FlashFits customer support'
+            : 'Order cancelled upon request');
+
+  const cancelledByTitle =
+    status === 'rejected'
+      ? 'Order Declined by Store'
+      : order?.cancelledBy === 'user'
+        ? 'Order Cancelled by You'
+        : order?.cancelledBy === 'merchant'
+          ? 'Order Cancelled by Store'
+          : order?.cancelledBy === 'admin'
+            ? 'Cancelled by Support'
+            : 'Order Cancelled';
+
+  const isUpfrontPaid =
+    order?.paymentStatus === 'paid' ||
+    order?.paymentStatus === 'delivery_fee_paid';
+
+  const isRefunded = order?.paymentStatus === 'refunded';
+
+  const refundAmount =
+    (order as any)?.refundAmount ||
+    (isUpfrontPaid || isRefunded
+      ? order?.totalPayable || ((order?.deliveryCharge ?? 40) + (order?.finalBilling?.deliveryTip || 0))
+      : 0);
   const isWaitingForRiderCash =
     (order?.paymentMethod === 'cod' || order?.deliveryRiderStatus === 'collecting_cash') &&
     order?.paymentStatus !== 'paid' &&
     billingSummary.totalPayable > 0;
+  const showStickyPayBar = Boolean(!isCancelled && isRiderVerified && !isCompleted && !isWaitingForRiderCash);
   // Show the live map only after the rider has picked up the items from the merchant
   const isItemPickedUp =
     status === 'in_transit' ||
     ['picked_up', 'en_route_delivery', 'at_delivery'].includes(order?.deliveryRiderStatus) ||
     order?.customerDeliveryStatus === 'on_the_way';
 
-  // ── Item Status Predicates ──
-  const isItemKept = (item: any) => item.tryStatus === 'keep' || item.tryStatus === 'accepted';
-  const isItemReturned = (item: any) => item.tryStatus === 'returned' || item.tryStatus === 'return';
-  const isItemDecided = (item: any) => isItemKept(item) || isItemReturned(item);
+  const storeName = useMemo(() => {
+    return (
+      order?.merchantDetails?.name ||
+      (order?.merchantId as any)?.shopName ||
+      order?.warehouseDetails?.name ||
+      'FlashFits Partner Store'
+    );
+  }, [order?.merchantDetails, order?.merchantId, order?.warehouseDetails]);
 
   // ── Sync active coupon from order if available ──
   useEffect(() => {
     if (order?.couponCode && !appliedCoupon) {
       const matchedOffer = order.appliedOffers?.find((o: any) => o.couponCode?.toUpperCase() === order.couponCode?.toUpperCase());
+      const sName = matchedOffer?.merchantName || (matchedOffer?.scope === 'merchant' ? storeName : (matchedOffer?.scope === 'admin' ? undefined : storeName));
       setAppliedCoupon({
         code: order.couponCode,
         discount: matchedOffer?.discountApplied || 0,
         title: matchedOffer?.title || order.couponCode,
+        description: matchedOffer?.description,
         discountType: matchedOffer?.discountType,
         discountValue: matchedOffer?.discountValue,
         maxDiscount: (matchedOffer as any)?.maxDiscount,
@@ -729,9 +822,13 @@ export default function OrderTrackingScreen() {
         freeDelivery: Boolean(matchedOffer?.freeDelivery),
         freeReturn: Boolean((matchedOffer as any)?.freeReturn || matchedOffer?.freeDelivery),
         freeWaiting: Boolean((matchedOffer as any)?.freeWaiting || matchedOffer?.freeDelivery),
+        merchantName: sName,
+        scope: (matchedOffer as any)?.scope,
+        conditions: (matchedOffer as any)?.conditions,
+        rawOffer: matchedOffer,
       });
     }
-  }, [order?.couponCode, order?.appliedOffers]);
+  }, [order?.couponCode, order?.appliedOffers, storeName]);
 
   // ── Calculate discount on kept items ──
   const appliedOffersList = order?.appliedOffers || [];
@@ -741,18 +838,19 @@ export default function OrderTrackingScreen() {
   const isCodPayment = order?.paymentMethod === 'cod' || (typeof order?.razorpayPaymentId === 'string' && order.razorpayPaymentId.startsWith('cod_'));
   const totalPaid = order?.finalBilling?.totalPayable ?? order?.totalPayable ?? billingSummary.totalPayable ?? 0;
 
-  // ── Fetch available offers for final stage ──
+  // ── Fetch available offers for final stage & try phase ──
   useEffect(() => {
     if (!order) return;
     const mid = order.merchantId?._id ? order.merchantId._id.toString() : (order.merchantId?.toString() || undefined);
-    getAvailableOffers(keptSubtotal, mid, 'try_and_buy')
+    const subtotalToPass = keptSubtotal > 0 ? keptSubtotal : (order.totalAmount || undefined);
+    getAvailableOffers(subtotalToPass, mid, 'try_and_buy')
       .then((offers) => {
         setAvailableOffers(offers || []);
       })
       .catch((err) => {
         console.error('Failed to load available offers for order:', err);
       });
-  }, [cleanOrderId, order?.merchantId, isRiderVerified, keptSubtotal]);
+  }, [cleanOrderId, order?.merchantId, order?.totalAmount, keptSubtotal]);
 
   // ── Apply Coupon Code Handler ──
   const handleApplyCouponCode = async (codeToApply?: string) => {
@@ -762,16 +860,20 @@ export default function OrderTrackingScreen() {
       return false;
     }
 
-    if (keptItems.length === 0 || keptSubtotal === 0) {
-      showToast({ message: 'Please select at least 1 item to keep before applying a coupon.', type: 'warning' });
+    if (items.length === 0) {
+      showToast({ message: 'No items found in this order.', type: 'warning' });
       return false;
     }
 
     setApplyingCoupon(true);
     try {
       const mid = order?.merchantId?._id ? order.merchantId._id.toString() : (order?.merchantId?.toString() || undefined);
+      const candidateItems = keptItems.length > 0 ? keptItems : items;
+      const totalOrderSubtotal = items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+      const effectiveSubtotal = Math.max(keptSubtotal, totalOrderSubtotal);
+
       const cartContext = {
-        items: keptItems.map(item => ({
+        items: candidateItems.map(item => ({
           ...item,
           productId: (item as any).productId || item._id,
           categoryId: (item as any).categoryId,
@@ -779,36 +881,64 @@ export default function OrderTrackingScreen() {
           quantity: item.quantity || 1,
           merchantId: mid,
         })),
-        subtotal: keptSubtotal,
-        merchantTotals: mid ? { [mid]: keptSubtotal } : {},
+        subtotal: effectiveSubtotal,
+        merchantTotals: mid ? { [mid]: effectiveSubtotal } : {},
       };
 
       const res = await applyCouponApi(code, cartContext, 'try_and_buy');
       if (res && res.success) {
         const offer = res.offer || {};
-        const discountAmount = Number(res.discountAmount) || 0;
+        const minCartVal = offer.conditions?.minCartValue;
         const isFree = Boolean(offer.freeDelivery);
+
+        // Calculate initial dynamic discount on kept items
+        let initialDiscount = 0;
+        if (keptSubtotal > 0 && (!minCartVal || keptSubtotal >= minCartVal)) {
+          if (offer.discountType === 'percentage' && offer.discountValue) {
+            let d = (keptSubtotal * offer.discountValue) / 100;
+            if (offer.maxDiscount) d = Math.min(d, offer.maxDiscount);
+            initialDiscount = Math.round(d);
+          } else if (offer.discountType === 'flat' && offer.discountValue) {
+            initialDiscount = Math.min(offer.discountValue, keptSubtotal);
+          } else if (res.discountAmount) {
+            initialDiscount = Math.min(Number(res.discountAmount) || 0, keptSubtotal);
+          }
+        }
+
+        const sName = offer.merchantName || (offer.scope === 'merchant' ? storeName : (offer.scope === 'admin' ? undefined : storeName));
         setAppliedCoupon({
           code,
-          discount: discountAmount,
+          discount: initialDiscount,
           title: offer.title || code,
           description: offer.description,
           discountType: offer.discountType,
           discountValue: offer.discountValue,
           maxDiscount: offer.maxDiscount,
-          minCartValue: offer.conditions?.minCartValue,
+          minCartValue: minCartVal,
           freeDelivery: isFree,
           freeReturn: Boolean(offer.freeReturn || isFree),
           freeWaiting: Boolean(offer.freeWaiting || isFree),
+          merchantName: sName,
+          scope: offer.scope,
+          conditions: offer.conditions,
+          rawOffer: offer,
         });
         setCouponCodeInput('');
         setOffersModalVisible(false);
-        showToast({
-          message: isFree && discountAmount === 0
-            ? `Coupon ${code} applied! Free Delivery, Returns & Waiting unlocked 🎉`
-            : `Coupon ${code} applied! Saved ₹${discountAmount}`,
-          type: 'success',
-        });
+
+        if (minCartVal && keptSubtotal < minCartVal) {
+          showToast({
+            message: `Coupon ${code} applied! Keep at least ₹${minCartVal} worth of items to unlock savings.`,
+            type: 'info',
+          });
+        } else {
+          showToast({
+            message: isFree && initialDiscount === 0
+              ? `Coupon ${code} applied! Free Delivery, Returns & Waiting unlocked 🎉`
+              : `Coupon ${code} applied! Saved ₹${initialDiscount}`,
+            type: 'success',
+          });
+        }
         return true;
       } else {
         showToast({
@@ -840,11 +970,47 @@ export default function OrderTrackingScreen() {
     return false;
   };
 
+  const handleOpenOfferDetails = (item: any) => {
+    if (!item) return;
+    const offerStore = item.merchantName || (item.scope === 'merchant' ? storeName : (item.scope === 'admin' ? undefined : storeName));
+    const normalized = {
+      _id: item._id || item.offerId || item.code || Math.random().toString(),
+      title: item.title || item.code || 'Special Promotion',
+      description: item.description || (item.couponCode ? `Coupon code ${item.couponCode}` : `Special discount promotion from ${offerStore || 'Store'}`),
+      code: item.code || item.couponCode,
+      couponCode: item.couponCode || item.code,
+      discountType: item.discountType,
+      discountValue: item.discountValue,
+      discountAmount: item.discountApplied || item.discount,
+      maxDiscount: item.maxDiscount,
+      merchantName: offerStore,
+      scope: item.scope || (offerStore ? 'merchant' : undefined),
+      conditions: item.conditions || (item.minCartValue ? { minCartValue: item.minCartValue } : {}),
+      freeDelivery: item.freeDelivery,
+      freeReturn: item.freeReturn,
+      freeWaiting: item.freeWaiting,
+      endDate: item.endDate || item.validUntil,
+      terms: item.terms || [
+        `Valid on Try & Buy items from ${offerStore || 'this store'}`,
+        item.conditions?.minCartValue || item.minCartValue
+          ? `Requires a minimum kept purchase of ₹${item.conditions?.minCartValue || item.minCartValue}`
+          : 'No minimum order value required',
+        'Discount dynamically updates based on items chosen to keep',
+      ],
+      ...item.rawOffer,
+    };
+    setSelectedOfferForDetails(normalized);
+    setDetailModalVisible(true);
+  };
+
   const combinedOffersForModal = useMemo(() => {
     const map = new Map<string, any>();
     availableOffers.forEach((o: any) => {
       const key = o._id?.toString() || o.couponCode || Math.random().toString();
-      map.set(key, o);
+      map.set(key, {
+        ...o,
+        merchantName: o.merchantName || (o.scope === 'merchant' ? storeName : undefined),
+      });
     });
     appliedOffersList.forEach((o: any) => {
       const key = o._id?.toString() || o.offerId?.toString() || o.couponCode || 'applied';
@@ -858,12 +1024,17 @@ export default function OrderTrackingScreen() {
           discountType: o.discountType,
           discountValue: o.discountValue,
           conditions: o.conditions,
-          description: o.description || (o.couponCode ? `Coupon code ${o.couponCode}` : 'Applied store promotion'),
+          description: o.description || (o.couponCode ? `Coupon code ${o.couponCode}` : `Applied store promotion from ${o.merchantName || storeName}`),
+          merchantName: o.merchantName || (o.scope === 'merchant' ? storeName : undefined),
+          scope: o.scope,
+          freeDelivery: o.freeDelivery,
+          freeReturn: o.freeReturn,
+          freeWaiting: o.freeWaiting,
         });
       }
     });
     return Array.from(map.values());
-  }, [availableOffers, appliedOffersList]);
+  }, [availableOffers, appliedOffersList, storeName]);
 
   // ── Auto-applied Store promotions (excluding coupon code offers) ──
   let storeOffersDiscount = 0;
@@ -911,8 +1082,10 @@ export default function OrderTrackingScreen() {
   const discountToApply = storeOffersDiscount + couponDiscount;
 
   // ── Free Logistics Status & Charges ──
+  const couponThresholdMet = !appliedCoupon?.minCartValue || keptSubtotal >= appliedCoupon.minCartValue;
+
   const isFreeDelivery = Boolean(
-    appliedCoupon?.freeDelivery || 
+    (appliedCoupon?.freeDelivery && couponThresholdMet) || 
     appliedOffersList.some((o: any) => o.freeDelivery) ||
     order?.deliveryCharge === 0 ||
     order?.originalDeliveryCharge === 0
@@ -920,8 +1093,8 @@ export default function OrderTrackingScreen() {
 
   const isFreeReturn = Boolean(
     isFreeDelivery ||
-    appliedCoupon?.freeReturn ||
-    appliedCoupon?.freeDelivery ||
+    (appliedCoupon?.freeReturn && couponThresholdMet) ||
+    (appliedCoupon?.freeDelivery && couponThresholdMet) ||
     appliedOffersList.some((o: any) => o.freeReturn || o.freeDelivery) ||
     order?.returnCharge === 0 ||
     order?.deliveryCharge === 0 ||
@@ -930,8 +1103,8 @@ export default function OrderTrackingScreen() {
 
   const isFreeWaiting = Boolean(
     isFreeDelivery ||
-    appliedCoupon?.freeWaiting ||
-    appliedCoupon?.freeDelivery ||
+    (appliedCoupon?.freeWaiting && couponThresholdMet) ||
+    (appliedCoupon?.freeDelivery && couponThresholdMet) ||
     appliedOffersList.some((o: any) => o.freeWaiting || o.freeDelivery)
   );
 
@@ -980,7 +1153,6 @@ export default function OrderTrackingScreen() {
 
   const allSelected = items.length > 0 && items.every(isItemDecided);
   const hasReturns = items.some(isItemReturned);
-  const isAllReturned = items.length > 0 && items.every(isItemReturned);
 
   useEffect(() => {
     if (!isAllReturned && finalPaymentMethod !== 'online') {
@@ -1004,6 +1176,7 @@ export default function OrderTrackingScreen() {
           tryStatus: isItemReturned(i) ? 'return' : 'keep',
           returnReason: isItemReturned(i) ? (i.returnReason?.trim() || null) : null,
         })),
+        couponCode: appliedCoupon ? appliedCoupon.code : '',
       };
 
       await confirmClothSelection(payload);
@@ -1038,70 +1211,27 @@ export default function OrderTrackingScreen() {
         tryStatus: isItemReturned(i) ? 'returned' : 'keep',
       })));
 
-      // If customer returned all items and chose to pay directly to rider (COD)
-      if (isAllReturned && finalPaymentMethod === 'cod' && billingSummary.totalPayable > 0) {
-        const codRes = await confirmCodSelection({
-          orderId: orderId!,
-          items: finalizedItems,
-          finalPaymentMethod: 'cod',
-        });
-
-        if (codRes && (codRes.success || codRes.orderId)) {
-          setOrder(prev => prev ? {
-            ...prev,
-            orderStatus: 'selection_made',
-            customerDeliveryStatus: 'in_progress',
-            deliveryRiderStatus: 'collecting_cash',
-            paymentMethod: 'cod',
-            paymentStatus: 'pending',
-            finalBilling: {
-              ...prev.finalBilling,
-              baseAmount: billingSummary.baseAmount,
-              totalPayable: billingSummary.totalPayable,
-              deliveryCharge: billingSummary.deliveryCharge,
-              discount: billingSummary.discountApplied,
-            }
-          } : null);
-          await fetchOrder();
-
-          showAlert({
-            title: '💵 Cash Payment Selected',
-            message: `Please hand over ₹${billingSummary.totalPayable} directly to ${rider?.name || 'your delivery partner'} (Cash or UPI QR).\n\nYour order will automatically complete once your delivery partner confirms receipt on their phone.`,
-            type: 'info',
-            buttons: [
-              { text: 'Got it', onPress: () => {} }
-            ]
+      // If nothing is payable (₹0 due e.g. free delivery coupon or waived fees)
+      if (billingSummary.totalPayable === 0) {
+        try {
+          await confirmCodSelection({
+            orderId: orderId!,
+            items: finalizedItems,
+            finalPaymentMethod: 'cod',
           });
+        } catch (e) {
+          console.warn('0 due confirmation fallback attempt:', e);
         }
-        setSubmitting(false);
-        return;
-      }
 
-      // Online Razorpay payment for final payment
-      const payload = {
-        orderId: orderId!,
-        items: finalizedItems,
-        couponCode: appliedCoupon ? appliedCoupon.code : '',
-        finalPaymentMethod: 'online',
-      };
-
-      // initiate final payment order (this creates Razorpay order on backend)
-      const res = await finalpaymentInitiate(payload);
-
-      if (!res) {
-        setSubmitting(false);
-        return;
-      }
-
-      // If nothing is payable (₹0 due)
-      if (res.isDeliveryFree || billingSummary.totalPayable === 0) {
         setOrder(prev => prev ? {
           ...prev,
           orderStatus: hasReturns ? 'return_in_progress' : 'completed',
+          customerDeliveryStatus: 'completed',
+          deliveryRiderStatus: hasReturns ? 'returning' : 'completed',
           paymentStatus: 'paid',
           finalBilling: {
             ...prev.finalBilling,
-            baseAmount: billingSummary.baseAmount,
+            baseAmount: 0,
             totalPayable: 0,
             deliveryCharge: 0,
             discount: billingSummary.discountApplied,
@@ -1120,6 +1250,61 @@ export default function OrderTrackingScreen() {
             { text: 'View All Orders', onPress: () => router.replace('/orders' as any) }
           ]
         });
+        setSubmitting(false);
+        return;
+      }
+
+      // If customer returned all items and fee > 0: Customer MUST pay directly to rider (Cash / UPI)
+      if (isAllReturned && billingSummary.totalPayable > 0) {
+        const codRes = await confirmCodSelection({
+          orderId: orderId!,
+          items: finalizedItems,
+          finalPaymentMethod: 'cod',
+        });
+
+        if (codRes && (codRes.success || codRes.orderId)) {
+          setOrder(prev => prev ? {
+            ...prev,
+            orderStatus: 'selection_made',
+            customerDeliveryStatus: 'in_progress',
+            deliveryRiderStatus: 'collecting_cash',
+            paymentMethod: 'cod',
+            paymentStatus: 'pending',
+            finalBilling: {
+              ...prev.finalBilling,
+              baseAmount: 0,
+              totalPayable: billingSummary.totalPayable,
+              deliveryCharge: billingSummary.deliveryCharge,
+              discount: billingSummary.discountApplied,
+            }
+          } : null);
+          await fetchOrder();
+
+          showAlert({
+            title: '💵 Pay Directly to Delivery Partner',
+            message: `Please hand over ₹${billingSummary.totalPayable} directly to ${rider?.name || 'your delivery partner'} (Cash or UPI QR).\n\nYour order will automatically complete once your delivery partner confirms receipt on their phone.`,
+            type: 'info',
+            buttons: [
+              { text: 'Got it', onPress: () => {} }
+            ]
+          });
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      // Online Razorpay payment for final payment (when keeping items)
+      const payload = {
+        orderId: orderId!,
+        items: finalizedItems,
+        couponCode: appliedCoupon ? appliedCoupon.code : '',
+        finalPaymentMethod: 'online',
+      };
+
+      // initiate final payment order (this creates Razorpay order on backend)
+      const res = await finalpaymentInitiate(payload);
+
+      if (!res) {
         setSubmitting(false);
         return;
       }
@@ -1215,14 +1400,521 @@ export default function OrderTrackingScreen() {
       Alert.alert('Rider Reported', 'You have already reported the rider. An admin is reviewing it.');
       return;
     }
+
+    if (isCancelled) {
+      Alert.alert(
+        "Cancellation Support",
+        "How can we assist you with this cancelled order?",
+        [
+          {
+            text: "Refund Status Inquiry",
+            onPress: () =>
+              router.push({
+                pathname: '/(app)/help-center' as any,
+                params: { orderId: cleanOrderId, category: 'refund_issue' },
+              }),
+          },
+          {
+            text: "Report Unexpected Cancellation",
+            onPress: () =>
+              router.push({
+                pathname: '/(app)/help-center' as any,
+                params: { orderId: cleanOrderId, category: 'other' },
+              }),
+          },
+          {
+            text: "Other Support / FAQs",
+            onPress: () =>
+              router.push({
+                pathname: '/(app)/help-center' as any,
+                params: { orderId: cleanOrderId },
+              }),
+          },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
+      return;
+    }
+
     Alert.alert(
-      "Help Support",
+      "Help & Issue Support",
       "How can we assist you with this order?",
       [
+        {
+          text: "Report Damaged / Wrong Item",
+          onPress: () =>
+            router.push({
+              pathname: '/(app)/help-center' as any,
+              params: {
+                orderId: cleanOrderId,
+                category: 'damaged_product',
+                itemsJson: JSON.stringify(
+                  items.map((i) => ({
+                    _id: i._id,
+                    name: i.name,
+                    image: i.image,
+                    size: i.size,
+                    price: i.price,
+                    tryStatus: i.tryStatus,
+                  }))
+                ),
+              },
+            }),
+        },
         { text: "Rider is unresponsive", onPress: handleReportRider },
-        { text: "Other Issue", onPress: () => router.push('/(app)/help-center') },
-        { text: "Cancel", style: "cancel" }
+        {
+          text: "Other Support / FAQs",
+          onPress: () =>
+            router.push({
+              pathname: '/(app)/help-center' as any,
+              params: { orderId: cleanOrderId },
+            }),
+        },
+        { text: "Cancel", style: "cancel" },
       ]
+    );
+  };
+
+  // ── Render Coupons & Offers Section (Used in both Selection stage and Post-try billing) ──
+  // ── Render Coupons & Offers Section (Used in both Selection stage and Post-try billing) ──
+  const renderCouponsAndOffersCard = () => {
+    return (
+      <View style={[styles.billingCard, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, marginBottom: 14, marginTop: 8, padding: 14, borderRadius: 14 }]}>
+        {/* Section Title */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <MaterialCommunityIcons name="ticket-percent-outline" size={20} color={theme.primary} />
+            <Text style={{ fontSize: 14, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }}>
+              Coupons & Offers
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setOffersModalVisible(true)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
+          >
+            <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
+              View All Offers ›
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Active Applied Coupon Card (if a coupon is applied) */}
+        {appliedCoupon ? (
+          <View
+            style={{
+              backgroundColor: '#F0FDF4',
+              borderColor: '#86EFAC',
+              borderWidth: 1.5,
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 10,
+            }}
+          >
+            {/* Top row with Coupon Pill, Store Badge, and Remove Button */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, marginRight: 8 }}>
+                <View
+                  style={{
+                    backgroundColor: '#DCFCE7',
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: '#86EFAC',
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#15803D', letterSpacing: 0.5 }}>
+                    {appliedCoupon.code}
+                  </Text>
+                </View>
+
+                {/* Store Name Badge */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 7,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    backgroundColor: appliedCoupon.scope === 'admin' ? '#EFF6FF' : '#FEF3C7',
+                    borderWidth: 1,
+                    borderColor: appliedCoupon.scope === 'admin' ? '#BFDBFE' : '#FDE68A',
+                  }}
+                >
+                  <Ionicons
+                    name={appliedCoupon.scope === 'admin' ? "shield-checkmark" : "storefront"}
+                    size={11}
+                    color={appliedCoupon.scope === 'admin' ? "#1D4ED8" : "#B45309"}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontFamily: Typography.fontFamily.bold,
+                      color: appliedCoupon.scope === 'admin' ? "#1D4ED8" : "#B45309",
+                    }}
+                  >
+                    {appliedCoupon.merchantName || (appliedCoupon.scope === 'admin' ? 'FlashFits Platform' : storeName)}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleRemoveCoupon}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 7,
+                  backgroundColor: '#FEF2F2',
+                  borderWidth: 1,
+                  borderColor: '#FECACA',
+                }}
+              >
+                <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#EF4444' }}>
+                  Remove
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Title & Description */}
+            <View style={{ marginBottom: 4 }}>
+              <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#166534' }}>
+                {appliedCoupon.title && appliedCoupon.title !== appliedCoupon.code ? appliedCoupon.title : 'Coupon Applied!'}
+              </Text>
+              {appliedCoupon.description ? (
+                <Text style={{ fontSize: 11, color: '#15803D', marginTop: 2 }}>
+                  {appliedCoupon.description}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Min spend condition banner */}
+            {appliedCoupon.minCartValue ? (
+              keptSubtotal < appliedCoupon.minCartValue ? (
+                <View style={{ marginTop: 6, backgroundColor: '#FEF3C7', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+                  <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#92400E' }}>
+                    ⚠️ Min. kept spend ₹{appliedCoupon.minCartValue} required
+                  </Text>
+                  <Text style={{ fontSize: 10.5, fontFamily: Typography.fontFamily.medium, color: '#B45309', marginTop: 2 }}>
+                    Keep items worth ₹{appliedCoupon.minCartValue - keptSubtotal} more from {appliedCoupon.merchantName || storeName} to unlock this discount! (Current kept: ₹{keptSubtotal})
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Ionicons name="checkmark-circle" size={13} color="#16A34A" />
+                  <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#15803D' }}>
+                    Min. spend requirement of ₹{appliedCoupon.minCartValue} met on kept items (₹{keptSubtotal})
+                  </Text>
+                </View>
+              )
+            ) : null}
+
+            {/* Delivery Fee Waived */}
+            {appliedCoupon.freeDelivery && (
+              <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#DCFCE7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#166534' }}>
+                  Delivery Fee Waived:
+                </Text>
+                <Text style={{ fontSize: 12.5, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                  {originalDeliveryCharge > 0 ? `FREE (Saved ₹${originalDeliveryCharge})` : 'FREE (₹0)'}
+                </Text>
+              </View>
+            )}
+
+            {/* Discount deduction */}
+            {(!appliedCoupon.minCartValue || keptSubtotal >= appliedCoupon.minCartValue) && couponDiscount > 0 && (
+              <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#DCFCE7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#166534' }}>
+                  Discount deduction on bill:
+                </Text>
+                <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                  - ₹{couponDiscount}
+                </Text>
+              </View>
+            )}
+
+            {/* Tap to View Details & Terms */}
+            <TouchableOpacity
+              onPress={() => handleOpenOfferDetails({ ...appliedCoupon, merchantName: appliedCoupon.merchantName || (appliedCoupon.scope === 'admin' ? undefined : storeName) })}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                marginTop: 8,
+                paddingTop: 6,
+                borderTopWidth: 1,
+                borderTopColor: '#DCFCE7',
+                gap: 3,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#15803D' }}>
+                View Offer Details & Terms ›
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          /* Coupon Input Field when no coupon is applied */
+          <View style={{ marginBottom: 8 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#FFFFFF',
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: '#E2E8F0',
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}
+            >
+              <MaterialCommunityIcons name="ticket-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
+              <TextInput
+                style={{
+                  flex: 1,
+                  fontSize: 13,
+                  fontFamily: Typography.fontFamily.bold,
+                  color: '#0F172A',
+                  paddingVertical: 8,
+                  letterSpacing: 0.5,
+                }}
+                placeholder="Enter coupon code"
+                placeholderTextColor="#94A3B8"
+                value={couponCodeInput}
+                onChangeText={(text) => setCouponCodeInput(text.toUpperCase())}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={{
+                  backgroundColor: couponCodeInput.trim() ? theme.primary : '#E2E8F0',
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                }}
+                onPress={() => handleApplyCouponCode()}
+                disabled={!couponCodeInput.trim() || applyingCoupon}
+              >
+                {applyingCoupon ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontFamily: Typography.fontFamily.bold,
+                      color: couponCodeInput.trim() ? '#FFFFFF' : '#94A3B8',
+                    }}
+                  >
+                    Apply
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Offer Trigger */}
+            <TouchableOpacity
+              onPress={() => setOffersModalVisible(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                marginTop: 8,
+                paddingVertical: 4,
+              }}
+            >
+              <MaterialCommunityIcons name="tag-outline" size={14} color={theme.primary} />
+              <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
+                Tap to select from available coupons & offers ›
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Auto-applied store offers (if any non-coupon offers exist in order) */}
+        {appliedOffersList
+          .filter((o: any) => !o.couponCode && (!appliedCoupon || o.offerId !== (appliedCoupon as any)._id))
+          .map((appliedItem: any, idx: number) => {
+            const minSpend = appliedItem.conditions?.minCartValue || appliedItem.conditions?.minOrderValue || 0;
+            const thresholdMet = minSpend === 0 || keptSubtotal >= minSpend;
+            const offerStoreName = appliedItem.merchantName || (appliedItem.scope === 'merchant' ? storeName : (appliedItem.scope === 'admin' ? 'FlashFits Platform' : storeName));
+
+            const discountTag = appliedItem.discountType === 'percentage' && appliedItem.discountValue
+              ? `${appliedItem.discountValue}% OFF${appliedItem.maxDiscount ? ` (Up to ₹${appliedItem.maxDiscount})` : ''}`
+              : appliedItem.discountType === 'flat' && appliedItem.discountValue
+              ? `Flat ₹${appliedItem.discountValue} OFF`
+              : appliedItem.freeDelivery
+              ? 'Free Delivery'
+              : null;
+
+            return (
+              <TouchableOpacity
+                key={appliedItem._id || appliedItem.offerId || idx}
+                activeOpacity={0.85}
+                onPress={() => handleOpenOfferDetails({ ...appliedItem, merchantName: offerStoreName })}
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginTop: 8,
+                  borderWidth: 1.5,
+                  borderColor: thresholdMet ? '#BBF7D0' : '#FDE68A',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.04,
+                  shadowRadius: 2,
+                  elevation: 1,
+                }}
+              >
+                {/* Store Header Row */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1, marginRight: 8 }}>
+                    {/* Store Badge */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 7,
+                        paddingVertical: 2.5,
+                        borderRadius: 6,
+                        backgroundColor: appliedItem.scope === 'admin' ? '#EFF6FF' : '#FEF3C7',
+                        borderWidth: 1,
+                        borderColor: appliedItem.scope === 'admin' ? '#BFDBFE' : '#FDE68A',
+                      }}
+                    >
+                      <Ionicons
+                        name={appliedItem.scope === 'admin' ? "shield-checkmark" : "storefront"}
+                        size={11.5}
+                        color={appliedItem.scope === 'admin' ? "#1D4ED8" : "#B45309"}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 10.5,
+                          fontFamily: Typography.fontFamily.bold,
+                          color: appliedItem.scope === 'admin' ? "#1D4ED8" : "#B45309",
+                        }}
+                      >
+                        {offerStoreName}
+                      </Text>
+                    </View>
+
+                    {/* Auto-applied Pill */}
+                    <View
+                      style={{
+                        paddingHorizontal: 5,
+                        paddingVertical: 2,
+                        borderRadius: 5,
+                        backgroundColor: '#ECFDF5',
+                        borderWidth: 1,
+                        borderColor: '#A7F3D0',
+                      }}
+                    >
+                      <Text style={{ fontSize: 9.5, fontFamily: Typography.fontFamily.bold, color: '#059669' }}>
+                        ⚡ AUTO-APPLIED
+                      </Text>
+                    </View>
+
+                    {discountTag && (
+                      <View
+                        style={{
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 5,
+                          backgroundColor: '#F0FDF4',
+                          borderWidth: 1,
+                          borderColor: '#BBF7D0',
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                          {discountTag}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                    <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
+                      Details ›
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Offer Title & Discount Amount */}
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 2 }}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }}>
+                      {appliedItem.title || 'Store promotion'}
+                    </Text>
+                    {appliedItem.description ? (
+                      <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }} numberOfLines={2}>
+                        {appliedItem.description}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {thresholdMet && (appliedItem.discountApplied || 0) > 0 ? (
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 13.5, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                        - ₹{appliedItem.discountApplied}
+                      </Text>
+                      <Text style={{ fontSize: 9.5, color: '#16A34A', fontFamily: Typography.fontFamily.medium }}>
+                        Applied on bill
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* Spend Threshold status */}
+                {minSpend > 0 && (
+                  <View
+                    style={{
+                      marginTop: 6,
+                      paddingTop: 6,
+                      borderTopWidth: 1,
+                      borderTopColor: '#F1F5F9',
+                    }}
+                  >
+                    {thresholdMet ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="checkmark-circle" size={13} color="#16A34A" />
+                        <Text style={{ fontSize: 10.5, fontFamily: Typography.fontFamily.medium, color: '#15803D' }}>
+                          Min. spend of ₹{minSpend} met on kept items (Kept: ₹{keptSubtotal})
+                        </Text>
+                      </View>
+                    ) : (
+                      <View>
+                        <Text style={{ fontSize: 10.5, fontFamily: Typography.fontFamily.bold, color: '#B45309' }}>
+                          ⚠️ Keep items worth ₹{minSpend - keptSubtotal} more from {offerStoreName} to unlock
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#92400E', marginTop: 1 }}>
+                          Requires kept items worth at least ₹{minSpend} (Current kept: ₹{keptSubtotal})
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Card footer with View Details hint */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: 6,
+                    paddingTop: 5,
+                    borderTopWidth: 1,
+                    borderTopColor: '#F8FAFC',
+                  }}
+                >
+                  <Text style={{ fontSize: 10, color: '#94A3B8' }}>
+                    Tap card to see full offer terms & conditions
+                  </Text>
+                  <Ionicons name="chevron-forward" size={12} color="#94A3B8" />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+      </View>
     );
   };
 
@@ -1247,7 +1939,7 @@ export default function OrderTrackingScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
         {/* ─── Status Banner (shown during tracking & try phase) ─── */}
-        {!isCompleted && (
+        {!isCompleted && !isCancelled && (
           <View style={[styles.statusBanner, { backgroundColor: theme.primary + '10' }]}>
             <View style={[styles.statusDot, { backgroundColor: theme.primary }]} />
             <View style={{ flex: 1 }}>
@@ -1376,7 +2068,7 @@ export default function OrderTrackingScreen() {
                     <View key={item._id} style={styles.itemCard}>
                       <View style={styles.itemRow}>
                         {item.image ? (
-                          <Image source={{ uri: item.image }} style={styles.itemImage} />
+                          <Image source={{ uri: item.image }} style={styles.itemImage} contentFit="cover" />
                         ) : (
                           <View style={[styles.itemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
                             <Ionicons name="shirt-outline" size={24} color="#CBD5E1" />
@@ -1422,6 +2114,9 @@ export default function OrderTrackingScreen() {
                     </View>
                   ))}
 
+                  {/* Coupons & Offers Section (Live selection for Try & Buy) */}
+                  {renderCouponsAndOffersCard()}
+
                   {/* Estimated Bill (Live Selection) */}
                   <EstimatedBillSection
                     summary={billingSummary}
@@ -1434,6 +2129,7 @@ export default function OrderTrackingScreen() {
                     themeColor={theme.primary}
                     title="Estimated Bill"
                     showNotice={true}
+                    appliedCouponCode={appliedCoupon?.code || null}
                   />
 
                   {/* Confirm Selection Button (DOES NOT CHARGE - saves selection and unlocks rider verification) */}
@@ -1514,6 +2210,7 @@ export default function OrderTrackingScreen() {
                   themeColor={theme.primary}
                   title="Estimated Bill"
                   showNotice={true}
+                  appliedCouponCode={appliedCoupon?.code || null}
                 />
 
                 {/* Live Step Progress Checklist */}
@@ -1623,243 +2320,7 @@ export default function OrderTrackingScreen() {
                 </View>
 
                 {/* Coupons & Offers Section (Post-Try Phase) */}
-                <View style={[styles.billingCard, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, marginBottom: 16, padding: 14 }]}>
-                  {/* Section Title */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <MaterialCommunityIcons name="ticket-percent-outline" size={20} color={theme.primary} />
-                      <Text style={{ fontSize: 14, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }}>
-                        Coupons & Offers
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => setOffersModalVisible(true)}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
-                    >
-                      <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
-                        View All Offers ›
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Active Applied Coupon Card (if a coupon is applied) */}
-                  {appliedCoupon ? (
-                    <View
-                      style={{
-                        backgroundColor: '#F0FDF4',
-                        borderColor: '#86EFAC',
-                        borderWidth: 1.5,
-                        borderRadius: 12,
-                        padding: 12,
-                        marginBottom: 10,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                          <View
-                            style={{
-                              backgroundColor: '#DCFCE7',
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                              borderRadius: 6,
-                              borderWidth: 1,
-                              borderColor: '#86EFAC',
-                            }}
-                          >
-                            <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#15803D', letterSpacing: 0.5 }}>
-                              {appliedCoupon.code}
-                            </Text>
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: '#166534' }}>
-                              Coupon Applied!
-                            </Text>
-                            {appliedCoupon.minCartValue && keptSubtotal < appliedCoupon.minCartValue ? (
-                              <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#B45309', marginTop: 2 }}>
-                                ⚠️ Min. kept spend ₹{appliedCoupon.minCartValue} required
-                              </Text>
-                            ) : (
-                              <Text style={{ fontSize: 11, color: '#15803D', marginTop: 1 }}>
-                                {appliedCoupon.title ? appliedCoupon.title : 'Savings applied on kept items'}
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-
-                        <TouchableOpacity
-                          onPress={handleRemoveCoupon}
-                          style={{
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
-                            borderRadius: 8,
-                            backgroundColor: '#FEF2F2',
-                            borderWidth: 1,
-                            borderColor: '#FECACA',
-                          }}
-                        >
-                          <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.bold, color: '#EF4444' }}>
-                            Remove
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      {appliedCoupon.freeDelivery && (
-                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#DCFCE7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#166534' }}>
-                            Delivery Fee Waived:
-                          </Text>
-                          <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
-                            {originalDeliveryCharge > 0 ? `FREE (Saved ₹${originalDeliveryCharge})` : 'FREE (₹0)'}
-                          </Text>
-                        </View>
-                      )}
-
-                      {(!appliedCoupon.minCartValue || keptSubtotal >= appliedCoupon.minCartValue) && couponDiscount > 0 && (
-                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#DCFCE7', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={{ fontSize: 11, fontFamily: Typography.fontFamily.medium, color: '#166534' }}>
-                            Discount deduction on final bill:
-                          </Text>
-                          <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
-                            - ₹{couponDiscount}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  ) : (
-                    /* Coupon Input Field when no coupon is applied */
-                    <View style={{ marginBottom: 8 }}>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          backgroundColor: '#FFFFFF',
-                          borderRadius: 12,
-                          borderWidth: 1.5,
-                          borderColor: '#E2E8F0',
-                          paddingHorizontal: 12,
-                          paddingVertical: 4,
-                        }}
-                      >
-                        <MaterialCommunityIcons name="ticket-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
-                        <TextInput
-                          style={{
-                            flex: 1,
-                            fontSize: 13,
-                            fontFamily: Typography.fontFamily.bold,
-                            color: '#0F172A',
-                            paddingVertical: 8,
-                            letterSpacing: 0.5,
-                          }}
-                          placeholder="Enter coupon code"
-                          placeholderTextColor="#94A3B8"
-                          value={couponCodeInput}
-                          onChangeText={(text) => setCouponCodeInput(text.toUpperCase())}
-                          autoCapitalize="characters"
-                          autoCorrect={false}
-                        />
-                        <TouchableOpacity
-                          style={{
-                            backgroundColor: couponCodeInput.trim() ? theme.primary : '#E2E8F0',
-                            paddingHorizontal: 14,
-                            paddingVertical: 8,
-                            borderRadius: 8,
-                          }}
-                          onPress={() => handleApplyCouponCode()}
-                          disabled={!couponCodeInput.trim() || applyingCoupon}
-                        >
-                          {applyingCoupon ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Text
-                              style={{
-                                fontSize: 12,
-                                fontFamily: Typography.fontFamily.bold,
-                                color: couponCodeInput.trim() ? '#FFFFFF' : '#94A3B8',
-                              }}
-                            >
-                              Apply
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* Quick Offer Trigger */}
-                      <TouchableOpacity
-                        onPress={() => setOffersModalVisible(true)}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 4,
-                          marginTop: 8,
-                          paddingVertical: 4,
-                        }}
-                      >
-                        <MaterialCommunityIcons name="tag-outline" size={14} color={theme.primary} />
-                        <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: theme.primary }}>
-                          Tap to select from available coupons & offers ›
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {/* Auto-applied store offers (if any non-coupon offers exist in order) */}
-                  {appliedOffersList
-                    .filter((o: any) => !o.couponCode && (!appliedCoupon || o.offerId !== (appliedCoupon as any)._id))
-                    .map((appliedItem: any, idx: number) => {
-                      const minSpend = appliedItem.conditions?.minCartValue || appliedItem.conditions?.minOrderValue || 0;
-                      const thresholdMet = minSpend === 0 || keptSubtotal >= minSpend;
-
-                      return (
-                        <View
-                          key={appliedItem._id || appliedItem.offerId || idx}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            backgroundColor: '#FFFFFF',
-                            borderRadius: 10,
-                            padding: 10,
-                            marginTop: 6,
-                            borderWidth: 1,
-                            borderColor: thresholdMet ? '#DCFCE7' : '#FDE68A',
-                          }}
-                        >
-                          <View style={{ flex: 1, marginRight: 8 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                              <View
-                                style={{
-                                  paddingHorizontal: 5,
-                                  paddingVertical: 1,
-                                  borderRadius: 4,
-                                  backgroundColor: '#FEF3C7',
-                                  borderWidth: 1,
-                                  borderColor: '#FDE68A',
-                                }}
-                              >
-                                <Text style={{ fontSize: 9, fontFamily: Typography.fontFamily.bold, color: '#B45309' }}>
-                                  🏷️ STORE OFFER (Auto-applied)
-                                </Text>
-                              </View>
-                              <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: '#0F172A' }}>
-                                {appliedItem.title || 'Store promotion'}
-                              </Text>
-                            </View>
-                            {!thresholdMet && (
-                              <Text style={{ fontSize: 10, fontFamily: Typography.fontFamily.medium, color: '#B45309' }}>
-                                ⚠️ Requires kept items worth at least ₹{minSpend}
-                              </Text>
-                            )}
-                          </View>
-                          {thresholdMet && (appliedItem.discountApplied || 0) > 0 && (
-                            <Text style={{ fontSize: 12, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
-                              - ₹{appliedItem.discountApplied}
-                            </Text>
-                          )}
-                        </View>
-                      );
-                    })}
-                </View>
+                {renderCouponsAndOffersCard()}
 
                 {/* Detailed Billing Summary */}
                 <View style={styles.billingCard}>
@@ -1898,7 +2359,7 @@ export default function OrderTrackingScreen() {
                   {storeOffersDiscount > 0 && (
                     <View style={styles.billRow}>
                       <Text style={[styles.billLabel, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
-                        Store Offers Discount
+                        Store Offers Discount ({storeName})
                       </Text>
                       <Text style={[styles.billValue, { color: '#10B981', fontFamily: Typography.fontFamily.bold }]}>
                         - ₹{storeOffersDiscount}
@@ -2069,155 +2530,58 @@ export default function OrderTrackingScreen() {
                       )}
                     </View>
 
-                    {/* Secondary option to switch to Razorpay online payment */}
-                    <TouchableOpacity
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6,
-                        paddingVertical: 12,
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: 10,
-                        borderWidth: 1.5,
-                        borderColor: '#93C5FD',
-                      }}
-                      onPress={() => {
-                        setFinalPaymentMethod('online');
-                        setOrder(prev => prev ? { ...prev, paymentMethod: 'online' } : prev);
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="card-outline" size={16} color="#2563EB" />
-                      <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#2563EB' }}>
-                        Change to Pay Online via Razorpay
-                      </Text>
-                    </TouchableOpacity>
+                    {/* Secondary option to switch to Razorpay online payment (only if kept items) */}
+                    {!isAllReturned && (
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          paddingVertical: 12,
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 10,
+                          borderWidth: 1.5,
+                          borderColor: '#93C5FD',
+                        }}
+                        onPress={() => {
+                          setFinalPaymentMethod('online');
+                          setOrder(prev => prev ? { ...prev, paymentMethod: 'online' } : prev);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="card-outline" size={16} color="#2563EB" />
+                        <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#2563EB' }}>
+                          Change to Pay Online via Razorpay
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ) : (
                   <>
-                    {/* Payment Option Selector — ONLY when all items are returned (no items kept) and amount > 0 */}
+                    {/* Payment Option Notice — ONLY when all items are returned (no items kept) and amount > 0 */}
                     {isAllReturned && billingSummary.totalPayable > 0 && (
                       <View style={styles.paymentOptionContainer}>
-                        <Text style={styles.paymentOptionHeader}>
-                          Choose Payment Option
-                        </Text>
-                        <Text style={styles.paymentOptionSubtext}>
-                          Since no items were kept, you can pay the remaining charges (delivery, return & waiting charge) online or directly to your delivery partner.
-                        </Text>
-
-                        <View style={styles.paymentOptionCardsWrap}>
-                          {/* Option 1: Pay Online via Razorpay */}
-                          <TouchableOpacity
-                            style={[
-                              styles.paymentOptionCard,
-                              finalPaymentMethod === 'online' && { borderColor: theme.primary, backgroundColor: '#F8FAFC' },
-                            ]}
-                            onPress={() => setFinalPaymentMethod('online')}
-                            activeOpacity={0.8}
-                          >
-                            <View style={[
-                              styles.paymentOptionRadio,
-                              finalPaymentMethod === 'online' && { borderColor: theme.primary },
-                            ]}>
-                              {finalPaymentMethod === 'online' && (
-                                <View style={[styles.paymentOptionRadioInner, { backgroundColor: theme.primary }]} />
-                              )}
-                            </View>
-                            <View style={[styles.paymentOptionIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                              <Ionicons name="card" size={20} color="#2563EB" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.paymentOptionTitle}>
-                                Pay Online to FlashFits
-                              </Text>
-                              <Text style={styles.paymentOptionDesc}>
-                                Directly via Razorpay (UPI, Cards, NetBanking)
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-
-                          {/* Option 2: Pay Directly to Rider */}
-                          <TouchableOpacity
-                            style={[
-                              styles.paymentOptionCard,
-                              finalPaymentMethod === 'cod' && { borderColor: theme.primary, backgroundColor: '#F8FAFC' },
-                            ]}
-                            onPress={() => setFinalPaymentMethod('cod')}
-                            activeOpacity={0.8}
-                          >
-                            <View style={[
-                              styles.paymentOptionRadio,
-                              finalPaymentMethod === 'cod' && { borderColor: theme.primary },
-                            ]}>
-                              {finalPaymentMethod === 'cod' && (
-                                <View style={[styles.paymentOptionRadioInner, { backgroundColor: theme.primary }]} />
-                              )}
-                            </View>
-                            <View style={[styles.paymentOptionIconWrap, { backgroundColor: '#F0FDF4' }]}>
-                              <Ionicons name="cash" size={20} color="#16A34A" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.paymentOptionTitle}>
-                                Pay Directly to Rider
-                              </Text>
-                              <Text style={styles.paymentOptionDesc}>
-                                Hand over Cash or UPI directly to your delivery partner
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <Ionicons name="cash" size={20} color="#16A34A" />
+                          <Text style={styles.paymentOptionHeader}>
+                            Pay Directly to Delivery Partner
+                          </Text>
                         </View>
+                        <Text style={styles.paymentOptionSubtext}>
+                          All items are being returned. Please hand over the remaining charges (₹{billingSummary.totalPayable}) directly to {rider?.name || 'your delivery partner'} in Cash or UPI QR.
+                        </Text>
                       </View>
                     )}
 
-                    {/* Final Payment CTA */}
-                    <TouchableOpacity
-                      style={[
-                        styles.submitBtn,
-                        { backgroundColor: theme.primary, marginTop: isAllReturned && billingSummary.totalPayable > 0 ? 10 : 16 },
-                      ]}
-                      onPress={handleSubmitSelection}
-                      disabled={submitting}
-                      activeOpacity={0.85}
-                    >
-                      {submitting ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons
-                            name={
-                              billingSummary.totalPayable === 0
-                                ? 'checkmark-circle'
-                                : (isAllReturned && finalPaymentMethod === 'cod')
-                                  ? 'cash'
-                                  : 'card'
-                            }
-                            size={20}
-                            color="#fff"
-                          />
-                          <Text style={styles.submitText}>
-                            {billingSummary.totalPayable === 0
-                              ? 'Complete Order (₹0 Due)'
-                              : (isAllReturned && finalPaymentMethod === 'cod')
-                                ? `Pay ₹${billingSummary.totalPayable} to Rider`
-                                : `Pay ₹${billingSummary.totalPayable} with Razorpay`}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 }}>
-                      <Ionicons
-                        name={isAllReturned && finalPaymentMethod === 'cod' ? 'cash-outline' : 'shield-checkmark'}
-                        size={14}
-                        color={isAllReturned && finalPaymentMethod === 'cod' ? '#64748B' : '#16A34A'}
-                      />
-                      <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '500' }}>
-                        {isAllReturned && finalPaymentMethod === 'cod'
-                          ? `Hand over ₹${billingSummary.totalPayable} cash or UPI to delivery partner upon return`
-                          : 'Secured by Razorpay • UPI, Cards, NetBanking'}
-                      </Text>
-                    </View>
+                    {!isAllReturned && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14 }}>
+                        <Ionicons name="shield-checkmark" size={14} color="#16A34A" />
+                        <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '500' }}>
+                          Secured by Razorpay • UPI, Cards, NetBanking
+                        </Text>
+                      </View>
+                    )}
                   </>
                 )}
               </View>
@@ -2309,14 +2673,14 @@ export default function OrderTrackingScreen() {
             {/* 3. SHOWSTOPPER: Rate Your Experience Card */}
             {reviews.length === 0 ? (
               <LinearGradient
-                colors={['#0F172A', '#1E293B']}
+                colors={['#FFFFFF', '#F8FAFC']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.rateExperienceCard}
               >
                 <View style={styles.rateBadgeRow}>
                   <View style={styles.rateBadge}>
-                    <Ionicons name="sparkles" size={13} color="#F59E0B" />
+                    <Ionicons name="sparkles" size={13} color="#0891B2" />
                     <Text style={styles.rateBadgeText}>YOUR FEEDBACK MATTERS</Text>
                   </View>
                 </View>
@@ -2345,7 +2709,7 @@ export default function OrderTrackingScreen() {
                       <Ionicons
                         name={selectedStarRating >= star ? 'star' : 'star-outline'}
                         size={36}
-                        color={selectedStarRating >= star ? '#FBBF24' : 'rgba(251,191,36,0.3)'}
+                        color={selectedStarRating >= star ? '#F59E0B' : '#CBD5E1'}
                       />
                     </TouchableOpacity>
                   ))}
@@ -2361,7 +2725,7 @@ export default function OrderTrackingScreen() {
                       router.push({ pathname: '/rate-order', params: { orderId: order?._id, initialRating: '5' } } as any);
                     }}
                   >
-                    <Ionicons name="flash" size={12} color="#FBBF24" />
+                    <Ionicons name="flash" size={12} color="#0891B2" />
                     <Text style={styles.rateQuickChipText}>15-Min Delivery</Text>
                   </TouchableOpacity>
 
@@ -2372,7 +2736,7 @@ export default function OrderTrackingScreen() {
                       router.push({ pathname: '/rate-order', params: { orderId: order?._id, initialRating: '5' } } as any);
                     }}
                   >
-                    <Ionicons name="shirt" size={12} color="#FBBF24" />
+                    <Ionicons name="shirt" size={12} color="#0891B2" />
                     <Text style={styles.rateQuickChipText}>Fit & Quality</Text>
                   </TouchableOpacity>
 
@@ -2383,7 +2747,7 @@ export default function OrderTrackingScreen() {
                       router.push({ pathname: '/rate-order', params: { orderId: order?._id, initialRating: '5' } } as any);
                     }}
                   >
-                    <Ionicons name="bicycle" size={12} color="#FBBF24" />
+                    <Ionicons name="bicycle" size={12} color="#0891B2" />
                     <Text style={styles.rateQuickChipText}>Rider Service</Text>
                   </TouchableOpacity>
                 </View>
@@ -2401,10 +2765,10 @@ export default function OrderTrackingScreen() {
                   activeOpacity={0.88}
                 >
                   <View style={styles.rateCtaIconWrap}>
-                    <Ionicons name="star" size={16} color="#0F172A" />
+                    <Ionicons name="star" size={14} color="#2ED3E6" />
                   </View>
                   <Text style={styles.rateCtaBtnText}>Rate Your Experience</Text>
-                  <Ionicons name="arrow-forward" size={16} color="#0F172A" />
+                  <Ionicons name="arrow-forward" size={16} color="#2ED3E6" />
                 </TouchableOpacity>
               </LinearGradient>
             ) : (
@@ -2468,7 +2832,7 @@ export default function OrderTrackingScreen() {
                   return (
                     <View key={item._id} style={styles.itemLuxuryRow}>
                       {item.image ? (
-                        <Image source={{ uri: item.image }} style={styles.itemLuxuryImage} />
+                        <Image source={{ uri: item.image }} style={styles.itemLuxuryImage} contentFit="cover" />
                       ) : (
                         <View style={[styles.itemLuxuryImage, styles.placeholderImage]}>
                           <Ionicons name="shirt-outline" size={20} color="#94A3B8" />
@@ -2599,6 +2963,62 @@ export default function OrderTrackingScreen() {
               </View>
             </View>
 
+            {/* 5b. Refund Processed Card (For completed orders with refund) */}
+            {(isRefunded || ((order as any)?.refundAmount || 0) > 0) && (
+              <View style={[styles.cancelledSectionCard, { borderColor: '#BBF7D0', backgroundColor: '#F0FDF4' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="wallet-outline" size={18} color="#15803D" />
+                    <Text style={[styles.premiumCardTitle, { color: '#15803D' }]}>Refund Issued</Text>
+                  </View>
+                  <View style={[styles.paymentMethodPill, { backgroundColor: '#DCFCE7', borderColor: '#BBF7D0', borderWidth: 1 }]}>
+                    <Ionicons name="checkmark-circle" size={12} color="#16A34A" />
+                    <Text style={[styles.paymentMethodPillText, { color: '#16A34A' }]}>REFUNDED</Text>
+                  </View>
+                </View>
+
+                <View style={{ backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#DCFCE7' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#15803D', marginBottom: 4 }}>
+                    ₹{(order as any)?.refundAmount || refundAmount} Refunded Successfully
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#475569', lineHeight: 18 }}>
+                    {(order as any)?.refundDetails?.reason || 'A refund was processed for this order (damaged/returned items or dispute resolution).'}
+                  </Text>
+                </View>
+
+                <View style={{ marginTop: 12 }}>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Refund Mode</Text>
+                    <Text style={[styles.receiptValue, { textTransform: 'uppercase' }]}>
+                      {(order as any)?.refundDetails?.method || 'Original Payment Method / Wallet'}
+                    </Text>
+                  </View>
+                  {Boolean((order as any)?.refundDetails?.referenceNumber) && (
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Reference / UTR</Text>
+                      <Text style={[styles.receiptValue, { fontFamily: 'monospace', fontWeight: '700' }]}>
+                        {(order as any)?.refundDetails?.referenceNumber}
+                      </Text>
+                    </View>
+                  )}
+                  {Boolean((order as any)?.refundDetails?.refundedAt) && (
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Refund Date</Text>
+                      <Text style={styles.receiptValue}>
+                        {new Date((order as any)?.refundDetails?.refundedAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+
             {/* 6. Delivery Partner Appreciation Card */}
             {rider && (
               <View style={styles.riderThankCard}>
@@ -2654,6 +3074,374 @@ export default function OrderTrackingScreen() {
           </View>
         )}
 
+        {/* ─── Cancelled State (Live-Worthy Rich Experience) ─── */}
+        {isCancelled && (
+          <View style={styles.cancelledContainer}>
+            {/* 1. Hero Card */}
+            <View style={styles.cancelledHeroCard}>
+              <View style={styles.cancelledHeroHaloOuter}>
+                <View style={styles.cancelledHeroHaloInner}>
+                  <Ionicons name="close" size={32} color="#EF4444" />
+                </View>
+              </View>
+
+              <View style={styles.cancelledHeroPill}>
+                <Ionicons name="alert-circle" size={12} color="#DC2626" />
+                <Text style={styles.cancelledHeroPillText}>
+                  {status === 'rejected' ? 'ORDER DECLINED' : 'ORDER CANCELLED'}
+                </Text>
+              </View>
+
+              <Text style={styles.cancelledHeroTitle}>{cancelledByTitle}</Text>
+
+              <Text style={styles.cancelledHeroSubtitle}>
+                {status === 'rejected'
+                  ? 'The store partner is unable to dispatch these items right now. We sincerely apologize for the inconvenience.'
+                  : order?.cancelledBy === 'user'
+                    ? (isRefunded ? 'You have cancelled this order. Your refund has been credited.' : 'You have cancelled this order. No charges were applied.')
+                    : 'This order has been cancelled and closed. No further steps are needed from your side.'}
+              </Text>
+
+              <View style={styles.cancelledReasonBox}>
+                <View style={styles.cancelledReasonHeader}>
+                  <Ionicons name="information-circle" size={14} color="#E11D48" />
+                  <Text style={styles.cancelledReasonLabel}>Reason for Cancellation</Text>
+                </View>
+                <Text style={styles.cancelledReasonText}>{cancellationReason}</Text>
+                <Text style={styles.cancelledReasonMeta}>
+                  Cancelled on {formatOrderDateTime(order?.updatedAt || order?.cancelledAt || order?.createdAt) || 'Recent'}
+                </Text>
+              </View>
+            </View>
+
+            {/* 2. Refund & Payment Status Card */}
+            <View style={styles.cancelledSectionCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="wallet-outline" size={18} color="#0F172A" />
+                  <Text style={styles.premiumCardTitle}>Payment & Refund</Text>
+                </View>
+                <View style={[
+                  styles.paymentMethodPill,
+                  isRefunded
+                    ? { backgroundColor: '#DCFCE7', borderColor: '#BBF7D0', borderWidth: 1 }
+                    : isUpfrontPaid
+                      ? { backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1 }
+                      : { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1 }
+                ]}>
+                  <Ionicons
+                    name={isRefunded ? 'checkmark-circle' : isUpfrontPaid ? 'time' : 'shield-checkmark'}
+                    size={12}
+                    color={isRefunded ? '#16A34A' : isUpfrontPaid ? '#D97706' : '#2563EB'}
+                  />
+                  <Text style={[
+                    styles.paymentMethodPillText,
+                    { color: isRefunded ? '#16A34A' : isUpfrontPaid ? '#D97706' : '#2563EB' }
+                  ]}>
+                    {isRefunded ? 'REFUNDED' : isUpfrontPaid ? 'IN PROGRESS' : '₹0 CHARGED'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ backgroundColor: '#F8FAFC', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#F1F5F9' }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: '#0F172A', marginBottom: 4 }}>
+                  {isRefunded
+                    ? `₹${refundAmount} Refunded to Wallet`
+                    : isUpfrontPaid
+                      ? `₹${refundAmount} Refund Processing`
+                      : 'No Payment Deducted'}
+                </Text>
+                <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18 }}>
+                  {isRefunded
+                    ? 'The full amount was credited back to your FlashFits Wallet. You can use it immediately on any upcoming order.'
+                    : isUpfrontPaid
+                      ? 'The refund has been initiated to your original payment method and will reflect within 2-4 business days.'
+                      : 'This was a Try & Buy order with payment due upon keeping items. Since the order was cancelled, zero charges were applied.'}
+                </Text>
+              </View>
+
+              <View style={{ marginTop: 12 }}>
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Payment Mode</Text>
+                  <Text style={styles.receiptValue}>
+                    {isCodPayment ? 'Cash on Delivery (Pay After Trial)' : order?.paymentMethod?.toUpperCase() || 'ONLINE / TRY & BUY'}
+                  </Text>
+                </View>
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Total Order Value</Text>
+                  <Text style={styles.receiptValue}>
+                    ₹{order?.totalAmount || items.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0)}
+                  </Text>
+                </View>
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Final Amount Charged</Text>
+                  <Text style={[styles.receiptValue, { color: isRefunded || !isUpfrontPaid ? '#16A34A' : '#EF4444', fontWeight: '800' }]}>
+                    {isRefunded ? '₹0 (Refunded)' : isUpfrontPaid ? `₹${refundAmount} (Refunding)` : '₹0'}
+                  </Text>
+                </View>
+                {Boolean((order as any)?.refundDetails?.referenceNumber) && (
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Refund UTR / Ref</Text>
+                    <Text style={[styles.receiptValue, { color: '#16A34A', fontWeight: '800', fontFamily: 'monospace' }]}>
+                      {(order as any).refundDetails.referenceNumber}
+                    </Text>
+                  </View>
+                )}
+                {Boolean((order as any)?.refundDetails?.refundedAt) && (
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Refund Settled At</Text>
+                    <Text style={styles.receiptValue}>
+                      {new Date((order as any).refundDetails.refundedAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* 3. Milestones Timeline */}
+            <View style={styles.cancelledSectionCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <Ionicons name="git-commit-outline" size={18} color="#0F172A" />
+                <Text style={styles.premiumCardTitle}>Order Timeline</Text>
+              </View>
+
+              <View style={styles.timelineContainer}>
+                {/* Placed */}
+                <View style={styles.timelineRow}>
+                  <View style={styles.timelineColLeft}>
+                    <View style={[styles.timelineNode, { backgroundColor: '#16A34A' }]}>
+                      <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.timelineLine} />
+                  </View>
+                  <View style={styles.timelineColRight}>
+                    <Text style={styles.timelineTitle}>Order Placed</Text>
+                    <Text style={styles.timelineSub}>Order received and registered with merchant</Text>
+                    <Text style={styles.timelineTime}>
+                      {formatOrderDateTime(order?.createdAt) || 'Initial checkout'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Cancelled */}
+                <View style={styles.timelineRow}>
+                  <View style={styles.timelineColLeft}>
+                    <View style={[styles.timelineNode, { backgroundColor: '#EF4444' }]}>
+                      <Ionicons name="close" size={12} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.timelineLine} />
+                  </View>
+                  <View style={styles.timelineColRight}>
+                    <Text style={[styles.timelineTitle, { color: '#EF4444' }]}>
+                      {status === 'rejected' ? 'Declined by Store' : 'Order Cancelled'}
+                    </Text>
+                    <Text style={styles.timelineSub}>{cancellationReason}</Text>
+                    <Text style={styles.timelineTime}>
+                      {formatOrderDateTime(order?.updatedAt || order?.cancelledAt) || 'Processed'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Settlement */}
+                <View style={styles.timelineRow}>
+                  <View style={styles.timelineColLeft}>
+                    <View style={[styles.timelineNode, { backgroundColor: isRefunded ? '#16A34A' : isUpfrontPaid ? '#D97706' : '#2563EB' }]}>
+                      <Ionicons
+                        name={isRefunded ? 'checkmark-done' : isUpfrontPaid ? 'time-outline' : 'shield-checkmark-outline'}
+                        size={12}
+                        color="#FFFFFF"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.timelineColRight}>
+                    <Text style={styles.timelineTitle}>
+                      {isRefunded ? 'Refund Settled' : isUpfrontPaid ? 'Refund In Progress' : 'No Charge Applied'}
+                    </Text>
+                    <Text style={styles.timelineSub}>
+                      {isRefunded
+                        ? `₹${refundAmount} credited to wallet`
+                        : isUpfrontPaid
+                          ? 'Refund processing to original method'
+                          : 'Zero balance due on account'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* 4. Items Breakdown */}
+            {items.length > 0 && (
+              <View style={styles.cancelledSectionCard}>
+                <View style={styles.cardHeaderWithCount}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="bag-handle-outline" size={18} color="#0F172A" />
+                    <Text style={styles.premiumCardTitle}>Items in this Order</Text>
+                  </View>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>
+                      {items.length} {items.length === 1 ? 'item' : 'items'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ gap: 10 }}>
+                  {items.map((item, idx) => {
+                    const targetProductId = (item as any).productId || (typeof (item as any).product === 'string' ? (item as any).product : (item as any).product?._id) || item._id;
+                    return (
+                      <TouchableOpacity
+                        key={item._id || idx}
+                        style={styles.cancelledItemRow}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          if (targetProductId) {
+                            router.push({
+                              pathname: '/(app)/product/[id]' as any,
+                              params: {
+                                id: targetProductId,
+                                variantId: (item as any).variantId || undefined,
+                              },
+                            });
+                          }
+                        }}
+                      >
+                        {item.image ? (
+                          <Image source={{ uri: item.image }} style={styles.itemLuxuryImage} contentFit="cover" />
+                        ) : (
+                          <View style={[styles.itemLuxuryImage, styles.placeholderImage]}>
+                            <Ionicons name="shirt-outline" size={20} color="#94A3B8" />
+                          </View>
+                        )}
+                        <View style={{ flex: 1, marginHorizontal: 12 }}>
+                          <Text style={styles.itemLuxuryName} numberOfLines={1}>{item.name}</Text>
+                          <Text style={styles.itemLuxuryMeta}>
+                            Size: {item.size || 'Free Size'} • Qty: {item.quantity || 1}
+                          </Text>
+                          <Text style={[styles.itemLuxuryPrice, { marginTop: 2 }]}>
+                            ₹{item.price * (item.quantity || 1)}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', justifyContent: 'center', gap: 6 }}>
+                          <View style={styles.cancelledTag}>
+                            <Text style={styles.cancelledTagText}>Cancelled</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                            <Text style={{ fontSize: 11, color: theme.primary, fontWeight: '700' }}>View</Text>
+                            <Ionicons name="chevron-forward" size={12} color={theme.primary} />
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* 5. Store & Delivery Location */}
+            <View style={styles.cancelledSectionCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <Ionicons name="location-outline" size={18} color="#0F172A" />
+                <Text style={styles.premiumCardTitle}>Delivery & Store Info</Text>
+              </View>
+
+              {order?.merchantDetails?.name && (
+                <View style={styles.cancelledStoreRow}>
+                  <View style={styles.cancelledStoreIcon}>
+                    <Ionicons name="storefront-outline" size={16} color={theme.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cancelledStoreName}>{order.merchantDetails.name}</Text>
+                    <Text style={styles.cancelledStoreSub}>FlashFits Partner Retailer</Text>
+                  </View>
+                  {order?.merchantId && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        const mid = typeof order.merchantId === 'string' ? order.merchantId : order.merchantId?._id;
+                        if (mid) router.push(`/(app)/merchant/${mid}` as any);
+                      }}
+                      style={styles.visitStoreBtn}
+                    >
+                      <Text style={[styles.visitStoreText, { color: theme.primary }]}>Visit Store</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {order?.deliveryLocation && (
+                <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
+                  <Text style={{ fontSize: 11, color: '#94A3B8', fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 }}>
+                    DESTINATION ADDRESS
+                  </Text>
+                  {order?.deliveryLocation?.contactName ? (
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 2 }}>
+                      {order.deliveryLocation.contactName} • {order.deliveryLocation.contactNumber || ''}
+                    </Text>
+                  ) : null}
+                  <Text style={{ fontSize: 13, color: '#475569', lineHeight: 18 }}>
+                    {[
+                      order.deliveryLocation.addressLine1,
+                      order.deliveryLocation.addressLine2,
+                      order.deliveryLocation.city,
+                      order.deliveryLocation.postalCode,
+                    ].filter(Boolean).join(', ')}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* 6. Live Actions */}
+            <View style={styles.cancelledActions}>
+              <TouchableOpacity
+                style={[styles.primaryActionBtn, { backgroundColor: theme.primary }]}
+                onPress={() => router.replace('/(app)/(tabs)' as any)}
+                activeOpacity={0.88}
+              >
+                <Ionicons name="bag-handle" size={18} color="#FFFFFF" />
+                <Text style={styles.primaryActionText}>Explore Other Fits</Text>
+              </TouchableOpacity>
+
+              {order?.merchantId && (
+                <TouchableOpacity
+                  style={[styles.secondaryActionBtn, { borderColor: theme.primary }]}
+                  onPress={() => {
+                    const mid = typeof order.merchantId === 'string' ? order.merchantId : order.merchantId?._id;
+                    if (mid) router.push(`/(app)/merchant/${mid}` as any);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="storefront-outline" size={18} color={theme.primary} />
+                  <Text style={[styles.secondaryActionText, { color: theme.primary }]}>
+                    Browse More from {order?.merchantDetails?.name || 'Store'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={styles.secondaryActionBtn}
+                onPress={() => router.replace('/orders' as any)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="list" size={18} color="#0F172A" />
+                <Text style={styles.secondaryActionText}>View All Orders</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.helpLinkBtn}
+                onPress={handleHelp}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="help-circle-outline" size={16} color="#64748B" />
+                <Text style={styles.helpLinkText}>Need help with this cancellation? Contact Support</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* ─── Waiting State ─── */}
         {status === 'placed' && (
           <View style={styles.waitingCard}>
@@ -2677,7 +3465,7 @@ export default function OrderTrackingScreen() {
                 {items.map(item => (
                   <View key={item._id} style={styles.packageItem}>
                     {item.image ? (
-                      <Image source={{ uri: item.image }} style={styles.packageImage} />
+                      <Image source={{ uri: item.image }} style={styles.packageImage} contentFit="cover" />
                     ) : (
                       <View style={[styles.packageImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
                         <Ionicons name="shirt-outline" size={16} color="#CBD5E1" />
@@ -2695,37 +3483,39 @@ export default function OrderTrackingScreen() {
         )}
 
         {/* ─── Order Info ─── */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Order Details</Text>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Order ID</Text>
-            <Text style={styles.detailValue}>#{order?._id?.slice(-8).toUpperCase()}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Store</Text>
-            <Text style={styles.detailValue}>{order?.merchantDetails?.name || 'Store'}</Text>
-          </View>
-          {order?.deliveryLocation && (
+        {!isCancelled && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Order Details</Text>
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Delivery To</Text>
-              <Text style={styles.detailValue} numberOfLines={2}>
-                {order.deliveryLocation.addressLine1}, {order.deliveryLocation.city}
-              </Text>
+              <Text style={styles.detailLabel}>Order ID</Text>
+              <Text style={styles.detailValue}>#{order?._id?.slice(-8).toUpperCase()}</Text>
             </View>
-          )}
-          {order?.createdAt && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Placed On</Text>
-              <Text style={styles.detailValue}>
-                {new Date(order.createdAt).toLocaleDateString('en-IN', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
-              </Text>
+              <Text style={styles.detailLabel}>Store</Text>
+              <Text style={styles.detailValue}>{order?.merchantDetails?.name || 'Store'}</Text>
             </View>
-          )}
-        </View>
+            {order?.deliveryLocation && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Delivery To</Text>
+                <Text style={styles.detailValue} numberOfLines={2}>
+                  {order.deliveryLocation.addressLine1}, {order.deliveryLocation.city}
+                </Text>
+              </View>
+            )}
+            {order?.createdAt && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Placed On</Text>
+                <Text style={styles.detailValue}>
+                  {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Try & Buy Info Banner */}
         {isTracking && (
@@ -2742,8 +3532,68 @@ export default function OrderTrackingScreen() {
           </View>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: showStickyPayBar ? 120 : 40 }} />
       </ScrollView>
+
+      {/* ── Sticky Bottom Final Payment Bar ── */}
+      {showStickyPayBar && (
+        <View style={[styles.stickyPayBar, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+          <TouchableOpacity
+            style={[
+              styles.stickyPayBtnTouchable,
+              submitting && { opacity: 0.8 },
+            ]}
+            onPress={handleSubmitSelection}
+            disabled={submitting}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={(theme as any)?.buttonGradient || BrandColors.buttonGradient || ['#00C2E8', '#0088B8']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.stickyPayBtn}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <View style={styles.stickyPayBtnContent}>
+                  <Ionicons
+                    name={
+                      billingSummary.totalPayable === 0
+                        ? 'checkmark-circle'
+                        : isAllReturned
+                          ? 'cash'
+                          : 'card'
+                    }
+                    size={20}
+                    color="#fff"
+                  />
+                  <Text style={styles.stickyPayBtnText}>
+                    {billingSummary.totalPayable === 0
+                      ? 'Complete Return (₹0 Due)'
+                      : isAllReturned
+                        ? `Pay ₹${billingSummary.totalPayable} to Rider`
+                        : `Pay ₹${billingSummary.totalPayable}`}
+                  </Text>
+                </View>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <View style={styles.stickyPayTrustRow}>
+            <Ionicons
+              name={isAllReturned ? 'cash-outline' : 'shield-checkmark'}
+              size={13}
+              color={isAllReturned ? '#64748B' : '#16A34A'}
+            />
+            <Text style={styles.stickyPayTrustText}>
+              {isAllReturned
+                ? `Hand over ₹${billingSummary.totalPayable} cash or UPI to delivery partner`
+                : 'Secured by Razorpay • UPI, Cards, NetBanking'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       <CouponOffersModal
         visible={offersModalVisible}
@@ -2757,6 +3607,17 @@ export default function OrderTrackingScreen() {
         themeColor={theme.primary}
         orderType="try_and_buy"
         cartTotal={keptSubtotal}
+      />
+
+      <CouponDetailModal
+        visible={detailModalVisible}
+        offer={selectedOfferForDetails}
+        theme={theme}
+        onClose={() => {
+          setDetailModalVisible(false);
+          setSelectedOfferForDetails(null);
+        }}
+        isApplied={true}
       />
 
       {/* ─── Final Selection Confirmation Modal ─── */}
@@ -2826,7 +3687,7 @@ export default function OrderTrackingScreen() {
                   keptItems.map(item => (
                     <View key={item._id} style={styles.confirmItemRow}>
                       {item.image ? (
-                        <Image source={{ uri: item.image }} style={styles.confirmItemImage} />
+                        <Image source={{ uri: item.image }} style={styles.confirmItemImage} contentFit="cover" />
                       ) : (
                         <View style={[styles.confirmItemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
                           <Ionicons name="shirt-outline" size={18} color="#94A3B8" />
@@ -2869,7 +3730,7 @@ export default function OrderTrackingScreen() {
                   returnedItems.map(item => (
                     <View key={item._id} style={styles.confirmItemRow}>
                       {item.image ? (
-                        <Image source={{ uri: item.image }} style={styles.confirmItemImage} />
+                        <Image source={{ uri: item.image }} style={styles.confirmItemImage} contentFit="cover" />
                       ) : (
                         <View style={[styles.confirmItemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
                           <Ionicons name="shirt-outline" size={18} color="#94A3B8" />
@@ -2911,6 +3772,7 @@ export default function OrderTrackingScreen() {
                 themeColor={theme.primary}
                 title="Estimated Bill"
                 showNotice={false}
+                appliedCouponCode={appliedCoupon?.code || null}
               />
 
               {/* Warning Notice Banner */}
@@ -3074,6 +3936,64 @@ const styles = StyleSheet.create({
     paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 12,
   },
   submitText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  stickyPayBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 90,
+  },
+  stickyPayBtnTouchable: {
+    borderRadius: 16,
+    shadowColor: '#0088B8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  stickyPayBtn: {
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  stickyPayBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  stickyPayBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    fontFamily: Typography.fontFamily.bold,
+    textAlign: 'center',
+  },
+  stickyPayTrustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  stickyPayTrustText: {
+    fontSize: 11.5,
+    color: '#64748B',
+    fontFamily: Typography.fontFamily.medium,
+  },
   outlineBtn: {
     paddingVertical: 14, borderRadius: 16, alignItems: 'center', marginTop: 8,
     borderWidth: 1.5,
@@ -3200,50 +4120,51 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Showstopper Rate Experience Card
+  // Showstopper Rate Experience Card (FlashFits Luxury Whitish Theme)
   rateExperienceCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 22,
     marginBottom: 16,
     borderWidth: 1.5,
-    borderColor: 'rgba(251, 191, 36, 0.25)',
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 3,
   },
   rateBadgeRow: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   rateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    backgroundColor: '#EBFDFF',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderColor: '#BCEEFA',
   },
   rateBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#FBBF24',
+    color: '#0891B2',
     letterSpacing: 0.8,
   },
   rateCardTitle: {
     fontSize: 20,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: '#121212',
     marginBottom: 6,
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
   rateCardSubtitle: {
     fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: '#64748B',
     lineHeight: 18,
     marginBottom: 16,
   },
@@ -3252,11 +4173,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingVertical: 12,
+    backgroundColor: '#F8FAFC',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: '#E2E8F0',
     marginBottom: 8,
   },
   starTouchable: {
@@ -3264,15 +4185,15 @@ const styles = StyleSheet.create({
   },
   rateTapHint: {
     fontSize: 11,
-    color: 'rgba(251, 191, 36, 0.8)',
+    color: '#0891B2',
     textAlign: 'center',
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 14,
   },
   ratePillsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 6,
+    gap: 8,
     marginBottom: 16,
   },
   rateQuickChip: {
@@ -3280,45 +4201,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    paddingVertical: 7,
+    gap: 5,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 9,
     paddingHorizontal: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
   rateQuickChipText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#F1F5F9',
+    color: '#1E293B',
   },
   rateCtaBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F59E0B',
-    paddingVertical: 14,
+    backgroundColor: '#121212',
+    paddingVertical: 15,
     borderRadius: 16,
     gap: 8,
-    shadowColor: '#F59E0B',
+    shadowColor: '#121212',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.18,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
   },
   rateCtaIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(15, 23, 42, 0.15)',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(46, 211, 230, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   rateCtaBtnText: {
     fontSize: 15,
-    fontWeight: '900',
-    color: '#0F172A',
+    fontWeight: '800',
+    color: '#FFFFFF',
     letterSpacing: 0.3,
   },
 
@@ -4075,5 +5001,223 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     marginTop: 2,
+  },
+
+  // Cancelled State Luxury Styles
+  cancelledContainer: {
+    gap: 14,
+    marginBottom: 20,
+  },
+  cancelledHeroCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FEE2E2',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  cancelledHeroHaloOuter: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  cancelledHeroHaloInner: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelledHeroPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    marginBottom: 10,
+  },
+  cancelledHeroPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  cancelledHeroTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  cancelledHeroSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 8,
+    marginBottom: 12,
+  },
+  cancelledReasonBox: {
+    width: '100%',
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1,
+    borderColor: '#FFE4E6',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 2,
+  },
+  cancelledReasonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  cancelledReasonLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#E11D48',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  cancelledReasonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9F1239',
+    lineHeight: 18,
+  },
+  cancelledReasonMeta: {
+    fontSize: 11,
+    color: '#BE123C',
+    marginTop: 5,
+    fontWeight: '500',
+  },
+  cancelledSectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  cancelledItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  cancelledTag: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  cancelledTagText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
+  timelineContainer: {
+    marginTop: 4,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timelineColLeft: {
+    alignItems: 'center',
+    width: 22,
+  },
+  timelineNode: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 3,
+    minHeight: 28,
+  },
+  timelineColRight: {
+    flex: 1,
+    paddingBottom: 16,
+  },
+  timelineTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  timelineSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  timelineTime: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  cancelledStoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  cancelledStoreIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelledStoreName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  cancelledStoreSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  visitStoreBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  visitStoreText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cancelledActions: {
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 8,
   },
 });

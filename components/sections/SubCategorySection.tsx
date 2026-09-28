@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { fetchCategories } from '../../api/categories';
-import { GenderThemes, Typography } from '../../constants/theme';
+import { GenderThemes, Typography, BrandColors } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
 import Skeleton from '../common/Skeleton';
 
@@ -138,7 +138,7 @@ export default function SubCategorySection({ refreshKey = 0 }: { refreshKey?: nu
           </Text>
         </View>
         <TouchableOpacity>
-          <Text style={[styles.seeAll, { color: theme.primary }]}>See All</Text>
+          <Text style={[styles.seeAll, { color: BrandColors.matteBlack }]}>See All</Text>
         </TouchableOpacity>
       </View>
 

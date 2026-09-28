@@ -77,7 +77,7 @@ export default function HomeHeader({
               <Text style={styles.addressText} numberOfLines={1} pointerEvents="none">{address}</Text>
               <AntDesign name="down" size={12} color="#666" style={styles.chevron} pointerEvents="none" />
             </View>
-            <Text style={styles.subText} pointerEvents="none">Try in 60 mins</Text>
+            <Text style={styles.subText} pointerEvents="none">30 mins Try at Home</Text>
           </View>
         </TouchableOpacity>
 
@@ -173,9 +173,6 @@ export default function HomeHeader({
           <Animated.Text style={[styles.animatedSearchText, { opacity: fadeAnim }]}>
             "{KEYWORDS[keywordIndex]}"
           </Animated.Text>
-        </View>
-        <View style={styles.micButton}>
-          <MaterialCommunityIcons name="microphone-outline" size={17} color={BrandColors.matteBlack} />
         </View>
       </TouchableOpacity>
     </View>
@@ -306,13 +303,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: BrandColors.matteBlack,
     fontWeight: "600",
-  },
-  micButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: BrandColors.softCyan,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

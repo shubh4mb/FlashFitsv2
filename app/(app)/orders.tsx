@@ -23,9 +23,9 @@ import {
 import CustomRefreshControl from "@/components/common/CustomRefreshControl";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type FilterTab = 'All' | 'Processing' | 'Shipped' | 'Delivered' | 'Return';
+type FilterTab = 'All' | 'Processing' | 'Shipped' | 'Delivered' | 'Return' | 'Refunds';
 
-const FILTER_TABS: FilterTab[] = ['All', 'Processing', 'Shipped', 'Delivered', 'Return'];
+const FILTER_TABS: FilterTab[] = ['All', 'Processing', 'Shipped', 'Delivered', 'Return', 'Refunds'];
 
 const OrdersScreen = () => {
   const router = useRouter();
@@ -128,6 +128,7 @@ const OrdersScreen = () => {
     if (activeFilter === 'Shipped') return ['in_transit', 'shipped', 'try_phase'].includes(s) || (s === 'selection_made' && order.paymentStatus !== 'paid');
     if (activeFilter === 'Delivered') return ['completed', 'delivered'].includes(s) || (s === 'selection_made' && order.paymentStatus === 'paid');
     if (activeFilter === 'Return') return ['return_in_progress', 'returned'].includes(s);
+    if (activeFilter === 'Refunds') return Boolean(order.paymentStatus === 'refunded' || (Number(order.refundAmount) > 0));
     return true;
   });
 
@@ -234,15 +235,17 @@ const OrdersScreen = () => {
             scrollEventThrottle={16}
           >
             <Animated.View style={{ opacity: fadeAnim }}>
-              {filteredOrders.map((order) => {
-                const isCourier = order._isCourier;
+              {filteredOrders.map((order, index) => {
+                const isCourier = Boolean(order._isCourier);
                 const totalPayable = isCourier
                   ? ((order.totalAmount || 0) + (order.deliveryCharge || 40))
                   : (order.finalBilling?.totalPayable || order.totalAmount || 0);
+                const isRefunded = Boolean(order.paymentStatus === 'refunded' || (Number(order.refundAmount) > 0));
+                const refundedAmount = order.refundAmount || (isRefunded ? totalPayable : 0);
 
                 return (
                   <TouchableOpacity
-                    key={order._id}
+                    key={order._id || index}
                     style={styles.orderCard}
                     activeOpacity={0.7}
                     onPress={() => {
@@ -259,7 +262,13 @@ const OrdersScreen = () => {
                           Order ID #{order?._id ? String(order._id).slice(-6).toUpperCase() : '------'}
                         </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {isRefunded ? (
+                          <View style={styles.refundBadge}>
+                            <Ionicons name="checkmark-circle" size={11} color="#16A34A" />
+                            <Text style={styles.refundBadgeText}>REFUNDED</Text>
+                          </View>
+                        ) : null}
                         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(order.orderStatus) + '15' }]}>
                           <Text style={[styles.statusText, { color: getStatusColor(order.orderStatus) }]}>
                             {order.orderStatus?.toUpperCase()}
@@ -290,14 +299,50 @@ const OrdersScreen = () => {
 
                     <View style={styles.orderFooter}>
                       <View style={styles.priceContainer}>
-                        <Text style={styles.totalLabel}>Total</Text>
-                        <Text style={styles.totalAmount}>
+                        <Text style={styles.totalLabel}>{isRefunded ? 'Original Total' : 'Total'}</Text>
+                        <Text style={[styles.totalAmount, isRefunded && { textDecorationLine: 'line-through', color: '#94A3B8', fontSize: 13 }]}>
                           ₹{totalPayable}
                         </Text>
+                        {isRefunded ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                            <Ionicons name="wallet-outline" size={12} color="#16A34A" />
+                            <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#16A34A' }}>
+                              ₹{refundedAmount} Refunded
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
-                      <View style={styles.trackArrow}>
-                        <Text style={styles.trackText}>Track Order</Text>
-                        <Ionicons name="chevron-forward" size={16} color={BrandColors.primary} />
+                      <View style={styles.footerActions}>
+                        <TouchableOpacity
+                          style={styles.reportIssueBtn}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            router.push({
+                              pathname: '/help-center' as any,
+                              params: {
+                                orderId: order._id,
+                                category: 'damaged_product',
+                                itemsJson: JSON.stringify(
+                                  (order.items || []).map((i: any) => ({
+                                    _id: i._id,
+                                    name: i.name,
+                                    image: i.image,
+                                    size: i.size,
+                                    price: i.price,
+                                    tryStatus: i.tryStatus,
+                                  }))
+                                ),
+                              },
+                            });
+                          }}
+                        >
+                          <Ionicons name="camera-outline" size={13} color="#475569" />
+                          <Text style={styles.reportIssueBtnText}>Report Issue</Text>
+                        </TouchableOpacity>
+                        <View style={styles.trackArrow}>
+                          <Text style={styles.trackText}>Track</Text>
+                          <Ionicons name="chevron-forward" size={16} color={BrandColors.primary} />
+                        </View>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -376,6 +421,23 @@ const styles = StyleSheet.create({
   orderId: { fontSize: 14, fontFamily: Typography.fontFamily.bold, color: BrandColors.matteBlack },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusText: { fontSize: 10, fontFamily: Typography.fontFamily.bold },
+  refundBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  refundBadgeText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#15803D',
+    letterSpacing: 0.3,
+  },
   orderMeta: {
     flexDirection: "row", alignItems: "center", marginBottom: 16,
     backgroundColor: '#F8FAFC', padding: 10, borderRadius: 10,
@@ -394,6 +456,23 @@ const styles = StyleSheet.create({
     fontSize: 11, fontFamily: Typography.fontFamily.bold, color: "#94A3B8", marginBottom: 2,
   },
   totalAmount: { fontSize: 18, fontFamily: Typography.fontFamily.extraBold },
+  footerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  reportIssueBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  reportIssueBtnText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: "#475569",
+  },
   trackArrow: { flexDirection: "row", alignItems: "center", gap: 4 },
   trackText: { fontSize: 13, fontFamily: Typography.fontFamily.semiBold, color: "#64748B" },
   emptyContainer: {

@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as AppleAuthentication from "expo-apple-authentication";
+import * as WebBrowser from "expo-web-browser";
 import {
   emailLogin,
   registerSendOtp,
@@ -30,6 +31,7 @@ import {
 } from "../../api/auth";
 import logo from "../../assets/images/logo/logo.png";
 import { useAuth } from "../../context/AuthContext";
+import { BrandColors } from "../../constants/theme";
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import { GOOGLE_AUTH_CONFIG } from "../../config/auth";
 
@@ -141,6 +143,7 @@ function MovingAsset({ source, minX, maxX, minY, maxY, baseScale, isLowSpec }: M
 
   return (
     <Animated.View
+      pointerEvents="none"
       style={[
         styles.floatingAsset,
         {
@@ -176,6 +179,10 @@ export default function PhoneLogin() {
 
   // Focus states
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
+
+  // Legal & Agreement state
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   // Status & loading
   const [isLoading, setIsLoading] = useState(false);
@@ -320,12 +327,14 @@ export default function PhoneLogin() {
         setErrorMessage("Sign-in failed. Please check your credentials.");
       }
     } catch (error: any) {
-      console.error("Email sign-in failed:", error);
       const apiMessage =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         error.message ||
         "Invalid email or password.";
+      if (__DEV__) {
+        console.warn("[Auth] Email sign-in failed:", apiMessage);
+      }
       setErrorMessage(apiMessage);
     } finally {
       setIsLoading(false);
@@ -333,12 +342,20 @@ export default function PhoneLogin() {
   };
 
   const handleEmailRegister = async () => {
+    if (!name.trim()) {
+      setErrorMessage("Please enter your name.");
+      return;
+    }
     if (!email.trim()) {
       setErrorMessage("Please enter your email address.");
       return;
     }
     if (!password || password.length < 6) {
       setErrorMessage("Password must be at least 6 characters long.");
+      return;
+    }
+    if (!agreeToTerms) {
+      setErrorMessage("Please accept the Terms of Service & Try-on Policy to continue.");
       return;
     }
 
@@ -369,12 +386,14 @@ export default function PhoneLogin() {
         },
       });
     } catch (error: any) {
-      console.error("Email registration send OTP failed:", error);
       const apiMessage =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         error.message ||
         "Failed to send verification code. Please try again.";
+      if (__DEV__) {
+        console.warn("[Auth] Email registration failed:", apiMessage);
+      }
       setErrorMessage(apiMessage);
     } finally {
       setIsLoading(false);
@@ -471,15 +490,18 @@ export default function PhoneLogin() {
         setErrorMessage("Google Sign-in failed. Please try again.");
       }
     } catch (error: any) {
-      console.error("Google Sign-In failed:", error);
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
         setErrorMessage("Sign-in cancelled by user.");
       } else if (error.code === statusCodes.IN_PROGRESS) {
         setErrorMessage("Sign-in already in progress.");
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        setErrorMessage("Google Play Services not available.");
+        setErrorMessage(Platform.OS === 'ios' ? "Google Sign-in service not available on this device." : "Google Play Services not available.");
       } else {
-        setErrorMessage(error?.response?.data?.message || error.message || "Google Authentication failed.");
+        const apiMsg = error?.response?.data?.message || error.message || "Google Authentication failed.";
+        if (__DEV__) {
+          console.warn("[Auth] Google Sign-In failed:", apiMsg);
+        }
+        setErrorMessage(apiMsg);
       }
     } finally {
       setIsLoading(false);
@@ -524,8 +546,11 @@ export default function PhoneLogin() {
       if (error.code === 'ERR_REQUEST_CANCELED') {
         return;
       }
-      console.error("Apple Sign-In error:", error);
-      setErrorMessage(error?.response?.data?.message || error.message || "Apple Authentication failed.");
+      const apiMsg = error?.response?.data?.message || error.message || "Apple Authentication failed.";
+      if (__DEV__) {
+        console.warn("[Auth] Apple Sign-In error:", apiMsg);
+      }
+      setErrorMessage(apiMsg);
     } finally {
       setIsLoading(false);
     }
@@ -545,9 +570,11 @@ export default function PhoneLogin() {
       />
 
       {/* Floating Assets */}
-      {randomAssets.map((asset, index) => (
-        <MovingAsset key={index} {...asset} isLowSpec={isLowSpec} />
-      ))}
+      <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+        {randomAssets.map((asset, index) => (
+          <MovingAsset key={index} {...asset} isLowSpec={isLowSpec} />
+        ))}
+      </View>
 
       <KeyboardAvoidingView
         style={{ flex: 1, width: "100%" }}
@@ -558,12 +585,13 @@ export default function PhoneLogin() {
           contentContainerStyle={[
             styles.scrollContainer,
             {
-              paddingTop: Math.max(insets.top, 24),
-              paddingBottom: Math.max(insets.bottom, 24) + 24,
+              paddingTop: Math.max(insets.top + 8, 24),
+              paddingBottom: Math.max(insets.bottom, 24) + 40,
             }
           ]}
           showsVerticalScrollIndicator={false}
-          bounces={false}
+          bounces={true}
+          keyboardDismissMode="none"
           keyboardShouldPersistTaps="handled"
         >
           {/* ── LOGO ── */}
@@ -623,6 +651,12 @@ export default function PhoneLogin() {
                 </TouchableOpacity>
               </View>
 
+              {/* Brand Proposition Badge */}
+              <View style={styles.brandBadge}>
+                <View style={styles.brandBadgeDot} />
+                <Text style={styles.brandBadgeText}>30-MIN TRY AT HOME</Text>
+              </View>
+
               <Text style={styles.welcomeTitle}>
                 {authMode === 'signin' ? "Welcome Back" : "Join FlashFits"}
               </Text>
@@ -648,7 +682,12 @@ export default function PhoneLogin() {
                     focusedInput === 'name' && styles.inputBoxFocused,
                   ]}
                 >
-                  <Ionicons name="person-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                  <Ionicons
+                    name="person-outline"
+                    size={18}
+                    color={focusedInput === 'name' ? BrandColors.primaryDark : "#64748B"}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
                     style={styles.textInput}
                     placeholder="Full Name"
@@ -659,6 +698,8 @@ export default function PhoneLogin() {
                     onBlur={() => setFocusedInput(null)}
                     editable={!isLoading}
                     autoCapitalize="words"
+                    textContentType="name"
+                    selectionColor={BrandColors.primary}
                   />
                 </View>
               )}
@@ -669,7 +710,12 @@ export default function PhoneLogin() {
                   focusedInput === 'email' && styles.inputBoxFocused,
                 ]}
               >
-                <Ionicons name="mail-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                <Ionicons
+                  name="mail-outline"
+                  size={18}
+                  color={focusedInput === 'email' ? BrandColors.primaryDark : "#64748B"}
+                  style={styles.inputIcon}
+                />
                 <TextInput
                   style={styles.textInput}
                   placeholder="Email Address"
@@ -681,7 +727,9 @@ export default function PhoneLogin() {
                   editable={!isLoading}
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  textContentType="emailAddress"
                   autoCorrect={false}
+                  selectionColor={BrandColors.primary}
                 />
               </View>
 
@@ -691,7 +739,12 @@ export default function PhoneLogin() {
                   focusedInput === 'password' && styles.inputBoxFocused,
                 ]}
               >
-                <Ionicons name="lock-closed-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={18}
+                  color={focusedInput === 'password' ? BrandColors.primaryDark : "#64748B"}
+                  style={styles.inputIcon}
+                />
                 <TextInput
                   style={styles.textInput}
                   placeholder={authMode === 'signin' ? "Password" : "Password (min. 6 characters)"}
@@ -703,6 +756,8 @@ export default function PhoneLogin() {
                   editable={!isLoading}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
+                  textContentType={authMode === 'signin' ? "password" : "newPassword"}
+                  selectionColor={BrandColors.primary}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -712,7 +767,7 @@ export default function PhoneLogin() {
                   <Ionicons
                     name={showPassword ? "eye-off-outline" : "eye-outline"}
                     size={19}
-                    color="#64748B"
+                    color={showPassword ? BrandColors.primary : "#64748B"}
                   />
                 </TouchableOpacity>
               </View>
@@ -738,7 +793,12 @@ export default function PhoneLogin() {
                     focusedInput === 'referral' && styles.inputBoxFocused,
                   ]}
                 >
-                  <Ionicons name="gift-outline" size={18} color="#64748B" style={styles.inputIcon} />
+                  <Ionicons
+                    name="gift-outline"
+                    size={18}
+                    color={focusedInput === 'referral' ? BrandColors.primaryDark : "#64748B"}
+                    style={styles.inputIcon}
+                  />
                   <TextInput
                     style={styles.textInput}
                     placeholder="Referral Code (Optional)"
@@ -749,7 +809,49 @@ export default function PhoneLogin() {
                     onBlur={() => setFocusedInput(null)}
                     editable={!isLoading}
                     autoCapitalize="characters"
+                    textContentType="none"
+                    selectionColor={BrandColors.primary}
                   />
+                </View>
+              )}
+
+              {/* Registration Terms & Agreement Checkbox */}
+              {authMode === 'register' && (
+                <View style={styles.agreementRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.checkboxBox,
+                      agreeToTerms && styles.checkboxBoxChecked,
+                    ]}
+                    onPress={() => {
+                      setAgreeToTerms((prev) => !prev);
+                      if (errorMessage) setErrorMessage("");
+                    }}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {agreeToTerms && (
+                      <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                    )}
+                  </TouchableOpacity>
+                  <View style={styles.agreementTextContainer}>
+                    <Text style={styles.agreementText}>
+                      I accept FlashFits'{" "}
+                      <Text
+                        style={styles.agreementLink}
+                        onPress={() => setShowTermsModal(true)}
+                      >
+                        Terms of Service, Doorstep Try-on Rules
+                      </Text>{" "}
+                      and{" "}
+                      <Text
+                        style={styles.agreementLink}
+                        onPress={() => WebBrowser.openBrowserAsync('https://www.theflashfits.com/privacy-policy')}
+                      >
+                        Privacy Policy
+                      </Text>
+                    </Text>
+                  </View>
                 </View>
               )}
 
@@ -762,7 +864,7 @@ export default function PhoneLogin() {
                   activeOpacity={0.85}
                 >
                   <LinearGradient
-                    colors={["#0F172A", "#1E293B"]}
+                    colors={BrandColors.buttonGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.mainBtnGradient}
@@ -824,8 +926,19 @@ export default function PhoneLogin() {
           <View style={styles.termsBox}>
             <Text style={styles.terms}>
               By continuing, you agree to our{" "}
-              <Text style={styles.link}>Terms of Service</Text> and{" "}
-              <Text style={styles.link}>Privacy Policy</Text>
+              <Text
+                style={styles.link}
+                onPress={() => WebBrowser.openBrowserAsync('https://www.theflashfits.com/terms-of-service')}
+              >
+                Terms of Service
+              </Text>{" "}
+              and{" "}
+              <Text
+                style={styles.link}
+                onPress={() => WebBrowser.openBrowserAsync('https://www.theflashfits.com/privacy-policy')}
+              >
+                Privacy Policy
+              </Text>
             </Text>
           </View>
         </ScrollView>
@@ -889,12 +1002,20 @@ export default function PhoneLogin() {
                     style={styles.modalActionBtn}
                     disabled={forgotLoading}
                     onPress={handleForgotPasswordSend}
+                    activeOpacity={0.85}
                   >
-                    {forgotLoading ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.modalActionBtnText}>Send Reset Code</Text>
-                    )}
+                    <LinearGradient
+                      colors={BrandColors.buttonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.modalActionBtnGradient}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.modalActionBtnText}>Send Reset Code</Text>
+                      )}
+                    </LinearGradient>
                   </TouchableOpacity>
                 </>
               ) : (
@@ -930,17 +1051,183 @@ export default function PhoneLogin() {
                     style={styles.modalActionBtn}
                     disabled={forgotLoading}
                     onPress={handleResetPasswordSubmit}
+                    activeOpacity={0.85}
                   >
-                    {forgotLoading ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.modalActionBtnText}>Update Password</Text>
-                    )}
+                    <LinearGradient
+                      colors={BrandColors.buttonGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.modalActionBtnGradient}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.modalActionBtnText}>Update Password</Text>
+                      )}
+                    </LinearGradient>
                   </TouchableOpacity>
                 </>
               )}
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* ── Terms & Doorstep Try-on Policy Modal ── */}
+      <Modal
+        visible={showTermsModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTermsModal(false)}
+      >
+        <View style={styles.termsModalBackdrop}>
+          <View style={styles.termsModalCard}>
+            {/* Header */}
+            <View style={styles.termsModalHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.termsModalBadge}>
+                  <View style={styles.termsModalBadgeDot} />
+                  <Text style={styles.termsModalBadgeText}>CUSTOMER AGREEMENT</Text>
+                </View>
+                <Text style={styles.termsModalTitle}>Terms & Doorstep Try-on Policy</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowTermsModal(false)}
+                style={styles.modalCloseBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Scrollable Rules Content */}
+            <ScrollView
+              style={styles.termsModalScroll}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
+              <Text style={styles.termsIntro}>
+                Welcome to FlashFits! By registering, you agree to our service terms and doorstep trial protocol designed to keep fashion fast, fair, and seamless.
+              </Text>
+
+              {/* Rule Card 1 */}
+              <View style={styles.ruleCard}>
+                <View style={styles.ruleIconCircle}>
+                  <Ionicons name="timer-outline" size={20} color={BrandColors.primaryDark} />
+                </View>
+                <View style={styles.ruleContent}>
+                  <Text style={styles.ruleTitle}>1. 10–15 Min Doorstep Fitting Window</Text>
+                  <Text style={styles.ruleDesc}>
+                    Our delivery partner brings your selected styles directly to your door. You have a private 10–15 minute window to try on garments while the partner waits. Items cannot be taken away from the delivery address.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Rule Card 2 */}
+              <View style={styles.ruleCard}>
+                <View style={styles.ruleIconCircle}>
+                  <Ionicons name="pricetag-outline" size={20} color={BrandColors.primaryDark} />
+                </View>
+                <View style={styles.ruleContent}>
+                  <Text style={styles.ruleTitle}>2. Tags & Garment Care</Text>
+                  <Text style={styles.ruleDesc}>
+                    All original brand tags, barcode stickers, and hygiene seals must remain intact. Clothes must be tried on carefully and kept clean—free from perfume, deodorant marks, makeup, tears, or stretching.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Rule Card 3 */}
+              <View style={styles.ruleCard}>
+                <View style={styles.ruleIconCircle}>
+                  <Ionicons name="card-outline" size={20} color={BrandColors.primaryDark} />
+                </View>
+                <View style={styles.ruleContent}>
+                  <Text style={styles.ruleTitle}>3. Pay Only For What You Keep</Text>
+                  <Text style={styles.ruleDesc}>
+                    Unwanted items are handed right back to the delivery partner immediately after your trial. For the garments you love and keep, settle payment on the spot via UPI, Card, or Cash.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Rule Card 4 */}
+              <View style={styles.ruleCard}>
+                <View style={styles.ruleIconCircle}>
+                  <Ionicons name="alert-circle-outline" size={20} color={BrandColors.primaryDark} />
+                </View>
+                <View style={styles.ruleContent}>
+                  <Text style={styles.ruleTitle}>4. Damaged or Non-Returned Items</Text>
+                  <Text style={styles.ruleDesc}>
+                    Items with removed/cut tags, stains, or physical damage, as well as any item not handed back to the partner, are deemed purchased and will be billed to your registered account.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Rule Card 5: Courier Orders */}
+              <View style={styles.ruleCard}>
+                <View style={styles.ruleIconCircle}>
+                  <Ionicons name="cube-outline" size={20} color={BrandColors.primaryDark} />
+                </View>
+                <View style={styles.ruleContent}>
+                  <Text style={styles.ruleTitle}>5. Courier Orders: 3-Day Return Window</Text>
+                  <Text style={styles.ruleDesc}>
+                    For distant merchant orders shipped via courier, customers can request a return within 3 days of delivery via the in-app tracking screen. Returned garments must be unworn with all brand tags intact.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Rule Card 6 */}
+              <View style={styles.ruleCard}>
+                <View style={styles.ruleIconCircle}>
+                  <Ionicons name="lock-closed-outline" size={20} color={BrandColors.primaryDark} />
+                </View>
+                <View style={styles.ruleContent}>
+                  <Text style={styles.ruleTitle}>6. Privacy & DPDP Act 2023</Text>
+                  <Text style={styles.ruleDesc}>
+                    Your personal information, phone number, and location are protected under India's Digital Personal Data Protection Act (DPDP Act 2023) and used solely for fulfilling orders and tracking delivery.
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.fullWebLink}
+                onPress={() => WebBrowser.openBrowserAsync('https://www.theflashfits.com/terms-of-service')}
+              >
+                <Ionicons name="open-outline" size={14} color={BrandColors.primaryDark} />
+                <Text style={styles.fullWebLinkText}>Read Full Terms of Service</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.fullWebLink, { marginTop: 0 }]}
+                onPress={() => WebBrowser.openBrowserAsync('https://www.theflashfits.com/privacy-policy')}
+              >
+                <Ionicons name="shield-checkmark-outline" size={14} color={BrandColors.primaryDark} />
+                <Text style={styles.fullWebLinkText}>Read Privacy Policy</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            {/* Modal Bottom CTA */}
+            <View style={styles.termsModalFooter}>
+              <TouchableOpacity
+                style={styles.modalAcceptBtn}
+                onPress={() => {
+                  setAgreeToTerms(true);
+                  setErrorMessage("");
+                  setShowTermsModal(false);
+                }}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={BrandColors.buttonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.modalAcceptBtnGradient}
+                >
+                  <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.modalAcceptBtnText}>I Understand & Agree</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -973,7 +1260,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingBottom: 40,
     alignItems: "center",
-    justifyContent: "center",
   },
 
   /* ── LOGO ── */
@@ -1002,7 +1288,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     height: 44,
     padding: 3,
-    marginBottom: 20,
+    marginBottom: 16,
     position: "relative",
   },
   tabIndicator: {
@@ -1012,6 +1298,8 @@ const styles = StyleSheet.create({
     width: "47%",
     backgroundColor: "#0F172A",
     borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "rgba(0, 194, 232, 0.4)",
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -1033,6 +1321,34 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: "#FFFFFF",
     fontWeight: "700",
+    fontFamily: "Manrope-Bold",
+  },
+
+  /* ── BRAND PROPOSITION BADGE ── */
+  brandBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: BrandColors.softCyan,
+    borderWidth: 1,
+    borderColor: BrandColors.softCyanBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginBottom: 12,
+    gap: 6,
+  },
+  brandBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: BrandColors.primary,
+  },
+  brandBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: BrandColors.cyanDeep,
+    letterSpacing: 1.2,
     fontFamily: "Manrope-Bold",
   },
 
@@ -1066,7 +1382,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   inputBoxFocused: {
-    borderColor: "#0F172A",
+    borderColor: BrandColors.primary,
     backgroundColor: "#FFFFFF",
   },
   inputIcon: {
@@ -1091,8 +1407,8 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontSize: 13,
-    color: "#475569",
-    fontWeight: "600",
+    color: BrandColors.primaryDark,
+    fontWeight: "700",
     fontFamily: "Manrope-SemiBold",
   },
 
@@ -1121,11 +1437,11 @@ const styles = StyleSheet.create({
   mainBtn: {
     borderRadius: 16,
     overflow: "hidden",
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+    shadowColor: BrandColors.primary,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    elevation: 4,
   },
   mainBtnGradient: {
     flexDirection: "row",
@@ -1188,7 +1504,7 @@ const styles = StyleSheet.create({
   /* ── TERMS ── */
   termsBox: { alignItems: "center", paddingHorizontal: 16 },
   terms: { fontSize: 12, color: "#64748B", textAlign: "center", lineHeight: 18 },
-  link: { color: "#0F172A", fontWeight: "700" },
+  link: { color: BrandColors.primaryDark, fontWeight: "700" },
 
   /* ── MODAL STYLES ── */
   modalBackdrop: {
@@ -1245,12 +1561,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   modalActionBtn: {
-    backgroundColor: "#0F172A",
     borderRadius: 14,
+    overflow: "hidden",
+    marginTop: 6,
+    shadowColor: BrandColors.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  modalActionBtnGradient: {
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 6,
   },
   modalActionBtnText: {
     color: "#FFFFFF",
@@ -1285,5 +1608,193 @@ const styles = StyleSheet.create({
     color: "#065F46",
     fontSize: 13,
     flex: 1,
+  },
+
+  /* ── REGISTRATION AGREEMENT CHECKBOX ── */
+  agreementRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+    marginTop: 2,
+    paddingHorizontal: 2,
+    gap: 10,
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  checkboxBoxChecked: {
+    backgroundColor: BrandColors.primaryDark,
+    borderColor: BrandColors.primaryDark,
+  },
+  agreementTextContainer: {
+    flex: 1,
+  },
+  agreementText: {
+    fontSize: 12,
+    color: "#64748B",
+    lineHeight: 18,
+    fontFamily: "Manrope-Medium",
+  },
+  agreementLink: {
+    color: BrandColors.primaryDark,
+    fontWeight: "700",
+    fontFamily: "Manrope-Bold",
+    textDecorationLine: "underline",
+  },
+
+  /* ── TERMS MODAL ── */
+  termsModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    justifyContent: "flex-end",
+  },
+  termsModalCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === "ios" ? 36 : 24,
+    maxHeight: height * 0.85,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 12,
+  },
+  termsModalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  termsModalBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: BrandColors.softCyan,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandColors.softCyanBorder,
+    marginBottom: 6,
+    gap: 5,
+  },
+  termsModalBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: BrandColors.primary,
+  },
+  termsModalBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: BrandColors.cyanDeep,
+    letterSpacing: 1,
+    fontFamily: "Manrope-Bold",
+  },
+  termsModalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0F172A",
+    fontFamily: "Manrope-Bold",
+  },
+  termsModalScroll: {
+    maxHeight: height * 0.55,
+  },
+  termsIntro: {
+    fontSize: 13,
+    color: "#64748B",
+    lineHeight: 19,
+    marginBottom: 16,
+    fontFamily: "Manrope-Medium",
+  },
+  ruleCard: {
+    flexDirection: "row",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+    gap: 12,
+  },
+  ruleIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: BrandColors.softCyan,
+    borderWidth: 1,
+    borderColor: BrandColors.softCyanBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ruleContent: {
+    flex: 1,
+  },
+  ruleTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 3,
+    fontFamily: "Manrope-Bold",
+  },
+  ruleDesc: {
+    fontSize: 12,
+    color: "#475569",
+    lineHeight: 17,
+    fontFamily: "Manrope-Regular",
+  },
+  fullWebLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    gap: 6,
+    marginTop: 6,
+  },
+  fullWebLinkText: {
+    fontSize: 13,
+    color: BrandColors.primaryDark,
+    fontWeight: "700",
+    fontFamily: "Manrope-SemiBold",
+    textDecorationLine: "underline",
+  },
+  termsModalFooter: {
+    marginTop: 12,
+    paddingTop: 8,
+  },
+  modalAcceptBtn: {
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: BrandColors.primary,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  modalAcceptBtnGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+  },
+  modalAcceptBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "Manrope-Bold",
   },
 });
