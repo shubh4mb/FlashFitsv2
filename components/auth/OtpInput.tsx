@@ -22,9 +22,10 @@ interface OtpInputProps {
   phone?: string;
   email?: string;
   mode?: 'phone' | 'email';
+  returnUrl?: string;
 }
 
-const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mode = 'email' }) => {
+const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mode = 'email', returnUrl }) => {
   const router = useRouter();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [error, setError] = useState(false);
@@ -33,7 +34,8 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const inputs = useRef<Array<TextInput | null>>([]);
-  const { signIn } = useAuth();
+  const { signIn, returnUrl: contextReturnUrl } = useAuth();
+  const effectiveReturnUrl = returnUrl || contextReturnUrl;
 
   // Animation values
   const headerSlide = useRef(new Animated.Value(-100)).current;
@@ -234,7 +236,8 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
           name: authData.user?.name,
           email: authData.user?.email || email,
           phoneNumber: authData.user?.phoneNumber || phone,
-        }
+        },
+        effectiveReturnUrl || undefined
       );
 
     } catch (err: any) {
@@ -318,7 +321,14 @@ const OtpInputComponent: React.FC<OtpInputProps> = ({ phone = '', email = '', mo
   };
 
   const handleBackButtonPress = () => {
-    router.replace("/(auth)" as any);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace({
+        pathname: "/(auth)",
+        params: effectiveReturnUrl ? { returnUrl: effectiveReturnUrl } : undefined,
+      } as any);
+    }
   };
 
   const formatTime = (seconds: number) => {

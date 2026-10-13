@@ -29,7 +29,7 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 export const WishlistProvider = ({ children }: { children: ReactNode }) => {
   const [wishlistIds, setWishlistIds] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, setReturnUrl } = useAuth();
   const showAlert = useAlert();
   const router = useRouter();
 
@@ -95,12 +95,22 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     if (!isAuthenticated) {
+      const returnUrl = `/(app)/product/${productId}`;
       showAlert({
         title: 'Sign In Required',
         message: 'Please sign in or create an account to save items to your wishlist.',
         buttons: [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/(auth)') },
+          {
+            text: 'Sign In',
+            onPress: () => {
+              setReturnUrl(returnUrl);
+              router.push({
+                pathname: '/(auth)',
+                params: { returnUrl },
+              });
+            },
+          },
         ],
       });
       return;

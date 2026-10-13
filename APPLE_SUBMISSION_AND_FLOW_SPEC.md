@@ -119,6 +119,7 @@ Based on Apple Guidelines 5.1.1(v), 5.1.1(iv), and 5.1.5, we have agreed on the 
 | **Phase 7** | Store Detail Location Gating (Hide delivery minutes & distance when no location set) | `app/(app)/merchant/[id].tsx` | ✅ Completed |
 | **Phase 8** | Product Detail FlashFits Promise Perks (Try & Buy, 30m Delivery, Instant Return, Store Price) | `app/(app)/product/[id].tsx` | ✅ Completed |
 | **Phase 9** | Push Notification Permission Deferral (Zero prompt on startup; deferred to post-login & order tracking) | `hooks/usePushNotifications.ts`, `context/AuthContext.tsx`, `app/(app)/order-tracking.tsx` | ✅ Completed |
+| **Phase 10** | Seamless Return to Product / Prior Screen Post-Authentication (Query & context returnUrl support across all auth methods, OTP, onboarding, and guest/back buttons) | `context/AuthContext.tsx`, `app/(app)/product/[id].tsx`, `app/(auth)/index.tsx`, `components/auth/PhoneLogin.tsx`, `components/auth/OtpInput.tsx` | ✅ Completed |
 
 ---
 

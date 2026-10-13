@@ -162,10 +162,36 @@ function MovingAsset({ source, minX, maxX, minY, maxY, baseScale, isLowSpec }: M
   );
 }
 
-export default function PhoneLogin() {
+interface PhoneLoginProps {
+  returnUrl?: string;
+}
+
+export default function PhoneLogin({ returnUrl }: PhoneLoginProps = {}) {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, returnUrl: contextReturnUrl, setReturnUrl } = useAuth();
+  const effectiveReturnUrl = returnUrl || contextReturnUrl;
   const insets = useSafeAreaInsets();
+
+  const handleExitAuth = () => {
+    if (effectiveReturnUrl) {
+      setReturnUrl(null);
+      if (effectiveReturnUrl.includes('?')) {
+        const [path, queryString] = effectiveReturnUrl.split('?');
+        const params: Record<string, string> = {};
+        queryString.split('&').forEach(pair => {
+          const [k, v] = pair.split('=');
+          if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || '');
+        });
+        router.replace({ pathname: path as any, params });
+      } else {
+        router.replace(effectiveReturnUrl as any);
+      }
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(app)/(tabs)');
+    }
+  };
 
   // Mode: 'signin' or 'register'
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
@@ -322,7 +348,7 @@ export default function PhoneLogin() {
           name: user?.name,
           email: user?.email || email.trim().toLowerCase(),
           phoneNumber: user?.phoneNumber,
-        });
+        }, effectiveReturnUrl || undefined);
       } else {
         setErrorMessage("Sign-in failed. Please check your credentials.");
       }
@@ -383,6 +409,7 @@ export default function PhoneLogin() {
         params: {
           email: cleanEmail,
           mode: "email",
+          returnUrl: effectiveReturnUrl || undefined,
         },
       });
     } catch (error: any) {
@@ -486,7 +513,7 @@ export default function PhoneLogin() {
           name: user?.name,
           email: user?.email,
           phoneNumber: user?.phoneNumber,
-        });
+        }, effectiveReturnUrl || undefined);
       } else {
         setErrorMessage("Google Sign-in failed. Please try again.");
       }
@@ -539,7 +566,7 @@ export default function PhoneLogin() {
           name: user?.name,
           email: user?.email,
           phoneNumber: user?.phoneNumber,
-        });
+        }, effectiveReturnUrl || undefined);
       } else {
         setErrorMessage("Apple Sign-in failed. Please try again.");
       }
@@ -599,7 +626,7 @@ export default function PhoneLogin() {
           <View style={styles.topSkipRow}>
             <TouchableOpacity
               style={styles.topSkipBtn}
-              onPress={() => router.replace('/(app)/(tabs)')}
+              onPress={handleExitAuth}
               activeOpacity={0.7}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
@@ -937,7 +964,7 @@ export default function PhoneLogin() {
               {/* Continue as Guest Button */}
               <TouchableOpacity
                 style={styles.guestBtn}
-                onPress={() => router.replace('/(app)/(tabs)')}
+                onPress={handleExitAuth}
                 activeOpacity={0.85}
               >
                 <Ionicons name="bag-handle-outline" size={19} color="#475569" />

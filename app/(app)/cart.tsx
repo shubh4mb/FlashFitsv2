@@ -47,7 +47,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 type CartTab = 'instant' | 'standard';
 
 export default function CartScreen() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, setReturnUrl } = useAuth();
   const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart, applyOffer, removeOffer } = useCart();
   const showToast = useToast();
   const showAlert = useAlert();
@@ -368,7 +368,16 @@ export default function CartScreen() {
         message: 'Please sign in or register with your phone number to place your order.',
         buttons: [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/(auth)') },
+          {
+            text: 'Sign In',
+            onPress: () => {
+              setReturnUrl('/(app)/cart');
+              router.push({
+                pathname: '/(auth)',
+                params: { returnUrl: '/(app)/cart' },
+              });
+            },
+          },
         ],
       });
       setResetSwipeKey(prev => prev + 1);
@@ -459,7 +468,16 @@ export default function CartScreen() {
         message: 'Please sign in or register with your phone number to proceed to checkout.',
         buttons: [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/(auth)') },
+          {
+            text: 'Sign In',
+            onPress: () => {
+              setReturnUrl('/(app)/cart');
+              router.push({
+                pathname: '/(auth)',
+                params: { returnUrl: '/(app)/cart' },
+              });
+            },
+          },
         ],
       });
       return;

@@ -23,7 +23,7 @@ import { deleteUserAccount } from '@/api/auth';
 
 export default function ProfileScreen() {
     const router = useRouter();
-    const { signOut, user, refreshUserProfile, isAuthenticated } = useAuth();
+    const { signOut, user, refreshUserProfile, isAuthenticated, setReturnUrl } = useAuth();
     const showAlert = useAlert();
     const insets = useSafeAreaInsets();
     const [refreshing, setRefreshing] = useState(false);
@@ -111,12 +111,19 @@ export default function ProfileScreen() {
             icon: 'receipt-outline' as const,
             onPress: () => {
                 if (!isAuthenticated) {
+                    const returnUrl = '/(app)/orders';
                     showAlert({
                         title: 'Sign In Required',
                         message: 'Please sign in or register to view your orders.',
                         buttons: [
                             { text: 'Cancel', style: 'cancel' },
-                            { text: 'Sign In', onPress: () => router.push('/(auth)') },
+                            {
+                                text: 'Sign In',
+                                onPress: () => {
+                                    setReturnUrl(returnUrl);
+                                    router.push({ pathname: '/(auth)', params: { returnUrl } });
+                                },
+                            },
                         ],
                     });
                     return;
@@ -130,12 +137,19 @@ export default function ProfileScreen() {
             icon: 'location-outline' as const,
             onPress: () => {
                 if (!isAuthenticated) {
+                    const returnUrl = '/(app)/addresses';
                     showAlert({
                         title: 'Sign In Required',
                         message: 'Please sign in or register to manage your addresses.',
                         buttons: [
                             { text: 'Cancel', style: 'cancel' },
-                            { text: 'Sign In', onPress: () => router.push('/(auth)') },
+                            {
+                                text: 'Sign In',
+                                onPress: () => {
+                                    setReturnUrl(returnUrl);
+                                    router.push({ pathname: '/(auth)', params: { returnUrl } });
+                                },
+                            },
                         ],
                     });
                     return;
@@ -149,12 +163,19 @@ export default function ProfileScreen() {
             icon: 'gift-outline' as const,
             onPress: () => {
                 if (!isAuthenticated) {
+                    const returnUrl = '/(app)/refer-earn';
                     showAlert({
                         title: 'Sign In Required',
                         message: 'Please sign in or register to view and share referral rewards.',
                         buttons: [
                             { text: 'Cancel', style: 'cancel' },
-                            { text: 'Sign In', onPress: () => router.push('/(auth)') },
+                            {
+                                text: 'Sign In',
+                                onPress: () => {
+                                    setReturnUrl(returnUrl);
+                                    router.push({ pathname: '/(auth)', params: { returnUrl } });
+                                },
+                            },
                         ],
                     });
                     return;
@@ -337,7 +358,10 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                     style={[styles.loginCtaBtn, { backgroundColor: BrandColors.primary }]}
                     activeOpacity={0.85}
-                    onPress={() => router.push('/(auth)')}
+                    onPress={() => {
+                        setReturnUrl('/(app)/profile');
+                        router.push({ pathname: '/(auth)', params: { returnUrl: '/(app)/profile' } });
+                    }}
                 >
                     <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
                     <Text style={styles.loginCtaText}>SIGN IN OR REGISTER</Text>

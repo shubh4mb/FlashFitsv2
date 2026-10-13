@@ -20,7 +20,16 @@ interface AuthContextType {
     user: UserData | null;
     setUser: React.Dispatch<React.SetStateAction<UserData | null>>;
     refreshUserProfile: () => Promise<UserData | null>;
-    signIn: (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => Promise<void>;
+    returnUrl: string | null;
+    setReturnUrl: React.Dispatch<React.SetStateAction<string | null>>;
+    signIn: (
+        token: string,
+        userId: string,
+        refreshToken?: string,
+        isNewUser?: boolean,
+        userData?: UserData,
+        targetReturnUrl?: string
+    ) => Promise<void>;
     signOut: () => Promise<void>;
     completeOnboarding: () => void;
     requestPushPermissions: () => Promise<string | undefined>;
@@ -33,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean>(false);
     const [user, setUser] = useState<UserData | null>(null);
+    const [returnUrl, setReturnUrl] = useState<string | null>(null);
 
     // Setup Push Notifications
     const { expoPushToken, sendPushTokenToBackend, requestPushPermissions } = usePushNotifications();
@@ -109,7 +119,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loadToken();
     }, []);
 
-    const signIn = useCallback(async (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => {
+    const navigateToDestination = useCallback((destination?: string | null) => {
+        if (!destination) {
+            router.replace('/(app)/(tabs)');
+            return;
+        }
+
+        try {
+            if (destination.includes('?')) {
+                const [path, queryString] = destination.split('?');
+                const params: Record<string, string> = {};
+                queryString.split('&').forEach(pair => {
+                    const [k, v] = pair.split('=');
+                    if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || '');
+                });
+                router.replace({ pathname: path as any, params });
+            } else {
+                router.replace(destination as any);
+            }
+        } catch {
+            router.replace('/(app)/(tabs)');
+        }
+    }, []);
+
+    const signIn = useCallback(async (
+        token: string,
+        userId: string,
+        refreshToken?: string,
+        isNewUser?: boolean,
+        userData?: UserData,
+        targetReturnUrl?: string
+    ) => {
         try {
             await SecureStore.setItemAsync('token', token);
             await SecureStore.setItemAsync('userId', userId);
@@ -164,28 +204,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }).catch(() => {});
             }
 
+            const destination = targetReturnUrl || returnUrl;
+
             setTimeout(() => {
                 if (isNewUser) {
                     router.replace('/(auth)/onboarding');
                 } else {
-                    router.replace('/(app)/(tabs)');
+                    if (destination) {
+                        setReturnUrl(null);
+                        navigateToDestination(destination);
+                    } else {
+                        router.replace('/(app)/(tabs)');
+                    }
                 }
             }, 0);
         } catch (error) {
             console.error('Failed to sign in', error);
         }
-    }, [expoPushToken, refreshUserProfile, sendPushTokenToBackend]);
+    }, [expoPushToken, refreshUserProfile, sendPushTokenToBackend, returnUrl, navigateToDestination]);
 
     const completeOnboarding = useCallback(async () => {
         try {
             await SecureStore.setItemAsync('hasSeenOnboarding', 'true');
             setHasSeenOnboarding(true);
-            router.replace('/(app)/(tabs)');
+            const destination = returnUrl;
+            if (destination) {
+                setReturnUrl(null);
+                navigateToDestination(destination);
+            } else {
+                router.replace('/(app)/(tabs)');
+            }
         } catch (error) {
             console.error('Failed to complete onboarding', error);
-            router.replace('/(app)/(tabs)');
+            const destination = returnUrl;
+            if (destination) {
+                setReturnUrl(null);
+                navigateToDestination(destination);
+            } else {
+                router.replace('/(app)/(tabs)');
+            }
         }
-    }, []);
+    }, [returnUrl, navigateToDestination]);
 
     const signOut = useCallback(async () => {
         try {
@@ -211,6 +270,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updateAuthToken(null);
             setIsAuthenticated(false);
             setUser(null);
+            setReturnUrl(null);
 
             setTimeout(() => {
                 router.replace('/(auth)');
@@ -227,6 +287,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         setUser,
         refreshUserProfile,
+        returnUrl,
+        setReturnUrl,
         signIn,
         signOut,
         completeOnboarding,
@@ -237,6 +299,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hasSeenOnboarding,
         user,
         refreshUserProfile,
+        returnUrl,
+        setReturnUrl,
         signIn,
         signOut,
         completeOnboarding,

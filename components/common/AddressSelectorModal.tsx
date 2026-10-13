@@ -31,7 +31,7 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, setReturnUrl } = useAuth();
   const showAlert = useAlert();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
@@ -125,7 +125,13 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
         message: 'Please sign in or register to add delivery addresses.',
         buttons: [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/(auth)') }
+          {
+            text: 'Sign In',
+            onPress: () => {
+              setReturnUrl('/(app)/addresses');
+              router.push({ pathname: '/(auth)', params: { returnUrl: '/(app)/addresses' } });
+            },
+          }
         ]
       });
       return;
@@ -287,7 +293,8 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
                         activeOpacity={0.8}
                         onPress={() => {
                           handleClose();
-                          router.push('/(auth)');
+                          setReturnUrl('/(app)/addresses');
+                          router.push({ pathname: '/(auth)', params: { returnUrl: '/(app)/addresses' } });
                         }}
                       >
                         <Text style={styles.guestLoginBtnText}>Login</Text>

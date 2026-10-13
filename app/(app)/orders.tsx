@@ -31,7 +31,7 @@ const FILTER_TABS: FilterTab[] = ['All', 'Processing', 'Shipped', 'Delivered', '
 const OrdersScreen = () => {
   const router = useRouter();
   const { selectedGender } = useGender();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, setReturnUrl } = useAuth();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
 
@@ -177,7 +177,10 @@ const OrdersScreen = () => {
           </Text>
           <TouchableOpacity
             style={[styles.shopNowButton, { backgroundColor: BrandColors.primary }]}
-            onPress={() => router.push("/(auth)" as any)}
+            onPress={() => {
+              setReturnUrl('/(app)/orders');
+              router.push({ pathname: '/(auth)', params: { returnUrl: '/(app)/orders' } });
+            }}
           >
             <Text style={styles.shopNowText}>Sign In</Text>
             <Ionicons name="arrow-forward" size={20} color="#fff" />
