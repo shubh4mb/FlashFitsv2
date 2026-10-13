@@ -189,6 +189,7 @@ const ProductDetailPage = () => {
   const [showAddedFeedback, setShowAddedFeedback] = useState(false);
   const feedbackOpacity = useRef(new Animated.Value(0)).current;
   const [isDescExpanded, setIsDescExpanded] = useState(false);
+  const [showPromiseModal, setShowPromiseModal] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -1056,22 +1057,115 @@ const ProductDetailPage = () => {
             })}
           </View>
 
-          {/* Delivery Info Strip */}
-          <View style={styles.deliveryStrip}>
-            <View style={styles.deliveryItem}>
-              <Ionicons name="flash" size={13} color="#94A3B8" />
-              <Text style={styles.deliveryText}>Express delivery</Text>
+          {/* FlashFits Perks & Guarantees */}
+          <View style={styles.perksCard}>
+            <View style={styles.perksHeader}>
+              <View style={styles.perksHeaderLeft}>
+                <Ionicons name="sparkles" size={12} color="#0F172A" />
+                <Text style={styles.perksHeaderTitle}>FLASHFITS PROMISE</Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowPromiseModal(true);
+                }}
+                style={styles.perksHowItWorksBtn}
+              >
+                <Text style={styles.perksHowItWorksText}>How it works</Text>
+                <Ionicons name="chevron-forward" size={11} color="#64748B" />
+              </TouchableOpacity>
             </View>
-            <View style={styles.deliveryDivider} />
-            <View style={styles.deliveryItem}>
-              <Ionicons name="refresh" size={13} color="#94A3B8" />
-              <Text style={styles.deliveryText}>Easy returns</Text>
+
+            <View style={styles.perksGrid}>
+              {/* Row 1 */}
+              <View style={styles.perksRow}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowPromiseModal(true);
+                  }}
+                  style={styles.perkItem}
+                >
+                  <View style={[styles.perkIconWrap, { backgroundColor: '#F0FDF4' }]}>
+                    <Ionicons name="shirt-outline" size={15} color="#16A34A" />
+                  </View>
+                  <View style={styles.perkContent}>
+                    <Text style={styles.perkTitle}>Try & Buy</Text>
+                    <Text style={styles.perkSub} numberOfLines={1}>Try before paying</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowPromiseModal(true);
+                  }}
+                  style={styles.perkItem}
+                >
+                  <View style={[styles.perkIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="flash-outline" size={15} color="#D97706" />
+                  </View>
+                  <View style={styles.perkContent}>
+                    <Text style={styles.perkTitle}>30-Min Delivery</Text>
+                    <Text style={styles.perkSub} numberOfLines={1}>Quick to your door</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Row 2 */}
+              <View style={styles.perksRow}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowPromiseModal(true);
+                  }}
+                  style={styles.perkItem}
+                >
+                  <View style={[styles.perkIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="refresh-outline" size={15} color="#2563EB" />
+                  </View>
+                  <View style={styles.perkContent}>
+                    <Text style={styles.perkTitle}>Instant Return</Text>
+                    <Text style={styles.perkSub} numberOfLines={1}>Hand back on spot</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowPromiseModal(true);
+                  }}
+                  style={styles.perkItem}
+                >
+                  <View style={[styles.perkIconWrap, { backgroundColor: '#FAF5FF' }]}>
+                    <Ionicons name="pricetag-outline" size={15} color="#9333EA" />
+                  </View>
+                  <View style={styles.perkContent}>
+                    <Text style={styles.perkTitle}>Store Price</Text>
+                    <Text style={styles.perkSub} numberOfLines={1}>Same price as store</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.deliveryDivider} />
-            <View style={styles.deliveryItem}>
-              <Ionicons name="shield-checkmark" size={13} color="#94A3B8" />
-              <Text style={styles.deliveryText}>Genuine</Text>
-            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowPromiseModal(true);
+              }}
+              style={styles.perksFooter}
+            >
+              <Ionicons name="shield-checkmark" size={12} color="#059669" />
+              <Text style={styles.perksFooterText}>
+                Rider waits up to 15 mins • 100% Original Brand Sourcing
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <View style={{ marginBottom: 26 }}>
@@ -1627,6 +1721,134 @@ const ProductDetailPage = () => {
         </View>
       </Modal>
 
+      {/* ── FlashFits Promise & Doorstep Protocol Modal ── */}
+      <Modal
+        visible={showPromiseModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPromiseModal(false)}
+      >
+        <View style={styles.promiseModalOverlay}>
+          <TouchableOpacity
+            style={styles.promiseModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowPromiseModal(false)}
+          />
+          <View style={styles.promiseModalContent}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.promiseModalHeader}>
+              <View style={styles.promiseModalHeaderLeft}>
+                <View style={styles.promiseIconBadge}>
+                  <Ionicons name="sparkles" size={16} color="#0F172A" />
+                </View>
+                <View>
+                  <Text style={styles.promiseModalTitle}>The FlashFits Experience</Text>
+                  <Text style={styles.promiseModalSub}>Doorstep fashion delivery & trial</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowPromiseModal(false)}
+                style={styles.promiseCloseBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+              <View style={styles.promiseList}>
+                {/* 1. Try & Buy */}
+                <View style={styles.promiseRow}>
+                  <View style={[styles.promiseRowIcon, { backgroundColor: '#F0FDF4' }]}>
+                    <Ionicons name="shirt" size={18} color="#16A34A" />
+                  </View>
+                  <View style={styles.promiseRowText}>
+                    <Text style={styles.promiseRowTitle}>Doorstep Try & Buy</Text>
+                    <Text style={styles.promiseRowDesc}>
+                      Try outfits and sizes at home in total comfort before paying. Only keep what fits you best.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 2. 30 Min Delivery */}
+                <View style={styles.promiseRow}>
+                  <View style={[styles.promiseRowIcon, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="flash" size={18} color="#D97706" />
+                  </View>
+                  <View style={styles.promiseRowText}>
+                    <Text style={styles.promiseRowTitle}>30-Minute Quick Delivery</Text>
+                    <Text style={styles.promiseRowDesc}>
+                      Lightning fast dispatch from verified partner retail stores and local FlashMart warehouse hubs.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 3. Instant Return */}
+                <View style={styles.promiseRow}>
+                  <View style={[styles.promiseRowIcon, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="refresh" size={18} color="#2563EB" />
+                  </View>
+                  <View style={styles.promiseRowText}>
+                    <Text style={styles.promiseRowTitle}>Instant Return on Spot</Text>
+                    <Text style={styles.promiseRowDesc}>
+                      Doesn't fit or meet expectations? Hand it directly back to the delivery partner with zero questions asked.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 4. Store Price Guarantee */}
+                <View style={styles.promiseRow}>
+                  <View style={[styles.promiseRowIcon, { backgroundColor: '#FAF5FF' }]}>
+                    <Ionicons name="pricetag" size={18} color="#9333EA" />
+                  </View>
+                  <View style={styles.promiseRowText}>
+                    <Text style={styles.promiseRowTitle}>Same Price as in Store</Text>
+                    <Text style={styles.promiseRowDesc}>
+                      Zero hidden markups. You pay the exact official price printed on the store's physical price tag.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 5. Rider Waits While You Try */}
+                <View style={styles.promiseRow}>
+                  <View style={[styles.promiseRowIcon, { backgroundColor: '#FFF7ED' }]}>
+                    <Ionicons name="timer" size={18} color="#EA580C" />
+                  </View>
+                  <View style={styles.promiseRowText}>
+                    <Text style={styles.promiseRowTitle}>Rider Waits 10–15 Minutes</Text>
+                    <Text style={styles.promiseRowDesc}>
+                      Take your time trying the garments. Our delivery partner waits outside while you decide what to keep.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 6. 100% Genuine */}
+                <View style={styles.promiseRow}>
+                  <View style={[styles.promiseRowIcon, { backgroundColor: '#ECFDF5' }]}>
+                    <Ionicons name="shield-checkmark" size={18} color="#059669" />
+                  </View>
+                  <View style={styles.promiseRowText}>
+                    <Text style={styles.promiseRowTitle}>100% Authentic Products</Text>
+                    <Text style={styles.promiseRowDesc}>
+                      Every single piece is authentic and comes directly with original brand tags and verified store billing.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => setShowPromiseModal(false)}
+              style={[styles.promiseGotItBtn, { backgroundColor: theme.primary || BrandColors.matteBlack }]}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.promiseGotItText}>Got it, looks great</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Zoom Modal */}
       <ImageViewing
         images={images.map((img: any) => ({ uri: img.url }))}
@@ -1997,30 +2219,229 @@ const styles = StyleSheet.create({
     backgroundColor: '#CBD5E1',
     transform: [{ rotate: '-20deg' }],
   },
-  deliveryStrip: {
+  // FlashFits Perks / Service Highlights
+  perksCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 24,
+    gap: 10,
+  },
+  perksHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: '#FAFBFC',
-    borderRadius: 14,
-    paddingVertical: 12,
-    marginBottom: 22,
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
   },
-  deliveryItem: {
+  perksHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
-  deliveryText: {
-    fontSize: 9.5,
+  perksHeaderTitle: {
+    fontSize: 10.5,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    letterSpacing: 0.6,
+  },
+  perksHowItWorksBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 2,
+  },
+  perksHowItWorksText: {
+    fontSize: 11,
     fontFamily: Typography.fontFamily.medium,
     color: '#64748B',
-    letterSpacing: 0.05,
   },
-  deliveryDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: '#E7EBEF',
+  perksGrid: {
+    gap: 8,
+  },
+  perksRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  perkItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EDF2F7',
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 9,
+    gap: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.03,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
+  },
+  perkIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  perkContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  perkTitle: {
+    fontSize: 11.5,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  perkSub: {
+    fontSize: 9.5,
+    fontFamily: Typography.fontFamily.regular,
+    color: '#64748B',
+    marginTop: 0.5,
+  },
+  perksFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  perksFooterText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#475569',
+    letterSpacing: -0.1,
+  },
+
+  // Promise Modal
+  promiseModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  promiseModalBackdrop: {
+    flex: 1,
+  },
+  promiseModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  promiseModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+    marginBottom: 12,
+  },
+  promiseModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  promiseIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promiseModalTitle: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  promiseModalSub: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.regular,
+    color: '#64748B',
+  },
+  promiseCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  promiseList: {
+    gap: 14,
+    paddingVertical: 6,
+  },
+  promiseRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  promiseRowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  promiseRowText: {
+    flex: 1,
+  },
+  promiseRowTitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  promiseRowDesc: {
+    fontSize: 11.5,
+    fontFamily: Typography.fontFamily.regular,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+  promiseGotItBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  promiseGotItText: {
+    color: '#FFFFFF',
+    fontSize: 13.5,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.1,
   },
   description: {
     fontSize: 12.5,

@@ -117,6 +117,7 @@ Based on Apple Guidelines 5.1.1(v), 5.1.1(iv), and 5.1.5, we have agreed on the 
 | **Phase 5** | Verification & Build Validation | `npx tsc --noEmit` (0 errors) | ✅ Completed |
 | **Phase 6** | Stores Tab Location Gating ("Stores Available", Instant Try gating, Distance hidden) | `app/(app)/(tabs)/stores.tsx`, `components/sections/MerchantLogosSection.tsx` | ✅ Completed |
 | **Phase 7** | Store Detail Location Gating (Hide delivery minutes & distance when no location set) | `app/(app)/merchant/[id].tsx` | ✅ Completed |
+| **Phase 8** | Product Detail FlashFits Promise Perks (Try & Buy, 30m Delivery, Instant Return, Store Price) | `app/(app)/product/[id].tsx` | ✅ Completed |
 
 ---
 
