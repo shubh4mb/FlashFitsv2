@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
@@ -33,7 +33,16 @@ export function usePushNotifications() {
   const notificationListener = useRef<Notifications.Subscription | undefined>(undefined);
   const responseListener = useRef<Notifications.Subscription | undefined>(undefined);
 
-  async function registerForPushNotificationsAsync() {
+  const sendPushTokenToBackend = useCallback(async (token: string) => {
+    try {
+      await api.put('/user/push-token', { token });
+      console.log("Push token sent to backend successfully.");
+    } catch (error) {
+      console.error("Failed to send push token to backend:", error);
+    }
+  }, []);
+
+  async function registerForPushNotificationsAsync(promptIfNeeded = false): Promise<string | undefined> {
     let token;
 
     try {
@@ -49,14 +58,21 @@ export function usePushNotifications() {
       if (Device.isDevice) {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
+
         if (existingStatus !== 'granted') {
+          // If not explicitly requesting (e.g. cold boot), NEVER prompt!
+          if (!promptIfNeeded) {
+            return undefined;
+          }
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
         }
+
         if (finalStatus !== 'granted') {
-          console.log('Failed to get push token for push notification!');
-          return;
+          console.log('Push notification permission not granted');
+          return undefined;
         }
+
         const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
         if (!projectId) {
           console.warn("Project ID not found for push notifications.");
@@ -75,22 +91,28 @@ export function usePushNotifications() {
     return token;
   }
 
-  const sendPushTokenToBackend = async (token: string) => {
+  const requestPushPermissions = useCallback(async (): Promise<string | undefined> => {
     try {
-      await api.put('/user/push-token', { token });
-      console.log("Push token sent to backend successfully.");
-    } catch (error) {
-      console.error("Failed to send push token to backend:", error);
+      const token = await registerForPushNotificationsAsync(true);
+      if (token) {
+        setExpoPushToken(token);
+        await sendPushTokenToBackend(token);
+      }
+      return token;
+    } catch (e) {
+      console.warn("Error requesting push permissions:", e);
+      return undefined;
     }
-  }
+  }, [sendPushTokenToBackend]);
 
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
+    // Check if permission is ALREADY granted from before (silent - never prompt on launch!)
+    registerForPushNotificationsAsync(false).then(token => {
       if (token) {
         setExpoPushToken(token);
       }
     }).catch(e => {
-      console.warn("Push notification setup failed:", e);
+      console.warn("Silent push notification check failed:", e);
     });
 
     try {
@@ -111,5 +133,10 @@ export function usePushNotifications() {
     };
   }, []);
 
-  return { expoPushToken, notification, sendPushTokenToBackend };
+  return {
+    expoPushToken,
+    notification,
+    sendPushTokenToBackend,
+    requestPushPermissions,
+  };
 }

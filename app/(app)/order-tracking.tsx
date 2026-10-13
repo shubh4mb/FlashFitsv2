@@ -32,6 +32,7 @@ import { getSocket } from '@/config/socket';
 import { calculateFinalBilling } from '@/utils/ItemSelectionCalculation';
 import RazorpayWebView from '@/components/common/RazorpayWebView';
 import { useAlert, useToast } from '@/context/AlertContext';
+import { useAuth } from '@/context/AuthContext';
 import { applyCoupon as applyCouponApi, getAvailableOffers } from '@/api/offers';
 import CouponOffersModal from '@/components/modals/CouponOffersModal';
 import CouponDetailModal from '@/components/modals/CouponDetailModal';
@@ -336,6 +337,12 @@ export default function OrderTrackingScreen() {
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const showAlert = useAlert();
   const showToast = useToast();
+  const { requestPushPermissions } = useAuth();
+
+  useEffect(() => {
+    // Request push notifications contextually on order tracking so customer gets live delivery and trial alerts
+    requestPushPermissions().catch(() => {});
+  }, []);
 
   const [order, setOrder] = useState<OrderData | null>(null);
   const [items, setItems] = useState<Item[]>([]);

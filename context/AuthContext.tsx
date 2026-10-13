@@ -23,6 +23,7 @@ interface AuthContextType {
     signIn: (token: string, userId: string, refreshToken?: string, isNewUser?: boolean, userData?: UserData) => Promise<void>;
     signOut: () => Promise<void>;
     completeOnboarding: () => void;
+    requestPushPermissions: () => Promise<string | undefined>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<UserData | null>(null);
 
     // Setup Push Notifications
-    const { expoPushToken, sendPushTokenToBackend } = usePushNotifications();
+    const { expoPushToken, sendPushTokenToBackend, requestPushPermissions } = usePushNotifications();
 
     const refreshUserProfile = useCallback(async (): Promise<UserData | null> => {
         try {
@@ -156,6 +157,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (expoPushToken) {
                 sendPushTokenToBackend(expoPushToken);
+            } else {
+                // Contextually request notifications upon successful sign-in
+                requestPushPermissions().then(t => {
+                    if (t) sendPushTokenToBackend(t);
+                }).catch(() => {});
             }
 
             setTimeout(() => {
@@ -224,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signOut,
         completeOnboarding,
+        requestPushPermissions,
     }), [
         isAuthenticated,
         isLoading,
@@ -233,6 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signOut,
         completeOnboarding,
+        requestPushPermissions,
     ]);
 
     return (

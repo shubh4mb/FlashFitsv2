@@ -118,11 +118,13 @@ Based on Apple Guidelines 5.1.1(v), 5.1.1(iv), and 5.1.5, we have agreed on the 
 | **Phase 6** | Stores Tab Location Gating ("Stores Available", Instant Try gating, Distance hidden) | `app/(app)/(tabs)/stores.tsx`, `components/sections/MerchantLogosSection.tsx` | ✅ Completed |
 | **Phase 7** | Store Detail Location Gating (Hide delivery minutes & distance when no location set) | `app/(app)/merchant/[id].tsx` | ✅ Completed |
 | **Phase 8** | Product Detail FlashFits Promise Perks (Try & Buy, 30m Delivery, Instant Return, Store Price) | `app/(app)/product/[id].tsx` | ✅ Completed |
+| **Phase 9** | Push Notification Permission Deferral (Zero prompt on startup; deferred to post-login & order tracking) | `hooks/usePushNotifications.ts`, `context/AuthContext.tsx`, `app/(app)/order-tracking.tsx` | ✅ Completed |
 
 ---
 
 ## 5. Engineering Constraints & Rules
 - **NEVER hard-block browsing**: In any permission-denied or unauthenticated branch, the user must always have an escape hatch to view products.
+- **NEVER prompt for permissions on startup**: Both Location and Push Notifications must never show system alerts on cold boot. Push notifications are requested contextually upon sign-in or order tracking.
 - **NEVER show distance or delivery duration** when location is not set (e.g. stores tab, store detail page).
 - **NEVER show "Kaloor" in the UI** when using default coordinates fallback.
 - **Preserve TypeScript integrity**: Ensure `npx tsc --noEmit` exits with 0 errors after every change.
