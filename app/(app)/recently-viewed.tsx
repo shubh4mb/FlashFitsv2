@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, DEFAULT_FALLBACK_COORDS } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
 import { getRecentlyViewed, Product } from '@/utils/recentlyViewed';
 import ProductCard from '@/components/common/ProductCard';
@@ -46,16 +46,20 @@ export default function RecentlyViewedScreen() {
       const lat =
         selectedAddress?.location?.coordinates?.[1] ??
         (selectedAddress as any)?.latitude ??
-        userLocation?.latitude;
+        userLocation?.latitude ??
+        DEFAULT_FALLBACK_COORDS.latitude;
       const lng =
         selectedAddress?.location?.coordinates?.[0] ??
         (selectedAddress as any)?.longitude ??
-        userLocation?.longitude;
+        userLocation?.longitude ??
+        DEFAULT_FALLBACK_COORDS.longitude;
 
       const data = await getRecentlyViewed(lat, lng);
       setProducts(data || []);
-    } catch (error) {
-      console.error('Failed to load recently viewed products:', error);
+    } catch (error: any) {
+      if (__DEV__ && error?.response?.status !== 401) {
+        console.warn('Failed to load recently viewed products:', error?.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);

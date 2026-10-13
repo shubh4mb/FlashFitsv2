@@ -55,8 +55,10 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         setLoading(true);
         const data = await getRecentlyViewed(targetLat, targetLng);
         setProducts(data);
-      } catch (error) {
-        console.error('Error loading recently viewed:', error);
+      } catch (error: any) {
+        if (__DEV__ && error?.response?.status !== 401) {
+          console.warn('Error loading recently viewed:', error?.message);
+        }
       } finally {
         setLoading(false);
       }

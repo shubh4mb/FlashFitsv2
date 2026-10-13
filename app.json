@@ -118,7 +118,7 @@
       "reactCompiler": false
     },
     "extra": {
-      "BACKEND_URL": "https://api.theflashfits.com",
+      "BACKEND_URL": "http://192.168.29.230:5000",
       "CARTO_BASEMAP_KEY": "cb1_4fv4_1_1edec64bef590f4afb83cafc",
       "router": {},
       "eas": {
