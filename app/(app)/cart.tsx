@@ -5,6 +5,7 @@ import AddressSelectorModal from '@/components/common/AddressSelectorModal';
 import CartItem from '@/components/common/CartItem';
 import CouponInput from '@/components/common/CouponInput';
 import Loader from '@/components/common/Loader';
+import MerchantMoreProducts from '@/components/common/MerchantMoreProducts';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import RazorpayWebView from '@/components/common/RazorpayWebView';
 import SwipeToBuy from '@/components/common/SwipeToBuy';
@@ -12,6 +13,7 @@ import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
 import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
+import { useAuth } from '@/context/AuthContext';
 import { useAlert, useToast } from '@/context/AlertContext';
 import { useCart } from '@/context/CartContext';
 import { useCourierCart } from '@/context/CourierCartContext';
@@ -23,6 +25,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSystemStatus } from '@/hooks/useSystemStatus';
@@ -44,6 +47,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 type CartTab = 'instant' | 'standard';
 
 export default function CartScreen() {
+  const { isAuthenticated } = useAuth();
   const { cart, loading, clearCart, deliveryTip, setDeliveryTip, moveToCourier, refreshCart, applyOffer, removeOffer } = useCart();
   const showToast = useToast();
   const showAlert = useAlert();
@@ -101,6 +105,9 @@ export default function CartScreen() {
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const horizontalScrollRef = useRef<ScrollView>(null);
+  const merchantHubScrollRef = useRef<ScrollView>(null);
+  const swipeAnim = useRef(new Animated.Value(0)).current;
+  const [showSwipeCoachmark, setShowSwipeCoachmark] = useState(false);
 
   // Optimized merchant carts memoization with O(N) precomputed timestamps
   const merchantCarts = useMemo(() => {
@@ -149,6 +156,81 @@ export default function CartScreen() {
       }, 100);
     }
   }, [initialIndex]);
+
+  // Clamp activeIndex if merchantCarts count changes (e.g. after clearing a store or placing an order)
+  useEffect(() => {
+    if (merchantCarts.length > 0 && activeIndex >= merchantCarts.length) {
+      const newIdx = Math.max(0, merchantCarts.length - 1);
+      setActiveIndex(newIdx);
+      horizontalScrollRef.current?.scrollTo({ x: newIdx * SCREEN_WIDTH, animated: false });
+    }
+  }, [merchantCarts.length, activeIndex]);
+
+  // Auto-center the active merchant tab in the merchant hub
+  useEffect(() => {
+    if (merchantCarts.length > 1 && merchantHubScrollRef.current) {
+      merchantHubScrollRef.current.scrollTo({
+        x: Math.max(0, activeIndex * 130 - (SCREEN_WIDTH / 2 - 65)),
+        animated: true,
+      });
+    }
+  }, [activeIndex, merchantCarts.length]);
+
+  // Looping gentle horizontal animation for swipe cue
+  useEffect(() => {
+    if (activeTab === 'instant' && merchantCarts.length > 1) {
+      const anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(swipeAnim, {
+            toValue: 6,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+          Animated.timing(swipeAnim, {
+            toValue: -6,
+            duration: 650,
+            useNativeDriver: true,
+          }),
+          Animated.timing(swipeAnim, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.delay(1200),
+        ])
+      );
+      anim.start();
+      return () => anim.stop();
+    }
+  }, [activeTab, merchantCarts.length]);
+
+  // Check if user has dismissed the multi-cart swipe coachmark
+  useEffect(() => {
+    const checkCoachmark = async () => {
+      try {
+        const dismissed = await AsyncStorage.getItem('has_dismissed_cart_swipe_guide');
+        if (!dismissed) {
+          setShowSwipeCoachmark(true);
+        }
+      } catch {
+        setShowSwipeCoachmark(true);
+      }
+    };
+    if (activeTab === 'instant' && merchantCarts.length > 1) {
+      checkCoachmark();
+    } else {
+      setShowSwipeCoachmark(false);
+    }
+  }, [activeTab, merchantCarts.length]);
+
+  const dismissCoachmark = async () => {
+    setShowSwipeCoachmark(false);
+    try {
+      await AsyncStorage.setItem('has_dismissed_cart_swipe_guide', 'true');
+    } catch (e) {
+      console.log('Error dismissing swipe guide', e);
+    }
+  };
 
   const tbItems = cart?.items || [];
   const [refreshing, setRefreshing] = useState(false);
@@ -280,6 +362,19 @@ export default function CartScreen() {
   };
 
   const handleTryBuyPlaceOrder = async (merchantId: string) => {
+    if (!isAuthenticated) {
+      showAlert({
+        title: 'Sign In to Place Order',
+        message: 'Please sign in or register with your phone number to place your order.',
+        buttons: [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/(auth)') },
+        ],
+      });
+      setResetSwipeKey(prev => prev + 1);
+      return;
+    }
+
     const merchantCart = cart?.merchantCarts?.find(mc => mc.merchantId === merchantId);
     if (!merchantCart) return;
 
@@ -358,6 +453,18 @@ export default function CartScreen() {
   };
 
   const handleStandardCheckout = () => {
+    if (!isAuthenticated) {
+      showAlert({
+        title: 'Sign In to Proceed',
+        message: 'Please sign in or register with your phone number to proceed to checkout.',
+        buttons: [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/(auth)') },
+        ],
+      });
+      return;
+    }
+
     if (isOrderPlacementEnabled === false) {
       showAlert({
         title: maintenanceTitle || 'Maintenance in Progress',
@@ -390,6 +497,9 @@ export default function CartScreen() {
   };
 
   const scrollToMerchant = (index: number) => {
+    if (index < 0 || index >= merchantCarts.length) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveIndex(index);
     horizontalScrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
   };
 
@@ -406,7 +516,15 @@ export default function CartScreen() {
         (courierAppliedOffers?.freeDelivery ? 0 : (courierItems.length > 0 ? 40 : 0))
       );
 
-  const currentMerchantCart = merchantCarts[activeIndex];
+  const currentMerchantCart = merchantCarts[activeIndex] || merchantCarts[0];
+
+  const courierMerchant = useMemo(() => {
+    if (!courierItems.length) return null;
+    const item = courierItems[0];
+    const mid = item.merchantId?._id || (typeof item.merchantId === 'string' ? item.merchantId : null);
+    const name = item.merchantId?.shopName || (item as any).merchantDetails?.shopName || 'Store';
+    return mid ? { id: mid, shopName: name } : null;
+  }, [courierItems]);
 
   const currentHasOutOfStock = currentMerchantCart?.items?.some(
     (i: any) => i.isOutOfStock || (i.stockQuantity !== undefined && i.stockQuantity < i.quantity)
@@ -474,33 +592,159 @@ export default function CartScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Merchant Hub (Logo Navigation) - Only for Instant Cart */}
+        {/* Merchant Hub (Enhanced Store Switcher) - Only for Instant Cart */}
         {activeTab === 'instant' && merchantCarts.length > 1 && (
-          <View style={styles.merchantHub}>
+          <View style={styles.merchantHubContainer}>
+            {/* Store Tabs Horizontal Scroll */}
             <ScrollView
+              ref={merchantHubScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={[
-                styles.merchantHubContent,
-                merchantCarts.length <= 4 && { justifyContent: 'center', flex: 1 }
+                styles.merchantTabsContent,
+                merchantCarts.length <= 2 && { flex: 1, justifyContent: 'center' }
               ]}
             >
-              {merchantCarts.map((mc, index) => (
-                <TouchableOpacity
-                  key={mc.merchantId}
-                  onPress={() => scrollToMerchant(index)}
-                  style={styles.hubWrapper}
-                >
-                  <View style={[
-                    styles.hubLogoContainer,
-                    activeIndex !== index && { opacity: 0.4, backgroundColor: 'transparent' }
-                  ]}>
-                    <Image source={mc.merchantId === 'flashmart' ? logo : { uri: mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo }} style={styles.hubLogo} contentFit="contain" />
-                  </View>
-                  {activeIndex === index && <View style={styles.hubActiveLine} />}
-                </TouchableOpacity>
-              ))}
+              {merchantCarts.map((mc, index) => {
+                const isActive = activeIndex === index;
+                const shopName = mc.merchantDetails?.shopName || 'Store';
+                const itemCount = mc.items?.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0) || 0;
+                const logoUri = mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo;
+
+                return (
+                  <TouchableOpacity
+                    key={mc.merchantId}
+                    onPress={() => scrollToMerchant(index)}
+                    activeOpacity={0.8}
+                    style={[
+                      styles.storeTabChip,
+                      isActive ? styles.storeTabChipActive : styles.storeTabChipInactive,
+                    ]}
+                  >
+                    <View style={[
+                      styles.storeChipLogoContainer,
+                      isActive ? styles.storeChipLogoContainerActive : styles.storeChipLogoContainerInactive
+                    ]}>
+                      {mc.merchantId === 'flashmart' ? (
+                        <Image source={logo} style={styles.storeChipLogo} contentFit="contain" />
+                      ) : logoUri ? (
+                        <Image source={{ uri: logoUri }} style={styles.storeChipLogo} contentFit="contain" />
+                      ) : (
+                        <Ionicons name="storefront" size={12} color={isActive ? '#FFFFFF' : '#64748B'} />
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.storeChipName,
+                        isActive ? styles.storeChipNameActive : styles.storeChipNameInactive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {shopName}
+                    </Text>
+                    <View style={[
+                      styles.storeChipBadge,
+                      isActive ? styles.storeChipBadgeActive : styles.storeChipBadgeInactive,
+                    ]}>
+                      <Text style={[
+                        styles.storeChipBadgeText,
+                        isActive ? styles.storeChipBadgeTextActive : styles.storeChipBadgeTextInactive,
+                      ]}>
+                        {itemCount}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
+
+            {/* Swipe Guidance & Navigation Bar */}
+            <View style={styles.swipeGuideBar}>
+              <View style={styles.swipeGuideLeft}>
+                <View style={styles.storeCounterBadge}>
+                  <Ionicons name="storefront" size={11} color="#0F172A" style={{ marginRight: 4 }} />
+                  <Text style={styles.storeCounterText}>
+                    Store {activeIndex + 1} of {merchantCarts.length}
+                  </Text>
+                </View>
+
+                {/* Dot Pagination */}
+                <View style={styles.dotsRow}>
+                  {merchantCarts.map((_, dotIdx) => (
+                    <TouchableOpacity
+                      key={`dot-${dotIdx}`}
+                      onPress={() => scrollToMerchant(dotIdx)}
+                      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                      style={[
+                        styles.dotItem,
+                        dotIdx === activeIndex ? styles.dotItemActive : styles.dotItemInactive
+                      ]}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              {/* Swipe Cue & Chevrons */}
+              <View style={styles.swipeGuideRight}>
+                {activeIndex > 0 && (
+                  <TouchableOpacity
+                    onPress={() => scrollToMerchant(activeIndex - 1)}
+                    style={styles.stepArrowBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="chevron-back" size={13} color="#0F172A" />
+                  </TouchableOpacity>
+                )}
+
+                <Animated.View style={[styles.swipeHintBadge, { transform: [{ translateX: swipeAnim }] }]}>
+                  <MaterialCommunityIcons name="gesture-swipe-horizontal" size={14} color="#4F46E5" />
+                  <Text style={styles.swipeHintText}>Swipe cart</Text>
+                </Animated.View>
+
+                {activeIndex < merchantCarts.length - 1 && (
+                  <TouchableOpacity
+                    onPress={() => scrollToMerchant(activeIndex + 1)}
+                    style={styles.stepArrowBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="chevron-forward" size={13} color="#0F172A" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Coachmark Banner */}
+            {showSwipeCoachmark && (
+              <View style={styles.coachmarkCard}>
+                <View style={styles.coachmarkLeft}>
+                  <View style={styles.coachmarkIconWrap}>
+                    <Animated.View style={{ transform: [{ translateX: swipeAnim }] }}>
+                      <MaterialCommunityIcons name="gesture-swipe-horizontal" size={18} color="#4F46E5" />
+                    </Animated.View>
+                  </View>
+                  <View style={styles.coachmarkTextContainer}>
+                    <View style={styles.coachmarkTitleRow}>
+                      <Text style={styles.coachmarkTitle}>
+                        Separate Carts ({merchantCarts.length} Stores)
+                      </Text>
+                      <View style={styles.newBadge}>
+                        <Text style={styles.newBadgeText}>GUIDE</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.coachmarkDesc}>
+                      Swipe sideways or tap store tabs to switch between your store carts.
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.coachmarkCloseBtn}
+                  onPress={dismissCoachmark}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -531,7 +775,8 @@ export default function CartScreen() {
               keyboardShouldPersistTaps="handled"
               onMomentumScrollEnd={(e) => {
                 const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-                if (index !== activeIndex) {
+                if (index !== activeIndex && index >= 0 && index < merchantCarts.length) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setActiveIndex(index);
                 }
               }}
@@ -613,6 +858,47 @@ export default function CartScreen() {
                           </View>
                         </TouchableOpacity>
 
+                        {/* Multi-Store Slide Navigation Quick Bar */}
+                        {merchantCarts.length > 1 && (
+                          <View style={styles.slideStoreNavRow}>
+                            {index > 0 ? (
+                              <TouchableOpacity
+                                style={styles.slideNavBtn}
+                                onPress={() => scrollToMerchant(index - 1)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="arrow-back" size={12} color="#0F172A" />
+                                <Text style={styles.slideNavBtnText} numberOfLines={1}>
+                                  {merchantCarts[index - 1]?.merchantDetails?.shopName || 'Previous'}
+                                </Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <View style={styles.slideNavBtnPlaceholder} />
+                            )}
+
+                            <View style={styles.slideNavCenterPill}>
+                              <Text style={styles.slideNavCenterText}>
+                                Store {index + 1} of {merchantCarts.length}
+                              </Text>
+                            </View>
+
+                            {index < merchantCarts.length - 1 ? (
+                              <TouchableOpacity
+                                style={[styles.slideNavBtn, styles.slideNavBtnRight]}
+                                onPress={() => scrollToMerchant(index + 1)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.slideNavBtnText} numberOfLines={1}>
+                                  {merchantCarts[index + 1]?.merchantDetails?.shopName || 'Next'}
+                                </Text>
+                                <Ionicons name="arrow-forward" size={12} color="#0F172A" />
+                              </TouchableOpacity>
+                            ) : (
+                              <View style={styles.slideNavBtnPlaceholder} />
+                            )}
+                          </View>
+                        )}
+
                         {/* Merchant Header Branding */}
                         <TouchableOpacity
                           style={styles.brandingHeader}
@@ -690,6 +976,21 @@ export default function CartScreen() {
                             <CartItem key={item._id} item={item} />
                           ))}
                         </View>
+
+                        {/* More Products from Merchant Section */}
+                        <MerchantMoreProducts
+                          merchantId={mc.merchantId}
+                          shopName={mc.merchantDetails?.shopName || 'Store'}
+                          cartProductIds={mc.items.map((i: any) => i.productId?._id || i.productId || i._id)}
+                          isOnline={mc.merchantDetails?.isOnline !== false}
+                          isNearby={mc.deliveryDetails?.isEligibleForTryBuy !== false}
+                          isWarehouse={
+                            mc.merchantId === 'flashmart' ||
+                            mc.merchantId === 'ff-warehouse-hub' ||
+                            mc.merchantId === 'warehouse' ||
+                            !!mc.merchantDetails?.isWarehouse
+                          }
+                        />
 
                         {/* Coupon & Offers Section */}
                         <CouponInput
@@ -983,6 +1284,15 @@ export default function CartScreen() {
                   ))}
                 </View>
 
+                {/* More Products from Merchant Section */}
+                {courierMerchant && (
+                  <MerchantMoreProducts
+                    merchantId={courierMerchant.id}
+                    shopName={courierMerchant.shopName}
+                    cartProductIds={courierItems.map((i: any) => i.productId?._id || i.productId || i._id)}
+                  />
+                )}
+
                 {/* Coupon & Offers Section */}
                 <CouponInput
                   cartContext={{
@@ -1042,6 +1352,28 @@ export default function CartScreen() {
 
           {activeTab === 'instant' ? (
             <View style={{ gap: 8 }}>
+              {/* Multi-Store Active Store Notice & Quick Switch */}
+              {merchantCarts.length > 1 && (
+                <View style={styles.bottomMultiStoreBar}>
+                  <View style={styles.bottomMultiStoreLeft}>
+                    <View style={styles.bottomStorePulseDot} />
+                    <Text style={styles.bottomMultiStoreText} numberOfLines={1}>
+                      Ordering from <Text style={styles.bottomMultiStoreBold}>{currentMerchantCart?.merchantDetails?.shopName || 'Store'}</Text> ({activeIndex + 1}/{merchantCarts.length})
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.bottomMultiStoreNextBtn}
+                    onPress={() => scrollToMerchant((activeIndex + 1) % merchantCarts.length)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={styles.bottomMultiStoreNextText}>
+                      {activeIndex < merchantCarts.length - 1 ? 'Next Store ➔' : '1st Store ↺'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {deliveryAvailable === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ? (
                 <TouchableOpacity
                   style={[
@@ -1070,7 +1402,9 @@ export default function CartScreen() {
                         ? 'Shop Closed Now'
                         : currentHasOutOfStock
                           ? 'Item(s) Out of Stock • Remove to Proceed'
-                          : 'Swipe to Try & Buy • Pay After Trial'
+                          : merchantCarts.length > 1
+                            ? `Swipe to Order • ${currentMerchantCart?.merchantDetails?.shopName || 'Store'}`
+                            : 'Swipe to Try & Buy • Pay After Trial'
                   }
                 />
               )}
@@ -1254,13 +1588,170 @@ const styles = StyleSheet.create({
   badge: { minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   badgeText: { color: '#fff', fontSize: 9, fontWeight: '900' },
 
-  // Merchant Hub
-  merchantHub: { backgroundColor: '#fff', paddingBottom: 8 },
-  merchantHubContent: { paddingHorizontal: 16, gap: 12 },
-  hubWrapper: { alignItems: 'center', justifyContent: 'center', height: 48 },
-  hubLogoContainer: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
-  hubLogo: { width: '80%', height: '80%' },
-  hubActiveLine: { position: 'absolute', bottom: 0, width: 24, height: 3, borderRadius: 2, backgroundColor: '#000' },
+  // Merchant Hub & Store Switcher
+  merchantHubContainer: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 4 },
+  merchantTabsContent: { paddingHorizontal: 14, paddingVertical: 6, gap: 8, alignItems: 'center' },
+  storeTabChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    gap: 6,
+  },
+  storeTabChipActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  storeTabChipInactive: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  storeChipLogoContainer: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  storeChipLogoContainerActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  storeChipLogoContainerInactive: {
+    backgroundColor: '#FFFFFF',
+  },
+  storeChipLogo: { width: 18, height: 18 },
+  storeChipName: { fontSize: 12, fontFamily: Typography.fontFamily.bold, maxWidth: 110 },
+  storeChipNameActive: { color: '#FFFFFF' },
+  storeChipNameInactive: { color: '#334155' },
+  storeChipBadge: { minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  storeChipBadgeActive: { backgroundColor: 'rgba(255, 255, 255, 0.22)' },
+  storeChipBadgeInactive: { backgroundColor: '#E2E8F0' },
+  storeChipBadgeText: { fontSize: 10, fontWeight: '800' },
+  storeChipBadgeTextActive: { color: '#FFFFFF' },
+  storeChipBadgeTextInactive: { color: '#475569' },
+
+  // Swipe Guidance Bar
+  swipeGuideBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    marginHorizontal: 12,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  swipeGuideLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  storeCounterBadge: { flexDirection: 'row', alignItems: 'center' },
+  storeCounterText: { fontSize: 11, fontWeight: '700', color: '#0F172A' },
+  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dotItem: { height: 5, borderRadius: 2.5 },
+  dotItemActive: { width: 14, backgroundColor: '#0F172A' },
+  dotItemInactive: { width: 5, backgroundColor: '#CBD5E1' },
+
+  swipeGuideRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  stepArrowBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  swipeHintBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  swipeHintText: { fontSize: 10, fontWeight: '700', color: '#4F46E5' },
+
+  // Coachmark Card
+  coachmarkCard: {
+    marginHorizontal: 12,
+    marginTop: 2,
+    marginBottom: 4,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
+    borderRadius: 10,
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  coachmarkLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  coachmarkIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachmarkTextContainer: { flex: 1 },
+  coachmarkTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  coachmarkTitle: { fontSize: 11.5, fontWeight: '800', color: '#1E1B4B' },
+  newBadge: { backgroundColor: '#4F46E5', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 },
+  newBadgeText: { color: '#FFFFFF', fontSize: 7.5, fontWeight: '900' },
+  coachmarkDesc: { fontSize: 10, color: '#475569', lineHeight: 13, marginTop: 1 },
+  coachmarkCloseBtn: { padding: 4, marginLeft: 4 },
+
+  // In-Slide Store Navigation Row
+  slideStoreNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginBottom: 10,
+  },
+  slideNavBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
+  slideNavBtnRight: { justifyContent: 'flex-end' },
+  slideNavBtnPlaceholder: { flex: 1 },
+  slideNavBtnText: { fontSize: 11, fontWeight: '700', color: '#0F172A', maxWidth: 90 },
+  slideNavCenterPill: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  slideNavCenterText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+
+  // Bottom Multi-Store Bar
+  bottomMultiStoreBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 4,
+  },
+  bottomMultiStoreLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  bottomStorePulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
+  bottomMultiStoreText: { fontSize: 11, color: '#475569', flex: 1 },
+  bottomMultiStoreBold: { fontWeight: '800', color: '#0F172A' },
+  bottomMultiStoreNextBtn: { backgroundColor: '#0F172A', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  bottomMultiStoreNextText: { color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' },
 
   slideContent: { padding: 12, paddingBottom: 110 },
   brandingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },

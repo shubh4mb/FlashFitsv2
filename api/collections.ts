@@ -17,6 +17,22 @@ export const fetchCollectionsHome = async (gender: string, lat?: number, lng?: n
 };
 
 /**
+ * Fetch collections with courier delivery products for Explore page
+ */
+export const fetchCollectionsExplore = async (gender: string, lat?: number, lng?: number) => {
+  try {
+    const response = await axiosInstance.get('user/collections/home', {
+      params: { gender, lat, lng, scope: 'explore' }
+    });
+
+    return response.data?.data || response.data || [];
+  } catch (error) {
+    console.error('Error fetching explore collections:', error);
+    return [];
+  }
+};
+
+/**
  * Fetch detailed campaign / collection with sub-curations, coupon, and paginated products
  */
 export const fetchCollectionDetails = async (

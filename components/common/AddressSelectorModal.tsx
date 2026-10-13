@@ -19,6 +19,8 @@ import { Address } from '@/api/address';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
+import { useAuth } from '@/context/AuthContext';
+import { useAlert } from '@/context/AlertContext';
 
 interface AddressSelectorModalProps {
   visible?: boolean;
@@ -29,6 +31,8 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
+  const { isAuthenticated } = useAuth();
+  const showAlert = useAlert();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const {
@@ -114,6 +118,18 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
 
   const handleAddNewAddress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!isAuthenticated) {
+      handleClose();
+      showAlert({
+        title: 'Sign In Required',
+        message: 'Please sign in or register to add delivery addresses.',
+        buttons: [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/(auth)') }
+        ]
+      });
+      return;
+    }
     handleClose();
     setTimeout(() => {
       router.push('/(app)/select-location' as any);
@@ -248,15 +264,37 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
                 )}
               </TouchableOpacity>
 
-              {/* ── Option 2: Saved Addresses List ── */}
+              {/* ── Option 2: Saved Addresses or Guest Login Prompt ── */}
               <View style={styles.listContainer}>
                 <View style={styles.listHeader}>
                   <Text style={styles.sectionTitle}>
-                    Saved Addresses {addresses.length > 0 ? `(${addresses.length})` : ''}
+                    Saved Addresses {isAuthenticated && addresses.length > 0 ? `(${addresses.length})` : ''}
                   </Text>
                 </View>
 
-                {loading ? (
+                {!isAuthenticated ? (
+                  <View style={styles.guestLoginCard}>
+                    <View style={styles.guestLoginContent}>
+                      <View style={[styles.guestLoginIconBox, { backgroundColor: theme.primary + '12' }]}>
+                        <Ionicons name="bookmark-outline" size={20} color={theme.primary} />
+                      </View>
+                      <View style={styles.guestLoginTextWrapper}>
+                        <Text style={styles.guestLoginTitle}>Access Your Saved Places</Text>
+                        <Text style={styles.guestLoginSubtitle}>Login to get saved address</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.guestLoginBtn, { backgroundColor: theme.primary }]}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          handleClose();
+                          router.push('/(auth)');
+                        }}
+                      >
+                        <Text style={styles.guestLoginBtnText}>Login</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : loading ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator size="small" color={theme.primary} />
                     <Text style={styles.loadingText}>Fetching your addresses...</Text>
@@ -279,15 +317,55 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
                 )}
               </View>
 
-              {/* ── Option 3: Add New Address Button ── */}
-              <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: theme.primary }]}
-                activeOpacity={0.85}
-                onPress={handleAddNewAddress}
-              >
-                <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
-                <Text style={styles.addButtonText}>Add a new address</Text>
-              </TouchableOpacity>
+              {/* ── Bottom Action Buttons ── */}
+              {!isAuthenticated ? (
+                <TouchableOpacity
+                  style={styles.browseProductsBtn}
+                  activeOpacity={0.85}
+                  onPress={handleClose}
+                >
+                  <Ionicons name="compass-outline" size={18} color="#0F172A" style={{ marginRight: 6 }} />
+                  <Text style={styles.browseProductsBtnText}>Browse Products</Text>
+                </TouchableOpacity>
+              ) : addresses.length === 0 ? (
+                <View style={styles.splitBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.splitAddBtn, { backgroundColor: theme.primary }]}
+                    activeOpacity={0.85}
+                    onPress={handleAddNewAddress}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.addButtonText}>Add Address</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.splitBrowseBtn}
+                    activeOpacity={0.85}
+                    onPress={handleClose}
+                  >
+                    <Ionicons name="compass-outline" size={18} color="#0F172A" style={{ marginRight: 4 }} />
+                    <Text style={styles.browseProductsBtnText}>Browse</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.stackedBtnContainer}>
+                  <TouchableOpacity
+                    style={[styles.addButton, { backgroundColor: theme.primary }]}
+                    activeOpacity={0.85}
+                    onPress={handleAddNewAddress}
+                  >
+                    <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.addButtonText}>Add a new address</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.browseProductsBtn}
+                    activeOpacity={0.85}
+                    onPress={handleClose}
+                  >
+                    <Ionicons name="compass-outline" size={18} color="#0F172A" style={{ marginRight: 6 }} />
+                    <Text style={styles.browseProductsBtnText}>Browse Products</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -542,6 +620,99 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.bold,
     marginLeft: 8,
     letterSpacing: 0.3,
+  },
+
+  /* ── Guest Login Card ── */
+  guestLoginCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  guestLoginContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  guestLoginIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestLoginTextWrapper: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  guestLoginTitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#1E293B',
+  },
+  guestLoginSubtitle: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  guestLoginBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestLoginBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+  },
+
+  /* ── Action Buttons ── */
+  browseProductsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    marginTop: 8,
+  },
+  browseProductsBtnText: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    letterSpacing: 0.2,
+  },
+  splitBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  splitAddBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  splitBrowseBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+  },
+  stackedBtnContainer: {
+    width: '100%',
   },
 });
 

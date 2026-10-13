@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   addToCourierCart as addToCourierCartApi,
   getCourierCart as getCourierCartApi,
@@ -12,6 +13,8 @@ import {
 } from '../api/courier';
 
 import { useAuth } from './AuthContext';
+
+const GUEST_COURIER_CART_KEY = '@flashfits_guest_courier_cart';
 
 interface CourierCartItem {
   _id: string;
@@ -51,6 +54,28 @@ interface CourierCartContextType {
   removeOfferCourier: (offerId: string) => Promise<void>;
 }
 
+const calculateGuestCourierTotals = (items: CourierCartItem[]) => {
+  let subtotal = 0;
+  let mrpTotal = 0;
+  items.forEach(item => {
+    const qty = item.quantity || 1;
+    const price = item.price || 0;
+    const mrp = item.mrp || price;
+    subtotal += price * qty;
+    mrpTotal += mrp * qty;
+  });
+  const discount = Math.max(0, mrpTotal - subtotal);
+  const courierDeliveryCharge = subtotal > 0 ? (subtotal >= 499 ? 0 : 49) : 0;
+  const totalPayable = subtotal + courierDeliveryCharge;
+  return {
+    subtotal,
+    mrpTotal,
+    discount,
+    courierDeliveryCharge,
+    totalPayable,
+  };
+};
+
 const CourierCartContext = createContext<CourierCartContextType | undefined>(undefined);
 
 export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
@@ -60,7 +85,19 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchCart = useCallback(async (isSilent = false) => {
     if (!isAuthenticated) {
-      setLoading(false);
+      try {
+        const stored = await AsyncStorage.getItem(GUEST_COURIER_CART_KEY);
+        if (stored) {
+          setCourierCart(JSON.parse(stored));
+        } else {
+          setCourierCart({ items: [], totalItems: 0, totals: calculateGuestCourierTotals([]) });
+        }
+      } catch (e) {
+        console.warn('Error reading guest courier cart:', e);
+        setCourierCart({ items: [], totalItems: 0, totals: calculateGuestCourierTotals([]) });
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     try {
@@ -74,16 +111,108 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isAuthenticated]);
 
+  // Sync guest courier cart upon login
   useEffect(() => {
     if (isAuthenticated) {
-      fetchCart();
+      const syncGuestCourierCart = async () => {
+        try {
+          const stored = await AsyncStorage.getItem(GUEST_COURIER_CART_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.items?.length) {
+              for (const item of parsed.items) {
+                try {
+                  await addToCourierCartApi({
+                    productId: item.productId?._id || item.productId,
+                    variantId: item.variantId,
+                    size: item.size,
+                    quantity: item.quantity || 1,
+                    merchantId: String(item.merchantId?._id || item.merchantId),
+                    image: item.image,
+                  });
+                } catch (err) {
+                  console.warn('Failed to sync guest courier cart item on login:', err);
+                }
+              }
+            }
+            await AsyncStorage.removeItem(GUEST_COURIER_CART_KEY);
+          }
+        } catch (e) {
+          console.error('Error syncing guest courier cart on login:', e);
+        } finally {
+          fetchCart();
+        }
+      };
+      syncGuestCourierCart();
     } else {
-      setCourierCart({ items: [], totalItems: 0 });
+      fetchCart();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchCart]);
 
   const addToCourierCart = useCallback(async (params: AddToCourierCartParams) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    if (!isAuthenticated) {
+      try {
+        const stored = await AsyncStorage.getItem(GUEST_COURIER_CART_KEY);
+        const currentCart: CourierCartData = stored ? JSON.parse(stored) : { items: [], totalItems: 0 };
+        const currentItems = currentCart.items || [];
+        const imgUrl = typeof params.image === 'string' ? params.image : (params.image?.url || '');
+
+        const existingIndex = currentItems.findIndex(i =>
+          String(i.productId?._id || i.productId) === String(params.productId) &&
+          i.size === params.size &&
+          (i.variantId === params.variantId || !params.variantId)
+        );
+
+        let newItems: CourierCartItem[];
+        if (existingIndex > -1) {
+          newItems = [...currentItems];
+          newItems[existingIndex] = {
+            ...newItems[existingIndex],
+            quantity: (newItems[existingIndex].quantity || 1) + (params.quantity || 1),
+          };
+        } else {
+          const newItem: CourierCartItem = {
+            _id: `${params.variantId || params.productId}_${params.size}_${Date.now()}`,
+            productId: params.product || {
+              _id: params.productId,
+              name: params.productName || 'Product',
+              images: [{ url: imgUrl }],
+              price: params.price,
+              mrp: params.mrp,
+              shopName: params.shopName,
+            },
+            variantId: params.variantId || '',
+            size: params.size,
+            quantity: params.quantity || 1,
+            stockQuantity: 99,
+            merchantId: params.merchantId || '',
+            image: imgUrl,
+            price: params.price || 0,
+            mrp: params.mrp || params.price || 0,
+          };
+          newItems = [...currentItems, newItem];
+        }
+
+        const totalItems = newItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
+        const totals = calculateGuestCourierTotals(newItems);
+        const newCart: CourierCartData = {
+          items: newItems,
+          totalItems,
+          totals,
+        };
+
+        await AsyncStorage.setItem(GUEST_COURIER_CART_KEY, JSON.stringify(newCart));
+        setCourierCart(newCart);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (e) {
+        console.error('Guest add to courier cart failed:', e);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      return;
+    }
+
     try {
       await addToCourierCartApi(params);
       await fetchCart();
@@ -93,10 +222,35 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error;
     }
-  }, [fetchCart]);
+  }, [isAuthenticated, fetchCart]);
 
   const updateQuantity = useCallback(async (cartId: string, quantity: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    if (!isAuthenticated) {
+      try {
+        const stored = await AsyncStorage.getItem(GUEST_COURIER_CART_KEY);
+        if (stored) {
+          const currentCart: CourierCartData = JSON.parse(stored);
+          const newItems = (currentCart.items || []).map(item =>
+            item._id === cartId ? { ...item, quantity } : item
+          );
+          const totalItems = newItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
+          const totals = calculateGuestCourierTotals(newItems);
+          const newCart: CourierCartData = {
+            items: newItems,
+            totalItems,
+            totals,
+          };
+          await AsyncStorage.setItem(GUEST_COURIER_CART_KEY, JSON.stringify(newCart));
+          setCourierCart(newCart);
+        }
+      } catch (e) {
+        console.error('Guest courier cart update quantity failed:', e);
+      }
+      return;
+    }
+
     let previousCart: CourierCartData | null = null;
 
     setCourierCart(prevCart => {
@@ -121,10 +275,33 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       await fetchCart(true);
       throw error;
     }
-  }, [fetchCart]);
+  }, [isAuthenticated, fetchCart]);
 
   const removeItem = useCallback(async (itemId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    if (!isAuthenticated) {
+      try {
+        const stored = await AsyncStorage.getItem(GUEST_COURIER_CART_KEY);
+        if (stored) {
+          const currentCart: CourierCartData = JSON.parse(stored);
+          const newItems = (currentCart.items || []).filter(item => item._id !== itemId);
+          const totalItems = newItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
+          const totals = calculateGuestCourierTotals(newItems);
+          const newCart: CourierCartData = {
+            items: newItems,
+            totalItems,
+            totals,
+          };
+          await AsyncStorage.setItem(GUEST_COURIER_CART_KEY, JSON.stringify(newCart));
+          setCourierCart(newCart);
+        }
+      } catch (e) {
+        console.error('Guest courier cart remove item failed:', e);
+      }
+      return;
+    }
+
     let previousCart: CourierCartData | null = null;
 
     setCourierCart(prevCart => {
@@ -147,9 +324,19 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       await fetchCart(true);
       throw error;
     }
-  }, [fetchCart]);
+  }, [isAuthenticated, fetchCart]);
 
   const clearCart = useCallback(async () => {
+    if (!isAuthenticated) {
+      try {
+        await AsyncStorage.removeItem(GUEST_COURIER_CART_KEY);
+        setCourierCart({ items: [], totalItems: 0, totals: calculateGuestCourierTotals([]) });
+      } catch (e) {
+        console.error('Guest courier clear cart failed:', e);
+      }
+      return;
+    }
+
     try {
       await clearCourierCartApi();
       setCourierCart({ items: [], totalItems: 0 });
@@ -157,7 +344,7 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
       console.error('Clear courier cart failed:', error);
       await fetchCart();
     }
-  }, [fetchCart]);
+  }, [isAuthenticated, fetchCart]);
 
   const applyOfferCourier = useCallback(async (offerId: string, targetItemIds?: string[]) => {
     try {

@@ -6,6 +6,7 @@ import { BrandColors, GenderThemes, Typography } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useGender } from "@/context/GenderContext";
+import { useAuth } from "@/context/AuthContext";
 import React, { useEffect, useState } from "react";
 import {
   Animated,
@@ -30,6 +31,7 @@ const FILTER_TABS: FilterTab[] = ['All', 'Processing', 'Shipped', 'Delivered', '
 const OrdersScreen = () => {
   const router = useRouter();
   const { selectedGender } = useGender();
+  const { isAuthenticated } = useAuth();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
 
@@ -47,6 +49,11 @@ const OrdersScreen = () => {
   };
 
   const fetchOrders = async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      setAllOrders([]);
+      return;
+    }
     try {
       setLoading(true);
       const [tbRes, courierRes] = await Promise.allSettled([
@@ -151,30 +158,59 @@ const OrdersScreen = () => {
     }
   };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyIconContainer}>
-        <Ionicons
-          name="receipt-outline"
-          size={80}
-          color="#CBD5E1"
-        />
+  const renderEmptyState = () => {
+    if (!isAuthenticated) {
+      return (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconContainer}>
+            <Ionicons
+              name="person-circle-outline"
+              size={80}
+              color="#CBD5E1"
+            />
+          </View>
+          <Text style={styles.emptyTitle}>
+            Sign In to View Orders
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            Please sign in or create an account to view and track your orders.
+          </Text>
+          <TouchableOpacity
+            style={[styles.shopNowButton, { backgroundColor: BrandColors.primary }]}
+            onPress={() => router.push("/(auth)" as any)}
+          >
+            <Text style={styles.shopNowText}>Sign In</Text>
+            <Ionicons name="arrow-forward" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyContainer}>
+        <View style={styles.emptyIconContainer}>
+          <Ionicons
+            name="receipt-outline"
+            size={80}
+            color="#CBD5E1"
+          />
+        </View>
+        <Text style={styles.emptyTitle}>
+          No Orders Yet
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          Your past and current orders will appear here.
+        </Text>
+        <TouchableOpacity
+          style={[styles.shopNowButton, { backgroundColor: BrandColors.primary }]}
+          onPress={() => router.push("/(app)/(tabs)" as any)}
+        >
+          <Text style={styles.shopNowText}>Start Shopping</Text>
+          <Ionicons name="arrow-forward" size={20} color="#fff" />
+        </TouchableOpacity>
       </View>
-      <Text style={styles.emptyTitle}>
-        No Orders Yet
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        Your past and current orders will appear here.
-      </Text>
-      <TouchableOpacity
-        style={[styles.shopNowButton, { backgroundColor: BrandColors.primary }]}
-        onPress={() => router.push("/(app)/(tabs)" as any)}
-      >
-        <Text style={styles.shopNowText}>Start Shopping</Text>
-        <Ionicons name="arrow-forward" size={20} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.safeArea}>

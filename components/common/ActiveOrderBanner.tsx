@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform, LayoutAnimation, UIManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform, LayoutAnimation, UIManager, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAllOrders } from '@/api/orders';
 import { useGender } from '@/context/GenderContext';
@@ -23,9 +23,24 @@ const isOrderActive = (order: any) => {
   const status = (order.orderStatus || '').toLowerCase();
   const paymentStatus = (order.paymentStatus || '').toLowerCase();
   const customerDeliveryStatus = (order.customerDeliveryStatus || '').toLowerCase();
+  const deliveryRiderStatus = (order.deliveryRiderStatus || '').toLowerCase();
+
+  // Cancelled by field indicators
+  if (order.cancelledBy || order.cancelledAt) {
+    return false;
+  }
 
   // Cancelled, rejected, failed, or returned are permanently inactive
   if (['cancelled', 'rejected', 'failed', 'payment_failed', 'returned'].includes(status)) {
+    return false;
+  }
+
+  // Delivery rider status or customer delivery status cancelled
+  if (['cancelled', 'failed', 'returned'].includes(customerDeliveryStatus)) {
+    return false;
+  }
+
+  if (['cancelled'].includes(deliveryRiderStatus)) {
     return false;
   }
 
@@ -100,6 +115,7 @@ export default function ActiveOrderBanner() {
   const [activeOrders, setActiveOrders] = useState<any[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const { selectedGender } = useGender();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
@@ -113,7 +129,7 @@ export default function ActiveOrderBanner() {
     }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       const ordersRes: any = await getAllOrders();
       const orders = Array.isArray(ordersRes) ? ordersRes : ordersRes?.orders || [];
@@ -129,21 +145,71 @@ export default function ActiveOrderBanner() {
     } catch (err) {
       console.log('Error fetching active orders for banner', err);
     }
-  };
+  }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchOrders();
-      const interval = setInterval(fetchOrders, 30000); // Poll every 30s as safety fallback (sockets handle live updates)
-      listenOrderUpdates(() => {
+  // Re-fetch whenever user navigates between screens or returns from a child screen
+  useEffect(() => {
+    fetchOrders();
+  }, [pathname, fetchOrders]);
+
+  // Re-fetch when app returns to foreground from background
+  useEffect(() => {
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
         fetchOrders();
-      });
-      return () => {
-        clearInterval(interval);
-        removeOrderListeners();
-      };
-    }, [])
-  );
+      }
+    });
+    return () => {
+      appStateSub.remove();
+    };
+  }, [fetchOrders]);
+
+  // Primary active lifecycle: polling & real-time socket events with instant optimistic drop
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 15000);
+
+    let unsubscribe: (() => void) | undefined;
+    listenOrderUpdates((updateData: any) => {
+      if (!updateData) {
+        fetchOrders();
+        return;
+      }
+
+      const updateId = String(updateData._id || updateData.orderId || '').replace(/^["']|["']$/g, '').trim();
+      const st = (updateData.orderStatus || '').toLowerCase();
+      const isCancelled =
+        ['cancelled', 'rejected', 'failed', 'returned', 'completed'].includes(st) ||
+        Boolean(updateData.cancelledBy) ||
+        Boolean(updateData.cancelledAt) ||
+        updateData.customerDeliveryStatus === 'cancelled' ||
+        updateData.deliveryRiderStatus === 'cancelled' ||
+        Boolean(updateData.isCancelled);
+
+      if (updateId && isCancelled) {
+        // Drop the cancelled order from banner immediately (0ms response)
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setActiveOrders((prev) =>
+          prev.filter((o) => {
+            const currentId = String(o._id || '').replace(/^["']|["']$/g, '').trim();
+            return currentId !== updateId;
+          })
+        );
+      }
+
+      // Revalidate full active orders list with backend
+      fetchOrders();
+    }).then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      clearInterval(interval);
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [fetchOrders]);
 
   const toggleExpanded = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);

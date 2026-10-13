@@ -1,7 +1,7 @@
 import { fetchMerchants } from '@/api/merchants';
 import { ThemedText } from '@/components/common/themed-text';
 import { GenderThemes, Typography, SectionHeaderStyles } from '@/constants/theme';
-import { useAddress, distanceInMeters } from '@/context/AddressContext';
+import { useAddress, distanceInMeters, DEFAULT_FALLBACK_COORDS } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
@@ -94,8 +94,8 @@ export default function MerchantLogosSection({
   const loadMerchants = async () => {
     try {
       setLoading(true);
-      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude ?? DEFAULT_FALLBACK_COORDS.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude ?? DEFAULT_FALLBACK_COORDS.longitude;
       const response = await fetchMerchants(lat, lng, selectedGender, true); // strict=true
       const merchantsList = response?.merchants || response?.data?.merchants || [];
       setMerchants(merchantsList);

@@ -20,9 +20,11 @@ import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import ProductCard from '@/components/common/ProductCard';
 import Skeleton from '@/components/common/Skeleton';
 import AvailableBrandsSection from '@/components/sections/AvailableBrandsSection';
+import KidsComingSoonSection from '@/components/sections/KidsComingSoonSection';
+import SlimFreeDeliveryBanner from '@/components/common/SlimFreeDeliveryBanner';
 
 import { useGender } from '@/context/GenderContext';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, DEFAULT_FALLBACK_COORDS } from '@/context/AddressContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import { fetchWarehouseProducts, fetchWarehouseMerchants } from '@/api/products';
 import { fetchMerchants } from '@/api/merchants';
@@ -87,13 +89,19 @@ export default function FlashMartScreen() {
 
   const loadData = useCallback(async () => {
     try {
+      if (selectedGender === 'Kids') {
+        setProducts([]);
+        setMerchants([]);
+        setWarehouseMerchants([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
       setLoading(true);
-      const apiGender = selectedGender === 'Kids' && selectedSubGender !== 'All'
-        ? selectedSubGender.toUpperCase()
-        : (selectedGender === 'Kids' ? 'KIDS' : selectedGender.toUpperCase());
+      const apiGender = selectedGender.toUpperCase();
 
-      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude ?? DEFAULT_FALLBACK_COORDS.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude ?? DEFAULT_FALLBACK_COORDS.longitude;
 
       const [warehouseData, merchantsRes, warehouseMerchantsRes] = await Promise.all([
         fetchWarehouseProducts(
@@ -517,15 +525,29 @@ export default function FlashMartScreen() {
           <Animated.ScrollView
             showsVerticalScrollIndicator={false}
             scrollEventThrottle={16}
-            stickyHeaderIndices={[1]}
+            stickyHeaderIndices={selectedGender === 'Kids' ? undefined : [1]}
           >
             {/* ── 0. Header Spacer (allows MainHeader to scroll away) ── */}
             <View pointerEvents="none" style={{ height: Math.max(0, headerHeight - insets.top) }} />
 
-            {/* ── 1. Sticky Filter & Sort Bar (Sticks below status bar when scrolling) ── */}
-            <View style={[styles.stickyFilterBarWrap, { paddingTop: insets.top + 2 }]}>
-              {renderFilterBarContent()}
-            </View>
+            {/* ── 1. Sticky Filter & Sort Bar (Index 1: Sticks below status bar when scrolling) ── */}
+            {selectedGender !== 'Kids' ? (
+              <View style={[styles.stickyFilterBarWrap, { paddingTop: insets.top + 2 }]}>
+                {renderFilterBarContent()}
+              </View>
+            ) : null}
+
+            {/* ── 2. Scrollable Body Content ── */}
+            {selectedGender === 'Kids' ? (
+              <View>
+                <KidsComingSoonSection tabType="flashmart" onRefresh={onRefresh} refreshing={refreshing} />
+                <BrandFooter />
+                <View style={{ height: 100 }} />
+              </View>
+            ) : (
+              <View>
+                {/* ── Slim Free Delivery & Referral Banner ── */}
+                <SlimFreeDeliveryBanner style={{ marginTop: 4, marginBottom: 6 }} />
 
           {/* ── 2. Active Brand Prioritization Banner ── */}
           {selectedBrandId && (
@@ -655,6 +677,8 @@ export default function FlashMartScreen() {
           <BrandFooter />
 
           <View style={{ height: 100 }} />
+              </View>
+            )}
         </Animated.ScrollView>
       </PremiumRefreshWrapper>
       </View>

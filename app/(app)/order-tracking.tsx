@@ -25,7 +25,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGender } from '@/context/GenderContext';
 import { GenderThemes, Typography, BrandColors } from '@/constants/theme';
-import { getOrderById, finalpaymentInitiate, finalPaymentVerify, confirmCodSelection, reportUnresponsiveRider, confirmClothSelection } from '@/api/orders';
+import { getOrderById, finalpaymentInitiate, finalPaymentVerify, confirmCodSelection, reportUnresponsiveRider, confirmClothSelection, cancelOrder } from '@/api/orders';
 import { getMyReviews } from '@/api/reviews';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners, leaveOrderRoom } from '@/sockets/order.socket';
 import { getSocket } from '@/config/socket';
@@ -49,6 +49,8 @@ type Item = {
   quantity: number;
   tryStatus?: 'pending' | 'keep' | 'returned' | 'accepted' | 'return';
   returnReason?: string | null;
+  status?: 'available' | 'out_of_stock' | 'cancelled';
+  outOfStockReason?: string | null;
 };
 
 type OrderData = {
@@ -58,6 +60,9 @@ type OrderData = {
   customerDeliveryStatus?: string;
   otp?: string;
   items?: Item[];
+  hasUnavailableItems?: boolean;
+  customerCancellationAllowed?: boolean;
+  unavailableItemsCount?: number;
   trialPhaseStart?: string | number | null;
   trialPhaseDuration?: number;
   deliveryRiderDetails?: { name?: string; phone?: string };
@@ -353,6 +358,7 @@ export default function OrderTrackingScreen() {
   const [offersModalVisible, setOffersModalVisible] = useState(false);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedOfferForDetails, setSelectedOfferForDetails] = useState<any | null>(null);
+  const [mapInteracting, setMapInteracting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<{
@@ -373,6 +379,10 @@ export default function OrderTrackingScreen() {
     rawOffer?: any;
   } | null>(null);
   const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [dismissedOOS, setDismissedOOS] = useState(false);
+  const [cancellingOOS, setCancellingOOS] = useState(false);
+  const [oosAlertDetails, setOosAlertDetails] = useState<{ visible: boolean; itemName?: string; newTotal?: number; remainingCount?: number } | null>(null);
+  const [isCouponRemovedByUser, setIsCouponRemovedByUser] = useState(false);
   const [availableOffers, setAvailableOffers] = useState<any[]>([]);
   const [billingSummary, setBillingSummary] = useState({
     baseAmount: 0,
@@ -457,7 +467,13 @@ export default function OrderTrackingScreen() {
             : (raw === 'returned' || raw === 'return')
               ? 'returned'
               : 'pending';
-          return { ...i, tryStatus: mapped, returnReason: i.returnReason || null };
+          return { 
+            ...i, 
+            tryStatus: mapped, 
+            returnReason: i.returnReason || null,
+            status: i.status || 'available',
+            outOfStockReason: i.outOfStockReason || null,
+          };
         }));
         const alreadySubmitted = data.orderStatus === 'selection_made' || data.items.some((i: any) => i.tryStatus === 'accepted' || i.tryStatus === 'keep' || i.tryStatus === 'returned');
         if (alreadySubmitted) {
@@ -496,6 +512,7 @@ export default function OrderTrackingScreen() {
     if (!cleanOrderId) return;
 
     let socketJoined = false;
+    let unsubscribeUpdates: (() => void) | null = null;
 
     const setupSocket = async () => {
       await joinOrderRoom(cleanOrderId);
@@ -503,6 +520,13 @@ export default function OrderTrackingScreen() {
 
       listenOrderUpdates((update: any) => {
         console.log('📦 Order update:', update);
+
+        const isUpdateForThisOrder =
+          !update._id && !update.orderId
+            ? true
+            : String(update._id || update.orderId).replace(/^["']|["']$/g, '').trim() === cleanOrderId;
+
+        if (!isUpdateForThisOrder) return;
 
         if ((update.deliveryRiderStatus === 'at_delivery' || update.orderStatus === 'try_phase') && !hasNotifiedArrival.current) {
           hasNotifiedArrival.current = true;
@@ -517,7 +541,7 @@ export default function OrderTrackingScreen() {
           showToast({ message: 'Your rider has reached your location!', type: 'info' });
         }
 
-        if (update.orderStatus || update.deliveryRiderStatus) {
+        if (update.orderStatus || update.deliveryRiderStatus || update.customerDeliveryStatus) {
           setSteps(prev => {
             const newSteps = statusToSteps(update.orderStatus, update.deliveryRiderStatus);
             return prev.map((step, i) => ({
@@ -525,7 +549,15 @@ export default function OrderTrackingScreen() {
               completed: step.completed || (newSteps[i]?.completed ?? false),
             }));
           });
-          setOrder(prev => prev ? { ...prev, orderStatus: update.orderStatus || prev.orderStatus, deliveryRiderStatus: update.deliveryRiderStatus || prev.deliveryRiderStatus } : prev);
+          setOrder(prev => prev ? {
+            ...prev,
+            orderStatus: update.orderStatus || prev.orderStatus,
+            deliveryRiderStatus: update.deliveryRiderStatus || prev.deliveryRiderStatus,
+            customerDeliveryStatus: update.customerDeliveryStatus || prev.customerDeliveryStatus,
+            reason: update.reason || prev.reason,
+            cancelledBy: update.cancelledBy || prev.cancelledBy,
+            cancelledAt: update.cancelledAt || prev.cancelledAt,
+          } : prev);
         }
         if (update.otp !== undefined) setOtp(update.otp || '');
         if (update.paymentStatus) {
@@ -553,8 +585,25 @@ export default function OrderTrackingScreen() {
               : (raw === 'returned' || raw === 'return')
                 ? 'returned'
                 : 'pending';
-            return { ...i, tryStatus: mapped, returnReason: i.returnReason || null };
+            return { 
+              ...i, 
+              tryStatus: mapped, 
+              returnReason: i.returnReason || null,
+              status: i.status || 'available',
+              outOfStockReason: i.outOfStockReason || null,
+            };
           }));
+        }
+        if (update.totalAmount !== undefined) {
+          setOrder(prev => prev ? { ...prev, totalAmount: update.totalAmount } : prev);
+        }
+        if (update.hasUnavailableItems !== undefined) {
+          setOrder(prev => prev ? {
+            ...prev,
+            hasUnavailableItems: update.hasUnavailableItems,
+            customerCancellationAllowed: update.customerCancellationAllowed,
+            unavailableItemsCount: update.unavailableItemsCount,
+          } : prev);
         }
         if (update.trialPhaseDuration && update.trialPhaseStart && !update.trialPhaseEnd) {
           setTrialActive(true);
@@ -573,6 +622,8 @@ export default function OrderTrackingScreen() {
           } : prev);
           showToast({ message: 'Trial ended! Amount calculated.', type: 'info' });
         }
+      }).then((unsub) => {
+        unsubscribeUpdates = unsub;
       });
 
       const socket = getSocket();
@@ -648,6 +699,29 @@ export default function OrderTrackingScreen() {
             }
           }
         });
+
+        socket.on('orderItemUnavailable', (data: any) => {
+          const matches = !data.orderId || String(data.orderId).replace(/^["']|["']$/g, '') === cleanOrderId;
+          if (matches) {
+            setOosAlertDetails({
+              visible: true,
+              itemName: data.item?.name,
+              newTotal: data.newTotal,
+              remainingCount: data.remainingItemsCount,
+            });
+            setDismissedOOS(false);
+            if (data.newTotal !== undefined) {
+              setOrder(prev => prev ? { 
+                ...prev, 
+                totalAmount: data.newTotal, 
+                hasUnavailableItems: true, 
+                customerCancellationAllowed: true 
+              } : prev);
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            showToast({ message: data.message || 'An item in your order is out of stock.', type: 'info' });
+          }
+        });
       }
     };
 
@@ -666,8 +740,11 @@ export default function OrderTrackingScreen() {
         socket.off('photoVerified');
         socket.off('trialPhaseEnded');
         socket.off('cashCollected');
+        socket.off('orderItemUnavailable');
       }
-      removeOrderListeners();
+      if (unsubscribeUpdates) {
+        unsubscribeUpdates();
+      }
       if (socketJoined) {
         leaveOrderRoom(cleanOrderId);
       }
@@ -725,10 +802,11 @@ export default function OrderTrackingScreen() {
   };
 
   // ── Item Status Predicates ──
-  const isItemKept = (item: any) => item.tryStatus === 'keep' || item.tryStatus === 'accepted';
-  const isItemReturned = (item: any) => item.tryStatus === 'returned' || item.tryStatus === 'return';
-  const isItemDecided = (item: any) => isItemKept(item) || isItemReturned(item);
-  const isAllReturned = items.length > 0 && items.every(isItemReturned);
+  const availableItems = items.filter(i => i.status !== 'out_of_stock');
+  const isItemKept = (item: any) => item.status !== 'out_of_stock' && (item.tryStatus === 'keep' || item.tryStatus === 'accepted');
+  const isItemReturned = (item: any) => item.status !== 'out_of_stock' && (item.tryStatus === 'returned' || item.tryStatus === 'return');
+  const isItemDecided = (item: any) => item.status === 'out_of_stock' || isItemKept(item) || isItemReturned(item);
+  const isAllReturned = availableItems.length > 0 && availableItems.every(isItemReturned);
 
   // ── Order Status Predicates ──
   const status = order?.orderStatus || '';
@@ -796,6 +874,15 @@ export default function OrderTrackingScreen() {
     ['picked_up', 'en_route_delivery', 'at_delivery'].includes(order?.deliveryRiderStatus) ||
     order?.customerDeliveryStatus === 'on_the_way';
 
+  const isOutOfStockOccurred = Boolean(order?.hasUnavailableItems || items.some(i => i.status === 'out_of_stock'));
+  const canCancelOOS = Boolean(
+    isOutOfStockOccurred && 
+    ['placed', 'accepted', 'packed'].includes(status) && 
+    !isItemPickedUp
+  );
+  const showOOSBanner = Boolean(!dismissedOOS && isOutOfStockOccurred && !isCancelled && !isCompleted);
+  const availableItemsCount = items.filter(i => i.status !== 'out_of_stock').length;
+
   const storeName = useMemo(() => {
     return (
       order?.merchantDetails?.name ||
@@ -807,7 +894,9 @@ export default function OrderTrackingScreen() {
 
   // ── Sync active coupon from order if available ──
   useEffect(() => {
-    if (order?.couponCode && !appliedCoupon) {
+    if (isCouponRemovedByUser || appliedCoupon) return;
+
+    if (order?.couponCode) {
       const matchedOffer = order.appliedOffers?.find((o: any) => o.couponCode?.toUpperCase() === order.couponCode?.toUpperCase());
       const sName = matchedOffer?.merchantName || (matchedOffer?.scope === 'merchant' ? storeName : (matchedOffer?.scope === 'admin' ? undefined : storeName));
       setAppliedCoupon({
@@ -819,21 +908,59 @@ export default function OrderTrackingScreen() {
         discountValue: matchedOffer?.discountValue,
         maxDiscount: (matchedOffer as any)?.maxDiscount,
         minCartValue: (matchedOffer as any)?.conditions?.minCartValue,
-        freeDelivery: Boolean(matchedOffer?.freeDelivery),
-        freeReturn: Boolean((matchedOffer as any)?.freeReturn || matchedOffer?.freeDelivery),
-        freeWaiting: Boolean((matchedOffer as any)?.freeWaiting || matchedOffer?.freeDelivery),
+        freeDelivery: Boolean(matchedOffer?.freeDelivery || matchedOffer?.type === 'FREE_DELIVERY'),
+        freeReturn: Boolean((matchedOffer as any)?.freeReturn || matchedOffer?.freeDelivery || matchedOffer?.type === 'FREE_DELIVERY'),
+        freeWaiting: Boolean((matchedOffer as any)?.freeWaiting || matchedOffer?.freeDelivery || matchedOffer?.type === 'FREE_DELIVERY'),
         merchantName: sName,
         scope: (matchedOffer as any)?.scope,
         conditions: (matchedOffer as any)?.conditions,
         rawOffer: matchedOffer,
       });
+    } else if (order?.appliedOffers && order.appliedOffers.length > 0) {
+      // Find an auto-applied offer (e.g. Free Delivery or platform auto-apply offer)
+      const autoOffer = order.appliedOffers.find((o: any) =>
+        (o.autoApply || o.requiresCoupon === false || o.type === 'FREE_DELIVERY' || o.freeDelivery) && o.requiresCoupon !== true
+      );
+      if (autoOffer) {
+        const offerCode = autoOffer.couponCode || (autoOffer.type === 'FREE_DELIVERY' || autoOffer.freeDelivery ? 'FREEDELIVERY' : (autoOffer.code || 'AUTOAPPLY'));
+        const sName = autoOffer.merchantName || (autoOffer.scope === 'merchant' ? storeName : (autoOffer.scope === 'admin' ? undefined : storeName));
+        setAppliedCoupon({
+          code: offerCode,
+          discount: autoOffer.discountApplied || 0,
+          title: autoOffer.title || 'Free Delivery by FlashFits',
+          description: autoOffer.description || 'Enjoy free delivery, returns & waiting on your order',
+          discountType: autoOffer.discountType,
+          discountValue: autoOffer.discountValue,
+          maxDiscount: (autoOffer as any)?.maxDiscount,
+          minCartValue: (autoOffer as any)?.conditions?.minCartValue,
+          freeDelivery: Boolean(autoOffer.freeDelivery || autoOffer.type === 'FREE_DELIVERY'),
+          freeReturn: Boolean((autoOffer as any)?.freeReturn || autoOffer.freeDelivery || autoOffer.type === 'FREE_DELIVERY'),
+          freeWaiting: Boolean((autoOffer as any)?.freeWaiting || autoOffer.freeDelivery || autoOffer.type === 'FREE_DELIVERY'),
+          merchantName: sName,
+          scope: (autoOffer as any)?.scope,
+          conditions: (autoOffer as any)?.conditions,
+          rawOffer: autoOffer,
+        });
+      }
+    } else if (order?.deliveryCharge === 0) {
+      // Platform gave free delivery at order placement
+      setAppliedCoupon({
+        code: 'FREEDELIVERY',
+        discount: 0,
+        title: 'Free Delivery by FlashFits',
+        description: 'Free delivery applied on your order',
+        freeDelivery: true,
+        freeReturn: true,
+        freeWaiting: true,
+      });
     }
-  }, [order?.couponCode, order?.appliedOffers, storeName]);
+  }, [order?.couponCode, order?.appliedOffers, order?.deliveryCharge, storeName, isCouponRemovedByUser, appliedCoupon]);
 
   // ── Calculate discount on kept items ──
   const appliedOffersList = order?.appliedOffers || [];
   const keptItems = items.filter(isItemKept);
   const returnedItems = items.filter(isItemReturned);
+  const outOfStockItems = items.filter(i => i.status === 'out_of_stock');
   const keptSubtotal = keptItems.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
   const isCodPayment = order?.paymentMethod === 'cod' || (typeof order?.razorpayPaymentId === 'string' && order.razorpayPaymentId.startsWith('cod_'));
   const totalPaid = order?.finalBilling?.totalPayable ?? order?.totalPayable ?? billingSummary.totalPayable ?? 0;
@@ -846,11 +973,43 @@ export default function OrderTrackingScreen() {
     getAvailableOffers(subtotalToPass, mid, 'try_and_buy')
       .then((offers) => {
         setAvailableOffers(offers || []);
+        // Strictly auto-apply ONLY auto-applied offers (e.g. Free Delivery or platform auto-apply)
+        // User must manually apply any coupon that requires a code / requiresCoupon === true
+        if (!isCouponRemovedByUser) {
+          setAppliedCoupon((prev) => {
+            if (prev) return prev;
+            const autoOffer: any = (offers || []).find((o: any) =>
+              (o.autoApply || o.requiresCoupon === false || o.type === 'FREE_DELIVERY') && o.requiresCoupon !== true
+            );
+            if (autoOffer) {
+              const sName = autoOffer.merchantName || (autoOffer.scope === 'merchant' ? storeName : (autoOffer.scope === 'admin' ? undefined : storeName));
+              const code = autoOffer.couponCode || autoOffer.code || (autoOffer.type === 'FREE_DELIVERY' || autoOffer.freeDelivery ? 'FREEDELIVERY' : 'SPECIAL');
+              return {
+                code,
+                discount: autoOffer.discountAmount || 0,
+                title: autoOffer.title || 'Free Delivery by FlashFits',
+                description: autoOffer.description,
+                discountType: autoOffer.discountType,
+                discountValue: autoOffer.discountValue,
+                maxDiscount: autoOffer.maxDiscount,
+                minCartValue: autoOffer.conditions?.minCartValue,
+                freeDelivery: Boolean(autoOffer.freeDelivery || autoOffer.type === 'FREE_DELIVERY'),
+                freeReturn: Boolean(autoOffer.freeReturn || autoOffer.freeDelivery || autoOffer.type === 'FREE_DELIVERY'),
+                freeWaiting: Boolean(autoOffer.freeWaiting || autoOffer.freeDelivery || autoOffer.type === 'FREE_DELIVERY'),
+                merchantName: sName,
+                scope: autoOffer.scope,
+                conditions: autoOffer.conditions,
+                rawOffer: autoOffer,
+              };
+            }
+            return null;
+          });
+        }
       })
       .catch((err) => {
         console.error('Failed to load available offers for order:', err);
       });
-  }, [cleanOrderId, order?.merchantId, order?.totalAmount, keptSubtotal]);
+  }, [cleanOrderId, order?.merchantId, order?.totalAmount, keptSubtotal, isCouponRemovedByUser, storeName]);
 
   // ── Apply Coupon Code Handler ──
   const handleApplyCouponCode = async (codeToApply?: string) => {
@@ -925,6 +1084,7 @@ export default function OrderTrackingScreen() {
         });
         setCouponCodeInput('');
         setOffersModalVisible(false);
+        setIsCouponRemovedByUser(false);
 
         if (minCartVal && keptSubtotal < minCartVal) {
           showToast({
@@ -959,12 +1119,14 @@ export default function OrderTrackingScreen() {
   const handleRemoveCoupon = async () => {
     setAppliedCoupon(null);
     setCouponCodeInput('');
+    setIsCouponRemovedByUser(true);
     showToast({ message: 'Coupon removed', type: 'info' });
   };
 
   const handleApplyOffer = async (offer: any) => {
-    if (offer.couponCode) {
-      return await handleApplyCouponCode(offer.couponCode);
+    const code = offer.couponCode || offer.code;
+    if (code) {
+      return await handleApplyCouponCode(code);
     }
     showToast({ message: 'Store offers are automatically applied to qualifying items', type: 'info' });
     return false;
@@ -1085,27 +1247,32 @@ export default function OrderTrackingScreen() {
   const couponThresholdMet = !appliedCoupon?.minCartValue || keptSubtotal >= appliedCoupon.minCartValue;
 
   const isFreeDelivery = Boolean(
-    (appliedCoupon?.freeDelivery && couponThresholdMet) || 
-    appliedOffersList.some((o: any) => o.freeDelivery) ||
-    order?.deliveryCharge === 0 ||
-    order?.originalDeliveryCharge === 0
+    (!isCouponRemovedByUser && (
+      (appliedCoupon?.freeDelivery && couponThresholdMet) || 
+      appliedOffersList.some((o: any) => o.freeDelivery || o.type === 'FREE_DELIVERY') ||
+      order?.deliveryCharge === 0
+    )) ||
+    (order?.originalDeliveryCharge === 0 && (!order?.appliedOffers || order?.appliedOffers.length === 0))
   );
 
   const isFreeReturn = Boolean(
     isFreeDelivery ||
-    (appliedCoupon?.freeReturn && couponThresholdMet) ||
-    (appliedCoupon?.freeDelivery && couponThresholdMet) ||
-    appliedOffersList.some((o: any) => o.freeReturn || o.freeDelivery) ||
-    order?.returnCharge === 0 ||
-    order?.deliveryCharge === 0 ||
-    order?.originalDeliveryCharge === 0
+    (!isCouponRemovedByUser && (
+      (appliedCoupon?.freeReturn && couponThresholdMet) ||
+      (appliedCoupon?.freeDelivery && couponThresholdMet) ||
+      appliedOffersList.some((o: any) => o.freeReturn || o.freeDelivery || o.type === 'FREE_DELIVERY') ||
+      order?.returnCharge === 0
+    )) ||
+    (order?.originalReturnCharge === 0 && (!order?.appliedOffers || order?.appliedOffers.length === 0))
   );
 
   const isFreeWaiting = Boolean(
     isFreeDelivery ||
-    (appliedCoupon?.freeWaiting && couponThresholdMet) ||
-    (appliedCoupon?.freeDelivery && couponThresholdMet) ||
-    appliedOffersList.some((o: any) => o.freeWaiting || o.freeDelivery)
+    (!isCouponRemovedByUser && (
+      (appliedCoupon?.freeWaiting && couponThresholdMet) ||
+      (appliedCoupon?.freeDelivery && couponThresholdMet) ||
+      appliedOffersList.some((o: any) => o.freeWaiting || o.freeDelivery || o.type === 'FREE_DELIVERY')
+    ))
   );
 
   const originalDeliveryCharge = Number(order?.originalDeliveryCharge ?? order?.deliveryCharge ?? 0);
@@ -1169,14 +1336,16 @@ export default function OrderTrackingScreen() {
 
     setConfirmingSelection(true);
     try {
+      const activeCoupon = appliedCoupon ? appliedCoupon.code : (isCouponRemovedByUser ? '' : (order?.couponCode || undefined));
       const payload = {
         orderId: orderId!,
-        items: items.map(i => ({
+        items: items.filter(i => i.status !== 'out_of_stock').map(i => ({
           itemId: i._id,
           tryStatus: isItemReturned(i) ? 'return' : 'keep',
           returnReason: isItemReturned(i) ? (i.returnReason?.trim() || null) : null,
         })),
-        couponCode: appliedCoupon ? appliedCoupon.code : '',
+        couponCode: activeCoupon,
+        removeCoupon: isCouponRemovedByUser,
       };
 
       await confirmClothSelection(payload);
@@ -1196,7 +1365,7 @@ export default function OrderTrackingScreen() {
     setSubmitting(true);
     try {
       // Ensure all items are decided without blocking: any item explicitly returned stays returned, everything else is kept
-      const finalizedItems = items.map(i => {
+      const finalizedItems = items.filter(i => i.status !== 'out_of_stock').map(i => {
         const isRet = isItemReturned(i);
         return {
           itemId: i._id,
@@ -1206,18 +1375,24 @@ export default function OrderTrackingScreen() {
       });
 
       // Update state so UI stays in complete sync
-      setItems(prev => prev.map(i => ({
-        ...i,
-        tryStatus: isItemReturned(i) ? 'returned' : 'keep',
-      })));
+      setItems(prev => prev.map(i => {
+        if (i.status === 'out_of_stock') return i;
+        return {
+          ...i,
+          tryStatus: isItemReturned(i) ? 'returned' : 'keep',
+        };
+      }));
 
       // If nothing is payable (₹0 due e.g. free delivery coupon or waived fees)
       if (billingSummary.totalPayable === 0) {
         try {
+          const activeCoupon = appliedCoupon ? appliedCoupon.code : (isCouponRemovedByUser ? '' : (order?.couponCode || undefined));
           await confirmCodSelection({
             orderId: orderId!,
             items: finalizedItems,
             finalPaymentMethod: 'cod',
+            couponCode: activeCoupon,
+            removeCoupon: isCouponRemovedByUser,
           });
         } catch (e) {
           console.warn('0 due confirmation fallback attempt:', e);
@@ -1256,10 +1431,13 @@ export default function OrderTrackingScreen() {
 
       // If customer returned all items and fee > 0: Customer MUST pay directly to rider (Cash / UPI)
       if (isAllReturned && billingSummary.totalPayable > 0) {
+        const activeCoupon = appliedCoupon ? appliedCoupon.code : (isCouponRemovedByUser ? '' : (order?.couponCode || undefined));
         const codRes = await confirmCodSelection({
           orderId: orderId!,
           items: finalizedItems,
           finalPaymentMethod: 'cod',
+          couponCode: activeCoupon,
+          removeCoupon: isCouponRemovedByUser,
         });
 
         if (codRes && (codRes.success || codRes.orderId)) {
@@ -1294,10 +1472,12 @@ export default function OrderTrackingScreen() {
       }
 
       // Online Razorpay payment for final payment (when keeping items)
+      const activeCoupon = appliedCoupon ? appliedCoupon.code : (isCouponRemovedByUser ? '' : (order?.couponCode || undefined));
       const payload = {
         orderId: orderId!,
         items: finalizedItems,
-        couponCode: appliedCoupon ? appliedCoupon.code : '',
+        couponCode: activeCoupon,
+        removeCoupon: isCouponRemovedByUser,
         finalPaymentMethod: 'online',
       };
 
@@ -1395,6 +1575,35 @@ export default function OrderTrackingScreen() {
     );
   }
 
+  const handleCancelOrderDueToOOS = () => {
+    Alert.alert(
+      "Cancel Order?",
+      "Since an item in your order is out of stock, you can cancel this order at no charge. Are you sure you want to cancel the entire order?",
+      [
+        { text: "Keep Order", style: "cancel" },
+        {
+          text: "Cancel Entire Order",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setCancellingOOS(true);
+              await cancelOrder(cleanOrderId, "Cancelled by customer due to out-of-stock item");
+              showToast({ message: "Order cancelled successfully.", type: "info" });
+              await fetchOrder();
+            } catch (err: any) {
+              Alert.alert(
+                "Cancellation Failed",
+                err.response?.data?.message || err.message || "Failed to cancel order."
+              );
+            } finally {
+              setCancellingOOS(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleHelp = () => {
     if (order?.riderUnresponsiveReport?.status === 'pending') {
       Alert.alert('Rider Reported', 'You have already reported the rider. An admin is reviewing it.');
@@ -1449,7 +1658,7 @@ export default function OrderTrackingScreen() {
                 orderId: cleanOrderId,
                 category: 'damaged_product',
                 itemsJson: JSON.stringify(
-                  items.map((i) => ({
+                  items.filter((i) => i.status !== 'out_of_stock').map((i) => ({
                     _id: i._id,
                     name: i.name,
                     image: i.image,
@@ -1936,8 +2145,82 @@ export default function OrderTrackingScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        scrollEnabled={!mapInteracting}
+        nestedScrollEnabled={true}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />}
       >
+        {/* ─── Out of Stock / Partial Fulfillment Alert Banner ─── */}
+        {!isCancelled && !isCompleted && showOOSBanner && (
+          <View style={styles.oosBannerContainer}>
+            <View style={styles.oosBannerHeader}>
+              <View style={styles.oosIconWrap}>
+                <Ionicons name="alert-circle" size={22} color="#DC2626" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.oosTitle}>Item Unavailable at Store</Text>
+                <Text style={styles.oosSubtitle}>
+                  {oosAlertDetails?.itemName 
+                    ? `"${oosAlertDetails.itemName}" was out of stock.`
+                    : 'An item in your order was out of stock.'}
+                  {' '}Your order is continuing with the remaining item{availableItemsCount !== 1 ? 's' : ''}.
+                </Text>
+              </View>
+            </View>
+
+            {/* Quick Summary Chips */}
+            <View style={styles.oosSummaryRow}>
+              <View style={styles.oosSummaryChip}>
+                <Ionicons name="shirt-outline" size={13} color="#475569" />
+                <Text style={styles.oosSummaryChipText}>
+                  {availableItemsCount} item{availableItemsCount !== 1 ? 's' : ''} in package
+                </Text>
+              </View>
+              {order?.totalAmount !== undefined && (
+                <View style={styles.oosSummaryChip}>
+                  <Text style={styles.oosSummaryChipText}>
+                    Updated Est: ₹{order.totalAmount}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Decision Actions (allowed pre-pickup) */}
+            {canCancelOOS ? (
+              <View style={styles.oosActionsRow}>
+                <TouchableOpacity
+                  style={styles.oosDismissBtn}
+                  onPress={() => setDismissedOOS(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.oosDismissBtnText}>Keep & Proceed</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.oosCancelBtn}
+                  onPress={handleCancelOrderDueToOOS}
+                  disabled={cancellingOOS}
+                  activeOpacity={0.8}
+                >
+                  {cancellingOOS ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <>
+                      <Ionicons name="close-circle-outline" size={15} color="#DC2626" style={{ marginRight: 4 }} />
+                      <Text style={styles.oosCancelBtnText}>Cancel Order</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ marginTop: 8 }}>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>
+                  Package is with rider • You can return any unwanted items during your 30-min trial.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* ─── Status Banner (shown during tracking & try phase) ─── */}
         {!isCompleted && !isCancelled && (
           <View style={[styles.statusBanner, { backgroundColor: theme.primary + '10' }]}>
@@ -1982,6 +2265,8 @@ export default function OrderTrackingScreen() {
             merchantName={order?.merchantDetails?.name || 'Store'}
             riderName={rider?.name || 'Rider'}
             estimatedMinutes={order?.estimatedTime}
+            onInteractionStart={() => setMapInteracting(true)}
+            onInteractionEnd={() => setMapInteracting(false)}
           />
         )}
 
@@ -2064,55 +2349,85 @@ export default function OrderTrackingScreen() {
                   <Text style={styles.cardTitle}>Select Items to Keep or Return</Text>
                   <Text style={styles.cardSubtitle}>Try your clothes and decide what to keep</Text>
 
-                  {items.map((item, idx) => (
-                    <View key={item._id} style={styles.itemCard}>
-                      <View style={styles.itemRow}>
-                        {item.image ? (
-                          <Image source={{ uri: item.image }} style={styles.itemImage} contentFit="cover" />
-                        ) : (
-                          <View style={[styles.itemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
-                            <Ionicons name="shirt-outline" size={24} color="#CBD5E1" />
+                  {items.map((item, idx) => {
+                    const isOos = item.status === 'out_of_stock';
+                    if (isOos) {
+                      return (
+                        <View key={item._id || idx} style={[styles.itemCard, { opacity: 0.65, backgroundColor: '#F8FAFC' }]}>
+                          <View style={styles.itemRow}>
+                            {item.image ? (
+                              <Image source={{ uri: item.image }} style={styles.itemImage} contentFit="cover" />
+                            ) : (
+                              <View style={[styles.itemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
+                                <Ionicons name="shirt-outline" size={24} color="#CBD5E1" />
+                              </View>
+                            )}
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                              <Text style={[styles.itemName, { textDecorationLine: 'line-through', color: '#94A3B8' }]} numberOfLines={2}>
+                                {item.name}
+                              </Text>
+                              <Text style={styles.itemMeta}>Size: {item.size} • Excluded from package</Text>
+                              <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#DC2626' }}>
+                                  OUT OF STOCK ({item.outOfStockReason || 'Store unavailable'})
+                                </Text>
+                              </View>
+                            </View>
                           </View>
-                        )}
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-                          <Text style={styles.itemMeta}>Size: {item.size} • ₹{item.price} × {item.quantity}</Text>
                         </View>
-                      </View>
+                      );
+                    }
 
-                      <View style={styles.actionRow}>
-                        <TouchableOpacity
-                          style={[styles.actionBtn, isItemKept(item) && { backgroundColor: '#DCFCE7', borderColor: '#16A34A' }]}
-                          onPress={() => handleItemUpdate(idx, 'keep', null)}
-                        >
-                          <Ionicons name={isItemKept(item) ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18} color={isItemKept(item) ? '#16A34A' : '#94A3B8'} />
-                          <Text style={[styles.actionText, isItemKept(item) && { color: '#16A34A', fontWeight: '800' }]}>
-                            Keep
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.actionBtn, isItemReturned(item) && { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}
-                          onPress={() => handleItemUpdate(idx, 'returned', item.returnReason || '')}
-                        >
-                          <Ionicons name={isItemReturned(item) ? 'arrow-undo-circle' : 'arrow-undo-circle-outline'} size={18} color={isItemReturned(item) ? '#EF4444' : '#94A3B8'} />
-                          <Text style={[styles.actionText, isItemReturned(item) && { color: '#EF4444', fontWeight: '800' }]}>
-                            Return
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+                    return (
+                      <View key={item._id} style={styles.itemCard}>
+                        <View style={styles.itemRow}>
+                          {item.image ? (
+                            <Image source={{ uri: item.image }} style={styles.itemImage} contentFit="cover" />
+                          ) : (
+                            <View style={[styles.itemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
+                              <Ionicons name="shirt-outline" size={24} color="#CBD5E1" />
+                            </View>
+                          )}
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+                            <Text style={styles.itemMeta}>Size: {item.size} • ₹{item.price} × {item.quantity}</Text>
+                          </View>
+                        </View>
 
-                      {isItemReturned(item) && (
-                        <TextInput
-                          style={[styles.reasonInput, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}
-                          placeholder="Feel free to add feedback (Optional)"
-                          placeholderTextColor="#94A3B8"
-                          value={item.returnReason || ''}
-                          onChangeText={text => handleItemUpdate(idx, 'returned', text)}
-                          multiline
-                        />
-                      )}
-                    </View>
-                  ))}
+                        <View style={styles.actionRow}>
+                          <TouchableOpacity
+                            style={[styles.actionBtn, isItemKept(item) && { backgroundColor: '#DCFCE7', borderColor: '#16A34A' }]}
+                            onPress={() => handleItemUpdate(idx, 'keep', null)}
+                          >
+                            <Ionicons name={isItemKept(item) ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18} color={isItemKept(item) ? '#16A34A' : '#94A3B8'} />
+                            <Text style={[styles.actionText, isItemKept(item) && { color: '#16A34A', fontWeight: '800' }]}>
+                              Keep
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.actionBtn, isItemReturned(item) && { backgroundColor: '#FEF2F2', borderColor: '#EF4444' }]}
+                            onPress={() => handleItemUpdate(idx, 'returned', item.returnReason || '')}
+                          >
+                            <Ionicons name={isItemReturned(item) ? 'arrow-undo-circle' : 'arrow-undo-circle-outline'} size={18} color={isItemReturned(item) ? '#EF4444' : '#94A3B8'} />
+                            <Text style={[styles.actionText, isItemReturned(item) && { color: '#EF4444', fontWeight: '800' }]}>
+                              Return
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {isItemReturned(item) && (
+                          <TextInput
+                            style={[styles.reasonInput, { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' }]}
+                            placeholder="Feel free to add feedback (Optional)"
+                            placeholderTextColor="#94A3B8"
+                            value={item.returnReason || ''}
+                            onChangeText={text => handleItemUpdate(idx, 'returned', text)}
+                            multiline
+                          />
+                        )}
+                      </View>
+                    );
+                  })}
 
                   {/* Coupons & Offers Section (Live selection for Try & Buy) */}
                   {renderCouponsAndOffersCard()}
@@ -2172,7 +2487,7 @@ export default function OrderTrackingScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A' }}>Selection Recorded</Text>
                     <Text style={{ fontSize: 12, color: '#64748B' }}>
-                      {items.filter(i => i.tryStatus === 'keep' || i.tryStatus === 'accepted').length} kept • {items.filter(i => i.tryStatus === 'returned').length} returned
+                      {keptItems.length} kept • {returnedItems.length} returned{outOfStockItems.length > 0 ? ` • ${outOfStockItems.length} out of stock` : ''}
                     </Text>
                   </View>
                 </View>
@@ -2287,34 +2602,48 @@ export default function OrderTrackingScreen() {
                   <Text style={{ fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>
                     Items Breakdown ({items.filter(isItemKept).length} kept, {items.filter(isItemReturned).length} returned)
                   </Text>
-                  {items.map((item, idx) => (
-                    <View key={item._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
-                      <View style={{ flex: 1, marginRight: 10 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>{item.name}</Text>
-                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
-                          Size: {item.size} • Status: <Text style={{ fontWeight: '700', color: isItemKept(item) ? '#16A34A' : '#EF4444' }}>{isItemKept(item) ? 'KEPT' : 'RETURNED'}</Text>
-                        </Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
-                          {isItemKept(item) ? `₹${item.price * (item.quantity || 1)}` : '₹0'}
-                        </Text>
-                        <TouchableOpacity
-                          style={{
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
-                            borderRadius: 6,
-                            backgroundColor: isItemKept(item) ? '#FEF2F2' : '#DCFCE7',
-                            borderWidth: 1,
-                            borderColor: isItemKept(item) ? '#FECACA' : '#BBF7D0',
-                          }}
-                          onPress={() => handleItemUpdate(idx, isItemKept(item) ? 'returned' : 'keep', isItemKept(item) ? (item.returnReason || '') : null)}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: '700', color: isItemKept(item) ? '#EF4444' : '#16A34A' }}>
-                            {isItemKept(item) ? 'Return item' : 'Keep item'}
+                  {items.filter(item => item.status !== 'out_of_stock').map((item) => {
+                    const originalIdx = items.findIndex(i => i._id === item._id);
+                    return (
+                      <View key={item._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                        <View style={{ flex: 1, marginRight: 10 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#1E293B' }}>{item.name}</Text>
+                          <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                            Size: {item.size} • Status: <Text style={{ fontWeight: '700', color: isItemKept(item) ? '#16A34A' : '#EF4444' }}>{isItemKept(item) ? 'KEPT' : 'RETURNED'}</Text>
                           </Text>
-                        </TouchableOpacity>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                            {isItemKept(item) ? `₹${item.price * (item.quantity || 1)}` : '₹0'}
+                          </Text>
+                          <TouchableOpacity
+                            style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                              borderRadius: 6,
+                              backgroundColor: isItemKept(item) ? '#FEF2F2' : '#DCFCE7',
+                              borderWidth: 1,
+                              borderColor: isItemKept(item) ? '#FECACA' : '#BBF7D0',
+                            }}
+                            onPress={() => handleItemUpdate(originalIdx, isItemKept(item) ? 'returned' : 'keep', isItemKept(item) ? (item.returnReason || '') : null)}
+                          >
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: isItemKept(item) ? '#EF4444' : '#16A34A' }}>
+                              {isItemKept(item) ? 'Return item' : 'Keep item'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
+                    );
+                  })}
+                  {items.filter(item => item.status === 'out_of_stock').map((item) => (
+                    <View key={item._id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', opacity: 0.6 }}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#94A3B8', textDecorationLine: 'line-through' }}>{item.name}</Text>
+                        <Text style={{ fontSize: 11, color: '#DC2626', marginTop: 2, fontWeight: '600' }}>
+                          Size: {item.size} • OUT OF STOCK ({item.outOfStockReason || 'Excluded'})
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#94A3B8' }}>₹0</Text>
                     </View>
                   ))}
                 </View>
@@ -2828,9 +3157,10 @@ export default function OrderTrackingScreen() {
 
               <View style={{ gap: 10 }}>
                 {items.map((item) => {
+                  const isOos = item.status === 'out_of_stock';
                   const kept = isItemKept(item);
                   return (
-                    <View key={item._id} style={styles.itemLuxuryRow}>
+                    <View key={item._id} style={[styles.itemLuxuryRow, isOos && { opacity: 0.7 }]}>
                       {item.image ? (
                         <Image source={{ uri: item.image }} style={styles.itemLuxuryImage} contentFit="cover" />
                       ) : (
@@ -2839,28 +3169,42 @@ export default function OrderTrackingScreen() {
                         </View>
                       )}
                       <View style={{ flex: 1, marginHorizontal: 12 }}>
-                        <Text style={styles.itemLuxuryName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={[styles.itemLuxuryName, isOos && { textDecorationLine: 'line-through', color: '#94A3B8' }]} numberOfLines={1}>{item.name}</Text>
                         <Text style={styles.itemLuxuryMeta}>
                           Size: {item.size} • Qty: {item.quantity || 1}
                         </Text>
-                        {item.returnReason ? (
+                        {isOos ? (
+                          <Text style={[styles.itemLuxuryReason, { color: '#DC2626' }]} numberOfLines={1}>
+                            Out of stock: {item.outOfStockReason || 'Excluded by store'}
+                          </Text>
+                        ) : item.returnReason ? (
                           <Text style={styles.itemLuxuryReason} numberOfLines={1}>
                             Feedback: {item.returnReason}
                           </Text>
                         ) : null}
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                        <Text style={[styles.itemLuxuryPrice, !kept && styles.itemPriceStrike]}>
+                        <Text style={[styles.itemLuxuryPrice, (!kept || isOos) && styles.itemPriceStrike]}>
                           ₹{item.price * (item.quantity || 1)}
                         </Text>
-                        <View style={[styles.luxuryStatusPill, kept ? styles.keptPill : styles.returnedPill]}>
+                        <View style={[
+                          styles.luxuryStatusPill,
+                          isOos
+                            ? { backgroundColor: '#FEE2E2', borderColor: '#FECACA' }
+                            : kept
+                            ? styles.keptPill
+                            : styles.returnedPill
+                        ]}>
                           <Ionicons
-                            name={kept ? 'checkmark' : 'arrow-undo'}
+                            name={isOos ? 'alert-circle' : kept ? 'checkmark' : 'arrow-undo'}
                             size={11}
-                            color={kept ? '#15803D' : '#64748B'}
+                            color={isOos ? '#DC2626' : kept ? '#15803D' : '#64748B'}
                           />
-                          <Text style={[styles.luxuryStatusText, kept ? styles.keptText : styles.returnedText]}>
-                            {kept ? 'KEPT' : 'RETURNED'}
+                          <Text style={[
+                            styles.luxuryStatusText,
+                            isOos ? { color: '#DC2626' } : kept ? styles.keptText : styles.returnedText
+                          ]}>
+                            {isOos ? 'OUT OF STOCK' : kept ? 'KEPT' : 'RETURNED'}
                           </Text>
                         </View>
                       </View>
@@ -3462,21 +3806,31 @@ export default function OrderTrackingScreen() {
             </TouchableOpacity>
             {packageOpen && (
               <View style={styles.packageList}>
-                {items.map(item => (
-                  <View key={item._id} style={styles.packageItem}>
-                    {item.image ? (
-                      <Image source={{ uri: item.image }} style={styles.packageImage} contentFit="cover" />
-                    ) : (
-                      <View style={[styles.packageImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
-                        <Ionicons name="shirt-outline" size={16} color="#CBD5E1" />
+                {items.map(item => {
+                  const isOos = item.status === 'out_of_stock';
+                  return (
+                    <View key={item._id} style={[styles.packageItem, isOos && { opacity: 0.65 }]}>
+                      {item.image ? (
+                        <Image source={{ uri: item.image }} style={styles.packageImage} contentFit="cover" />
+                      ) : (
+                        <View style={[styles.packageImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
+                          <Ionicons name="shirt-outline" size={16} color="#CBD5E1" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.packageName, isOos && { textDecorationLine: 'line-through', color: '#94A3B8' }]} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.packageMeta}>₹{item.price} • Size: {item.size} • Qty: {item.quantity}</Text>
+                        {isOos && (
+                          <View style={styles.packageOosBadge}>
+                            <Text style={styles.packageOosBadgeText}>
+                              OUT OF STOCK ({item.outOfStockReason || 'Excluded'})
+                            </Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={styles.packageName} numberOfLines={1}>{item.name}</Text>
-                      <Text style={styles.packageMeta}>₹{item.price} • Size: {item.size} • Qty: {item.quantity}</Text>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </>
@@ -3645,7 +3999,9 @@ export default function OrderTrackingScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.confirmModalTitle}>Confirm Your Selection</Text>
                 <Text style={styles.confirmModalSubtitle}>
-                  Review the dresses you want to keep and return
+                  {outOfStockItems.length > 0
+                    ? `Review items to keep, return, or excluded (${outOfStockItems.length} unavailable)`
+                    : 'Review the dresses you want to keep and return'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -3665,6 +4021,16 @@ export default function OrderTrackingScreen() {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 10 }}
             >
+              {/* Out of Stock Alert Banner */}
+              {outOfStockItems.length > 0 && (
+                <View style={styles.confirmOosBanner}>
+                  <Ionicons name="alert-circle" size={18} color="#DC2626" />
+                  <Text style={styles.confirmOosBannerText}>
+                    {outOfStockItems.length} {outOfStockItems.length === 1 ? 'item was' : 'items were'} out of stock at the store and excluded from delivery & bill.
+                  </Text>
+                </View>
+              )}
+
               {/* Keeping Section */}
               <View style={styles.confirmSection}>
                 <View style={styles.confirmSectionHeader}>
@@ -3760,6 +4126,61 @@ export default function OrderTrackingScreen() {
                 )}
               </View>
 
+              {/* Out of Stock Section */}
+              {outOfStockItems.length > 0 && (
+                <View style={[styles.confirmSection, { marginTop: 12, borderColor: '#FECACA', backgroundColor: '#FFF5F5' }]}>
+                  <View style={[styles.confirmSectionHeader, { borderBottomColor: '#FEE2E2' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="close-circle" size={18} color="#DC2626" />
+                      <Text style={[styles.confirmSectionTitle, { color: '#DC2626' }]}>
+                        Out of Stock ({outOfStockItems.length})
+                      </Text>
+                    </View>
+                    <View style={styles.confirmOosTag}>
+                      <Text style={styles.confirmOosTagText}>NOT CHARGED</Text>
+                    </View>
+                  </View>
+
+                  <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 8, marginTop: -2 }}>
+                    Excluded by store • Not delivered in package
+                  </Text>
+
+                  {outOfStockItems.map(item => (
+                    <View key={item._id} style={[styles.confirmItemRow, { borderBottomWidth: 1, borderBottomColor: '#FEE2E2', paddingBottom: 8 }]}>
+                      {item.image ? (
+                        <Image source={{ uri: item.image }} style={styles.confirmItemImage} contentFit="cover" />
+                      ) : (
+                        <View style={[styles.confirmItemImage, { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }]}>
+                          <Ionicons name="shirt-outline" size={18} color="#94A3B8" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={[styles.confirmItemName, { textDecorationLine: 'line-through', color: '#64748B' }]} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.confirmItemMeta}>
+                          Size: {item.size} • Qty: {item.quantity || 1}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <Ionicons name="information-circle-outline" size={12} color="#DC2626" />
+                          <Text style={{ fontSize: 10.5, color: '#DC2626', fontWeight: '600' }} numberOfLines={1}>
+                            {item.outOfStockReason ? `Reason: ${item.outOfStockReason}` : 'Unavailable at merchant store'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                        <Text style={[styles.confirmItemPrice, { color: '#94A3B8', textDecorationLine: 'line-through' }]}>
+                          ₹{item.price * (item.quantity || 1)}
+                        </Text>
+                        <View style={[styles.confirmBadge, { backgroundColor: '#FEE2E2' }]}>
+                          <Text style={[styles.confirmBadgeText, { color: '#DC2626' }]}>OUT OF STOCK</Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
               {/* Estimated Bill inside Confirmation Modal */}
               <EstimatedBillSection
                 summary={billingSummary}
@@ -3839,6 +4260,110 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' },
   headerTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
   scrollContent: { padding: 16 },
+
+  // Out of stock alert banner
+  oosBannerContainer: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  oosBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  oosIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  oosTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#991B1B',
+  },
+  oosSubtitle: {
+    fontSize: 12,
+    color: '#7F1D1D',
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  oosSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  oosSummaryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  oosSummaryChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  oosActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+  },
+  oosDismissBtn: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    paddingVertical: 9,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  oosDismissBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  oosCancelBtn: {
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DC2626',
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  oosCancelBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  packageOosBadge: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginTop: 3,
+  },
+  packageOosBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
 
   // Status
   statusBanner: {
@@ -4758,6 +5283,36 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  confirmOosTag: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  confirmOosTagText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  confirmOosBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  confirmOosBannerText: {
+    fontSize: 11.5,
+    color: '#991B1B',
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 16,
   },
   confirmWarningBox: {
     flexDirection: 'row',

@@ -477,7 +477,8 @@ export default function PhoneLogin() {
         throw new Error("No ID Token received from Google");
       }
 
-      const res = await googleLogin(idToken, referralCode);
+      const cleanReferral = referralCode.trim() ? referralCode.trim().toUpperCase() : undefined;
+      const res = await googleLogin(idToken, cleanReferral);
       const authData = (res && (res as any).token) ? res : ((res as any)?.data?.token ? (res as any).data : res);
       if (authData && authData.token) {
         const { token, refreshToken, userId, isNewUser, user } = authData;
@@ -528,7 +529,7 @@ export default function PhoneLogin() {
         identityToken: credential.identityToken,
         user: credential.user,
         fullName: credential.fullName,
-        referralCode,
+        referralCode: referralCode.trim() ? referralCode.trim().toUpperCase() : undefined,
       });
 
       const authData = (res && (res as any).token) ? res : ((res as any)?.data?.token ? (res as any).data : res);
@@ -594,6 +595,19 @@ export default function PhoneLogin() {
           keyboardDismissMode="none"
           keyboardShouldPersistTaps="handled"
         >
+          {/* ── Top Guest Action ── */}
+          <View style={styles.topSkipRow}>
+            <TouchableOpacity
+              style={styles.topSkipBtn}
+              onPress={() => router.replace('/(app)/(tabs)')}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.topSkipText}>Skip</Text>
+              <Ionicons name="chevron-forward" size={14} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
           {/* ── LOGO ── */}
           <Animated.View
             style={[
@@ -918,6 +932,16 @@ export default function PhoneLogin() {
               >
                 <AntDesign name="google" size={19} color="#0F172A" />
                 <Text style={styles.googleBtnText}>Continue with Google</Text>
+              </TouchableOpacity>
+
+              {/* Continue as Guest Button */}
+              <TouchableOpacity
+                style={styles.guestBtn}
+                onPress={() => router.replace('/(app)/(tabs)')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="bag-handle-outline" size={19} color="#475569" />
+                <Text style={styles.guestBtnText}>Continue as Guest</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -1261,6 +1285,29 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     alignItems: "center",
   },
+  topSkipRow: {
+    width: "100%",
+    alignItems: "flex-end",
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  topSkipBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(241, 245, 249, 0.9)",
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    gap: 4,
+  },
+  topSkipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#475569",
+    fontFamily: "Manrope-Bold",
+  },
 
   /* ── LOGO ── */
   logoWrapper: { marginBottom: 12, alignItems: "center" },
@@ -1498,6 +1545,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: "#0F172A",
+    fontFamily: "Manrope-Bold",
+  },
+  guestBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    paddingVertical: 14,
+    gap: 10,
+    backgroundColor: "#F8FAFC",
+    marginTop: 10,
+  },
+  guestBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#475569",
     fontFamily: "Manrope-Bold",
   },
 

@@ -4,7 +4,7 @@ import { Address, getAddresses } from "../api/address";
 import * as Location from 'expo-location';
 import { checkDeliveryAvailability } from "../api/auth";
 import { useAuth } from "./AuthContext";
-import { Alert, Linking } from "react-native";
+import { Alert, Linking, Platform, AppState } from "react-native";
 
 const SELECTED_ADDRESS_KEY = 'selectedAddress';
 
@@ -23,7 +23,8 @@ interface AddressContextType {
     locationPermission: Location.PermissionStatus | 'undetermined';
     locationLoading: boolean;
     isLocationOff: boolean;
-    detectLocation: () => Promise<void>;
+    detectLocation: (showModalOnDecision?: boolean) => Promise<void>;
+    requestInitialLocation: () => Promise<void>;
     enableLocation: () => Promise<boolean>;
     refreshAddresses: () => Promise<Address[]>;
 
@@ -47,12 +48,15 @@ const AddressContext = createContext<AddressContextType>({
     locationLoading: true,
     isLocationOff: false,
     detectLocation: async () => { },
+    requestInitialLocation: async () => { },
     enableLocation: async () => false,
     refreshAddresses: async () => [],
     isAddressModalVisible: false,
     openAddressModal: () => { },
     closeAddressModal: () => { },
 });
+
+export const DEFAULT_FALLBACK_COORDS = { latitude: 10.0072, longitude: 76.2891 };
 
 export const distanceInMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const toRad = (x: number) => (x * Math.PI) / 180;
@@ -115,7 +119,9 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         }
     }, []);
 
-    const detectLocation = useCallback(async () => {
+    const hasPromptedLocationRef = useRef(false);
+
+    const detectLocation = useCallback(async (showModalOnDecision = false) => {
         try {
             setLocationLoading(true);
 
@@ -129,8 +135,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setIsLocationOff(true);
                 setLocationLoading(false);
                 await userAddressesPromise;
-                // If user doesn't have a selected address, automatically show the selection modal
-                if (!selectedAddress) {
+                if (showModalOnDecision) {
                     setIsAddressModalVisible(true);
                 }
                 return;
@@ -145,8 +150,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setIsLocationOff(true);
                 setLocationLoading(false);
                 await userAddressesPromise;
-                // If user doesn't have a selected address, prompt them with the selection modal
-                if (!selectedAddress) {
+                if (showModalOnDecision) {
                     setIsAddressModalVisible(true);
                 }
                 return;
@@ -178,7 +182,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setIsLocationOff(true);
                 setLocationLoading(false);
                 await userAddressesPromise;
-                if (!selectedAddress) {
+                if (showModalOnDecision) {
                     setIsAddressModalVisible(true);
                 }
                 return;
@@ -239,39 +243,91 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setLocationAddress("Current Location");
             }
 
+            // If user is guest and showModalOnDecision is true, open modal to show "Use current location" + "Login to get saved address"
+            if (!isAuthenticated && showModalOnDecision) {
+                setIsAddressModalVisible(true);
+            }
+
         } catch (error) {
             console.error('Location detection error:', error);
             setIsLocationOff(true);
+            if (showModalOnDecision) {
+                setIsAddressModalVisible(true);
+            }
         } finally {
             setLocationLoading(false);
         }
-    }, [refreshAddresses, selectedAddress, setSelectedAddress]);
+    }, [refreshAddresses, selectedAddress, setSelectedAddress, isAuthenticated]);
+
+    const requestInitialLocation = useCallback(async () => {
+        if (hasPromptedLocationRef.current) return;
+        hasPromptedLocationRef.current = true;
+        if (selectedAddress) {
+            await detectLocation(false);
+            return;
+        }
+        await detectLocation(true);
+    }, [detectLocation, selectedAddress]);
 
     const enableLocation = useCallback(async (): Promise<boolean> => {
         try {
             setLocationLoading(true);
 
-            // Check if device location services are enabled
-            const servicesEnabled = await Location.hasServicesEnabledAsync();
+            // 1. Check if device location services (GPS) are enabled
+            let servicesEnabled = await Location.hasServicesEnabledAsync();
+
             if (!servicesEnabled) {
-                setLocationLoading(false);
-                Alert.alert(
-                    "Location Services Disabled",
-                    "Please turn on location services in your phone settings to detect your location.",
-                    [
-                        { text: "Cancel", style: "cancel" },
-                        { 
-                            text: "Open Settings", 
-                            onPress: () => {
-                                Linking.openSettings().catch(() => {});
-                            }
-                        }
-                    ]
-                );
-                return false;
+                // On Android: Attempt 1-tap Google Play Services dialog without leaving app
+                if (Platform.OS === 'android') {
+                    try {
+                        await Location.enableNetworkProviderAsync();
+                        servicesEnabled = await Location.hasServicesEnabledAsync();
+                    } catch {
+                        // User cancelled/dismissed 1-tap dialog or device lacks Google Play Services
+                    }
+                }
+
+                // If still disabled after prompt attempt (or on iOS):
+                if (!servicesEnabled) {
+                    setLocationLoading(false);
+
+                    if (Platform.OS === 'android') {
+                        Alert.alert(
+                            "Location Services Disabled",
+                            "Please turn on location in your device settings to detect nearby stores and available items.",
+                            [
+                                { text: "Cancel", style: "cancel" },
+                                { 
+                                    text: "Open Location Settings", 
+                                    onPress: () => {
+                                        Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => {
+                                            Linking.openSettings().catch(() => {});
+                                        });
+                                    }
+                                }
+                            ]
+                        );
+                    } else {
+                        // iOS: Guide user clearly since iOS routes through Settings
+                        Alert.alert(
+                            "Location Services Disabled",
+                            "Please enable Location Services in your phone's Settings > Privacy & Security > Location Services.",
+                            [
+                                { text: "Cancel", style: "cancel" },
+                                { 
+                                    text: "Open Settings", 
+                                    onPress: () => {
+                                        Linking.openSettings().catch(() => {});
+                                    }
+                                }
+                            ]
+                        );
+                    }
+                    return false;
+                }
             }
 
-            // Request permission
+            // 2. Request permission (App-level)
             const { status } = await Location.requestForegroundPermissionsAsync();
             setLocationPermission(status);
 
@@ -293,7 +349,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 return false;
             }
 
-            // Permission and services are active: detect coordinates
+            // 3. Permission and services are active: detect coordinates
             setIsLocationOff(false);
             await detectLocation();
             
@@ -308,19 +364,13 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [detectLocation, setSelectedAddress, closeAddressModal]);
     
-    // Handle Logout / Auth State Changes
     // Handle Logout / Auth State Changes (Only after initial mount)
     useEffect(() => {
+        if (!initialMounted.current) return;
         if (!isAuthenticated) {
-            // Logout case
+            // Logout case: clear user account addresses, but keep device location for guest browsing
             setSelectedAddressState(null);
             setAddresses([]);
-            setUserLocation(null);
-            setLocationAddress(null);
-            setDeliveryAvailable(null);
-            setTbAvailable(null);
-            setTbOffline(null);
-            setIsLocationOff(false);
             setIsAddressModalVisible(false);
             lastCheckedCoords.current = '';
             SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY).catch(e => 
@@ -328,15 +378,13 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             );
         } else {
             // Only fire if user logged in AFTER initial mount has already run
-            if (initialMounted.current) {
-                if (!selectedAddress) {
-                    detectLocation();
-                } else {
-                    refreshAddresses();
-                }
+            if (!selectedAddress) {
+                detectLocation(true);
+            } else {
+                refreshAddresses();
             }
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, selectedAddress, detectLocation, refreshAddresses]);
     
     // Auto-detect & Initial Load (Single Guaranteed Boot Execution)
     useEffect(() => {
@@ -354,11 +402,31 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 console.error('Failed to load saved address on boot:', e);
             } finally {
                 initialMounted.current = true;
-                await detectLocation();
+                setLocationLoading(false);
             }
         };
         initialLoad();
     }, []);
+
+    // Re-detect location automatically when user returns from Settings / Background
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', async (nextState) => {
+            if (nextState === 'active') {
+                try {
+                    const servicesEnabled = await Location.hasServicesEnabledAsync();
+                    const perm = await Location.getForegroundPermissionsAsync();
+                    if (servicesEnabled && perm.status === 'granted' && isLocationOff) {
+                        setIsLocationOff(false);
+                        detectLocation();
+                    }
+                } catch (e) {
+                    console.warn('[AddressContext] AppState resume check error:', e);
+                }
+            }
+        });
+
+        return () => subscription.remove();
+    }, [detectLocation, isLocationOff]);
 
     // ── Sync Availability When Address/Location Changes (Deduplicated) ──
     useEffect(() => {
@@ -370,30 +438,26 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                         (selectedAddress as any)?.longitude ?? 
                         userLocation?.longitude;
 
-            if (lat !== undefined && lng !== undefined) {
-                const coordsKey = `${Number(lat).toFixed(4)}_${Number(lng).toFixed(4)}`;
-                if (lastCheckedCoords.current === coordsKey) {
-                    return; // Coordinates haven't meaningfully changed, skip duplicate network call
-                }
-                lastCheckedCoords.current = coordsKey;
+            const effectiveLat = lat !== undefined ? lat : DEFAULT_FALLBACK_COORDS.latitude;
+            const effectiveLng = lng !== undefined ? lng : DEFAULT_FALLBACK_COORDS.longitude;
 
-                try {
-                    const availability = await checkDeliveryAvailability(lat, lng);
-                    
-                    setDeliveryAvailable(availability?.serviceable ?? true);
-                    setTbAvailable(availability?.tbAvailable ?? false);
-                    setTbOffline(availability?.allOffline ?? false);
-                } catch (e) {
-                    console.error('[AddressContext] Unified availability check failed:', e);
-                    setDeliveryAvailable(true);
-                    setTbAvailable(false);
-                    setTbOffline(false);
-                }
-            } else {
-                lastCheckedCoords.current = '';
-                setDeliveryAvailable(null);
-                setTbAvailable(null);
-                setTbOffline(null);
+            const coordsKey = `${Number(effectiveLat).toFixed(4)}_${Number(effectiveLng).toFixed(4)}`;
+            if (lastCheckedCoords.current === coordsKey) {
+                return; // Coordinates haven't meaningfully changed, skip duplicate network call
+            }
+            lastCheckedCoords.current = coordsKey;
+
+            try {
+                const availability = await checkDeliveryAvailability(effectiveLat, effectiveLng);
+                
+                setDeliveryAvailable(availability?.serviceable ?? true);
+                setTbAvailable(availability?.tbAvailable ?? true);
+                setTbOffline(availability?.allOffline ?? false);
+            } catch (e) {
+                console.error('[AddressContext] Unified availability check failed:', e);
+                setDeliveryAvailable(true);
+                setTbAvailable(true);
+                setTbOffline(false);
             }
         };
 
@@ -414,6 +478,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         locationLoading,
         isLocationOff,
         detectLocation,
+        requestInitialLocation,
         enableLocation,
         refreshAddresses,
         isAddressModalVisible,
@@ -432,6 +497,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         locationLoading,
         isLocationOff,
         detectLocation,
+        requestInitialLocation,
         enableLocation,
         refreshAddresses,
         isAddressModalVisible,

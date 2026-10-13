@@ -78,8 +78,14 @@ const ProductCard = ({
       ? (product as any).merchantId?.isOnline
       : true);
 
-  // Real-time stock status check
+  // Inactive store & real-time stock status check
+  const isStoreInactive =
+    (product as any).isStoreInactive === true ||
+    (product as any).isAvailable === false ||
+    (product as any).merchantId?.isActive === false;
+
   const isOutOfStock =
+    isStoreInactive ||
     (product as any).inStock === false ||
     (product as any).stock === 0 ||
     ((product as any).totalStock !== undefined && (product as any).totalStock <= 0) ||
@@ -157,8 +163,21 @@ const ProductCard = ({
           source={{ uri: imageUrl }}
           style={styles.image}
           contentFit="cover"
-          transition={300}
+          transition={100}
+          cachePolicy="memory-disk"
+          recyclingKey={productId}
         />
+
+        {/* Out of Stock / Inactive Overlay */}
+        {isOutOfStock && (
+          <View style={styles.outOfStockOverlay}>
+            <View style={[styles.outOfStockPill, isStoreInactive && styles.storeInactivePill]}>
+              <Text style={styles.outOfStockPillText}>
+                {isStoreInactive ? 'UNAVAILABLE' : 'OUT OF STOCK'}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Wishlist Heart Icon */}
         <TouchableOpacity
@@ -183,16 +202,20 @@ const ProductCard = ({
         {/* Status & Delivery Time Badge */}
         <View style={styles.tryBadge}>
           <View style={[styles.tryDot, {
-            backgroundColor: isOutOfStock
-              ? "#94A3B8"
-              : (!isStoreOnline && fromStore ? "#94A3B8" : (isFast ? "#3FA65C" : "#C9A24B"))
+            backgroundColor: isStoreInactive
+              ? "#EF4444"
+              : isOutOfStock
+                ? "#94A3B8"
+                : (!isStoreOnline && fromStore ? "#94A3B8" : (isFast ? "#3FA65C" : "#C9A24B"))
           }]} />
-          <Text style={styles.tryBadgeText}>
-            {isOutOfStock
-              ? "OUT OF STOCK"
-              : (!isStoreOnline && fromStore)
-                ? "STORE CLOSED"
-                : (isFast ? "20-40 MINS" : "1-7 DAYS")}
+          <Text style={[styles.tryBadgeText, isStoreInactive && { color: '#DC2626' }]}>
+            {isStoreInactive
+              ? "STORE INACTIVE"
+              : isOutOfStock
+                ? "OUT OF STOCK"
+                : (!isStoreOnline && fromStore)
+                  ? "STORE CLOSED"
+                  : (isFast ? "20-40 MINS" : "1-7 DAYS")}
           </Text>
         </View>
       </View>
@@ -377,6 +400,29 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
+  outOfStockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.48)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  outOfStockPill: {
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 7,
+  },
+  storeInactivePill: {
+    backgroundColor: 'rgba(185, 28, 28, 0.88)',
+  },
+  outOfStockPillText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontFamily: Typography.fontFamily.bold,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
 });
 
 const MemoizedProductCard = React.memo(ProductCard, (prevProps, nextProps) => {
@@ -400,6 +446,8 @@ const MemoizedProductCard = React.memo(ProductCard, (prevProps, nextProps) => {
     p1.isTriable === p2.isTriable &&
     p1.isInstantBuyable === p2.isInstantBuyable &&
     p1.isNearby === p2.isNearby &&
+    (p1 as any).isStoreInactive === (p2 as any).isStoreInactive &&
+    (p1 as any).inStock === (p2 as any).inStock &&
     (p1 as any).isWarehouseListing === (p2 as any).isWarehouseListing &&
     (p1 as any).source === (p2 as any).source &&
     p1.images?.[0]?.url === p2.images?.[0]?.url

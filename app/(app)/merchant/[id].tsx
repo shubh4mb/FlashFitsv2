@@ -260,14 +260,25 @@ export default function MerchantDetailScreen() {
   }, [products, localSelectedGender]);
 
   const groupedProducts = useMemo(() => {
-    return filteredProducts.reduce((acc: any, p: any) => {
-      const subCatId = p.subCategoryId?._id || 'others';
+    const rawGroups = filteredProducts.reduce((acc: any, p: any) => {
+      const subCatId = (p.subCategoryId?._id || (typeof p.subCategoryId === 'string' ? p.subCategoryId : null)) || 'others';
       const subCatName = p.subCategoryId?.name || p.subCategory || 'Others';
       const catId = p.categoryId?._id || p.categoryId;
-      if (!acc[subCatId]) acc[subCatId] = { name: subCatName, products: [], categoryId: catId };
+      if (!acc[subCatId]) {
+        acc[subCatId] = { subCatId, name: subCatName, products: [], categoryId: catId };
+      }
       acc[subCatId].products.push(p);
       return acc;
     }, {});
+
+    // Sort categories with the most products first
+    return Object.values(rawGroups).sort((a: any, b: any) => {
+      const countDiff = (b.products?.length || 0) - (a.products?.length || 0);
+      if (countDiff !== 0) return countDiff;
+      if (a.subCatId === 'others') return 1;
+      if (b.subCatId === 'others') return -1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
   }, [filteredProducts]);
 
   const handleBack = () => {
@@ -317,7 +328,7 @@ export default function MerchantDetailScreen() {
 
   const ratingValue = merchant?.rating || '4.4';
   const reviewCount = merchant?.reviewCount ? `${merchant.reviewCount}+` : '3.8K+';
-  const categoryCount = Object.keys(groupedProducts).length;
+  const categoryCount = groupedProducts.length;
 
   return (
     <View style={styles.container}>
@@ -540,8 +551,8 @@ export default function MerchantDetailScreen() {
           </View>
         )}
 
-        {Object.entries(groupedProducts).map(([subCatId, data]: [string, any]) => (
-          <View key={subCatId} style={styles.categoryBlock}>
+        {groupedProducts.map((data: any) => (
+          <View key={data.subCatId} style={styles.categoryBlock}>
             <View style={styles.categoryHeader}>
               <View style={styles.categoryTitleWrap}>
                 <Text style={styles.categoryName}>{data.name}</Text>
@@ -549,7 +560,7 @@ export default function MerchantDetailScreen() {
               </View>
               <TouchableOpacity
                 activeOpacity={0.6}
-                onPress={() => handleViewAll(subCatId, data.name, data.categoryId)}
+                onPress={() => handleViewAll(data.subCatId, data.name, data.categoryId)}
                 style={styles.viewAllBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >

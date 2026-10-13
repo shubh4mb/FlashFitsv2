@@ -2,7 +2,7 @@
   "expo": {
     "name": "FlashFits",
     "slug": "FlashFits",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flashfits",
@@ -33,7 +33,7 @@
       }
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#3CDCF4",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -118,9 +118,8 @@
       "reactCompiler": false
     },
     "extra": {
-      // "BACKEND_URL": "https://api.theflashfits.com",
-      // "BACKEND_URL":"http://192.168.29.230:5000",
-      "BACKEND_URL":"https://8d43-2405-201-f001-8ff-670a-486b-b150-a8ac.ngrok-free.app",
+      "BACKEND_URL": "https://api.theflashfits.com",
+      "CARTO_BASEMAP_KEY": "cb1_4fv4_1_1edec64bef590f4afb83cafc",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

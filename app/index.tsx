@@ -10,20 +10,18 @@ import { useEffect } from 'react';
  * or the main Application group based on their auth state.
  */
 export default function Index() {
-  const { isAuthenticated, isLoading, hasSeenOnboarding } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (isLoading) return;
 
-    if (!isAuthenticated) {
-      router.replace('/(auth)');
-    } else if (!hasSeenOnboarding) {
-      router.replace('/(auth)/onboarding');
-    } else {
+    if (isAuthenticated) {
       router.replace('/(app)/(tabs)');
+    } else {
+      router.replace('/(auth)');
     }
-  }, [isAuthenticated, isLoading, hasSeenOnboarding]);
+  }, [isLoading, isAuthenticated]);
 
   return null;
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, TextInput } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, TextInput, Platform, Linking, Alert } from "react-native";
 import Loader from "@/components/common/Loader";
 import { WebView } from "react-native-webview";
 import { router } from "expo-router";
@@ -44,6 +44,54 @@ export default function SelectLocationScreen() {
 
         try {
             setLocating(true);
+
+            // 1. Check if device location services (GPS) are enabled
+            let servicesEnabled = await Location.hasServicesEnabledAsync();
+            if (!servicesEnabled) {
+                if (Platform.OS === 'android') {
+                    try {
+                        await Location.enableNetworkProviderAsync();
+                        servicesEnabled = await Location.hasServicesEnabledAsync();
+                    } catch {}
+                }
+
+                if (!servicesEnabled) {
+                    setLocating(false);
+                    if (Platform.OS === 'android') {
+                        Alert.alert(
+                            "Location Services Disabled",
+                            "Please turn on location in your device settings to detect your current position.",
+                            [
+                                { text: "Cancel", style: "cancel" },
+                                {
+                                    text: "Open Location Settings",
+                                    onPress: () => {
+                                        Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => {
+                                            Linking.openSettings().catch(() => {});
+                                        });
+                                    }
+                                }
+                            ]
+                        );
+                    } else {
+                        Alert.alert(
+                            "Location Services Disabled",
+                            "Please enable Location Services in your phone's Settings > Privacy & Security > Location Services.",
+                            [
+                                { text: "Cancel", style: "cancel" },
+                                {
+                                    text: "Open Settings",
+                                    onPress: () => {
+                                        Linking.openSettings().catch(() => {});
+                                    }
+                                }
+                            ]
+                        );
+                    }
+                    return;
+                }
+            }
+
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 showToast({ message: 'Location permission is required', type: 'error' });

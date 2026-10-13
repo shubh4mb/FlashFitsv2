@@ -192,7 +192,7 @@ function RootNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: '#FFFFFF' },
-        gestureEnabled: isAuthenticated,
+        gestureEnabled: true,
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />

@@ -5,11 +5,11 @@ import {
   View,
   Text,
   StyleSheet,
+  FlatList,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { GenderThemes, Typography, SectionHeaderStyles } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
-import { useAddress } from '../../context/AddressContext';
+import { useAddress, DEFAULT_FALLBACK_COORDS } from '../../context/AddressContext';
 import { getRecentlyViewed, Product } from '../../utils/recentlyViewed';
 import ProductCard from '../common/ProductCard';
 import Skeleton from '../common/Skeleton';
@@ -45,8 +45,8 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const targetLat = selectedAddress?.location?.coordinates?.[1] ?? (selectedAddress as any)?.latitude ?? userLocation?.latitude;
-  const targetLng = selectedAddress?.location?.coordinates?.[0] ?? (selectedAddress as any)?.longitude ?? userLocation?.longitude;
+  const targetLat = selectedAddress?.location?.coordinates?.[1] ?? (selectedAddress as any)?.latitude ?? userLocation?.latitude ?? DEFAULT_FALLBACK_COORDS.latitude;
+  const targetLng = selectedAddress?.location?.coordinates?.[0] ?? (selectedAddress as any)?.longitude ?? userLocation?.longitude ?? DEFAULT_FALLBACK_COORDS.longitude;
   const addressId = selectedAddress?._id;
 
   useEffect(() => {
@@ -102,7 +102,7 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         </TouchableOpacity>
       </View>
 
-      <FlashList
+      <FlatList
         data={products}
         renderItem={renderItem}
         keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
@@ -111,6 +111,10 @@ const RecentlyViewedSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"
         snapToInterval={155 + 16}
+        removeClippedSubviews={false}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={10}
       />
     </View>
   );

@@ -23,24 +23,31 @@ import { deleteUserAccount } from '@/api/auth';
 
 export default function ProfileScreen() {
     const router = useRouter();
-    const { signOut, user, refreshUserProfile } = useAuth();
+    const { signOut, user, refreshUserProfile, isAuthenticated } = useAuth();
     const showAlert = useAlert();
     const insets = useSafeAreaInsets();
     const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
-        refreshUserProfile().catch(() => {});
-    }, []);
+        if (isAuthenticated) {
+            refreshUserProfile().catch(() => {});
+        }
+    }, [isAuthenticated]);
 
     const onRefresh = async () => {
+        if (!isAuthenticated) return;
         setRefreshing(true);
         await refreshUserProfile();
         setRefreshing(false);
     };
 
-    const displayName = user?.name?.trim() || (user?.email ? user.email.split('@')[0] : 'FlashFits Member');
-    const displayEmail = user?.email || 'No email registered';
-    const displayPhone = user?.phoneNumber ? `+91 ${user.phoneNumber.replace(/^(\+91|91)/, '')}` : null;
+    const displayName = isAuthenticated
+        ? (user?.name?.trim() || (user?.email ? user.email.split('@')[0] : 'FlashFits Member'))
+        : 'Welcome, Guest';
+    const displayEmail = isAuthenticated
+        ? (user?.email || 'No email registered')
+        : 'Sign in to access orders and addresses';
+    const displayPhone = isAuthenticated && user?.phoneNumber ? `+91 ${user.phoneNumber.replace(/^(\+91|91)/, '')}` : null;
 
     const getInitials = (name?: string) => {
         if (!name || !name.trim()) return 'FF';
@@ -102,19 +109,58 @@ export default function ProfileScreen() {
             title: 'Your Orders',
             subtitle: 'Track, return, or buy again',
             icon: 'receipt-outline' as const,
-            onPress: () => router.push('/(app)/orders' as any),
+            onPress: () => {
+                if (!isAuthenticated) {
+                    showAlert({
+                        title: 'Sign In Required',
+                        message: 'Please sign in or register to view your orders.',
+                        buttons: [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Sign In', onPress: () => router.push('/(auth)') },
+                        ],
+                    });
+                    return;
+                }
+                router.push('/(app)/orders' as any);
+            },
         },
         {
             title: 'Saved Addresses',
             subtitle: 'Home, Office & others',
             icon: 'location-outline' as const,
-            onPress: () => router.push('/(app)/addresses' as any),
+            onPress: () => {
+                if (!isAuthenticated) {
+                    showAlert({
+                        title: 'Sign In Required',
+                        message: 'Please sign in or register to manage your addresses.',
+                        buttons: [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Sign In', onPress: () => router.push('/(auth)') },
+                        ],
+                    });
+                    return;
+                }
+                router.push('/(app)/addresses' as any);
+            },
         },
         {
             title: 'Refer & Earn',
             subtitle: 'Invite friends, get Free Delivery',
             icon: 'gift-outline' as const,
-            onPress: () => router.push('/(app)/refer-earn' as any),
+            onPress: () => {
+                if (!isAuthenticated) {
+                    showAlert({
+                        title: 'Sign In Required',
+                        message: 'Please sign in or register to view and share referral rewards.',
+                        buttons: [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Sign In', onPress: () => router.push('/(auth)') },
+                        ],
+                    });
+                    return;
+                }
+                router.push('/(app)/refer-earn' as any);
+            },
         },
         {
             title: 'Help & Support',
@@ -226,12 +272,12 @@ export default function ProfileScreen() {
                 {/* Micro Status Footer */}
                 <View style={styles.profileCardFooter}>
                     <View style={styles.statusPill}>
-                        <View style={styles.statusPillDot} />
-                        <Text style={styles.statusPillText}>Try & Buy Active</Text>
+                        <View style={[styles.statusPillDot, !isAuthenticated && { backgroundColor: '#64748B' }]} />
+                        <Text style={styles.statusPillText}>{isAuthenticated ? 'Try & Buy Active' : 'Browsing Mode'}</Text>
                     </View>
-                    <View style={styles.memberTag}>
-                        <Ionicons name="sparkles" size={11} color={BrandColors.cyanDeep} />
-                        <Text style={styles.memberTagText}>MEMBER</Text>
+                    <View style={[styles.memberTag, !isAuthenticated && { backgroundColor: '#F1F5F9' }]}>
+                        <Ionicons name={isAuthenticated ? "sparkles" : "person-outline"} size={11} color={isAuthenticated ? BrandColors.cyanDeep : '#64748B'} />
+                        <Text style={[styles.memberTagText, !isAuthenticated && { color: '#64748B' }]}>{isAuthenticated ? 'MEMBER' : 'GUEST'}</Text>
                     </View>
                 </View>
             </View>
@@ -263,25 +309,40 @@ export default function ProfileScreen() {
                 ))}
             </View>
 
-            {/* ── Logout ── */}
-            <TouchableOpacity
-                style={[styles.logoutBtn, { borderColor: '#F1F5F9', shadowColor: '#000' }]}
-                activeOpacity={0.7}
-                onPress={handleLogout}
-            >
-                <MaterialIcons name="logout" size={20} color={BrandColors.matteBlack} />
-                <Text style={[styles.logoutText, { color: BrandColors.matteBlack }]}>LOG OUT</Text>
-            </TouchableOpacity>
+            {/* ── Auth Action Buttons ── */}
+            {isAuthenticated ? (
+                <>
+                    {/* Logout */}
+                    <TouchableOpacity
+                        style={[styles.logoutBtn, { borderColor: '#F1F5F9', shadowColor: '#000' }]}
+                        activeOpacity={0.7}
+                        onPress={handleLogout}
+                    >
+                        <MaterialIcons name="logout" size={20} color={BrandColors.matteBlack} />
+                        <Text style={[styles.logoutText, { color: BrandColors.matteBlack }]}>LOG OUT</Text>
+                    </TouchableOpacity>
 
-            {/* ── Delete Account (Apple Guideline 5.1.1(v)) ── */}
-            <TouchableOpacity
-                style={styles.deleteAccountBtn}
-                activeOpacity={0.7}
-                onPress={handleDeleteAccount}
-            >
-                <Ionicons name="trash-outline" size={15} color="#EF4444" />
-                <Text style={styles.deleteAccountText}>Delete Account</Text>
-            </TouchableOpacity>
+                    {/* Delete Account (Apple Guideline 5.1.1(v)) */}
+                    <TouchableOpacity
+                        style={styles.deleteAccountBtn}
+                        activeOpacity={0.7}
+                        onPress={handleDeleteAccount}
+                    >
+                        <Ionicons name="trash-outline" size={15} color="#EF4444" />
+                        <Text style={styles.deleteAccountText}>Delete Account</Text>
+                    </TouchableOpacity>
+                </>
+            ) : (
+                /* Sign In / Register CTA for Guests */
+                <TouchableOpacity
+                    style={[styles.loginCtaBtn, { backgroundColor: BrandColors.primary }]}
+                    activeOpacity={0.85}
+                    onPress={() => router.push('/(auth)')}
+                >
+                    <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.loginCtaText}>SIGN IN OR REGISTER</Text>
+                </TouchableOpacity>
+            )}
 
             <BrandFooter />
         </ScrollView>
@@ -529,5 +590,26 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontFamily: Typography.fontFamily.medium,
         color: '#EF4444',
+    },
+    loginCtaBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 16,
+        borderRadius: 16,
+        marginTop: 20,
+        marginBottom: 8,
+        shadowColor: BrandColors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 3,
+    },
+    loginCtaText: {
+        fontSize: 14,
+        fontFamily: Typography.fontFamily.bold,
+        color: '#FFFFFF',
+        letterSpacing: 0.5,
     },
 });

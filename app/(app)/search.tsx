@@ -56,19 +56,24 @@ export default function SearchScreen() {
     await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(newSearches));
   };
 
-  const handleSearchNavigation = (term: string, merchantId?: string) => {
+  const handleSearchNavigation = (term: string, entityId?: string, type?: string) => {
     if (!term.trim()) return;
     saveSearch(term.trim());
     setShowSuggestions(false);
     setSuggestions([]);
 
-    // If it's a merchant suggestion, clear the query so we show all their products
-    // and don't conflict with the merchant filter logic.
-    const params: any = {
-      query: merchantId ? '' : term.trim(),
-      title: merchantId ? term.trim() : undefined,
-      merchantId: merchantId || undefined
-    };
+    const params: any = {};
+    if (type === 'merchant' && entityId) {
+      params.query = '';
+      params.title = term.trim();
+      params.merchantId = entityId;
+    } else if (type === 'category' && entityId) {
+      params.query = term.trim();
+      params.title = term.trim();
+      params.categoryId = entityId;
+    } else {
+      params.query = term.trim();
+    }
 
     router.push({
       pathname: '/(app)/search-results',
@@ -163,7 +168,7 @@ export default function SearchScreen() {
             <TouchableOpacity
               key={`${item.text}-${index}`}
               style={styles.suggestionItem}
-              onPress={() => handleSearchNavigation(item.text, item.id)}
+              onPress={() => handleSearchNavigation(item.text, item.id, item.type)}
             >
               <Ionicons
                 name={getTypeIcon(item.type) as any}

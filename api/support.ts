@@ -31,6 +31,9 @@ export interface SupportTicket {
   message?: string;
   images?: Array<{ url: string; public_id?: string }>;
   status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  resolutionNotes?: string;
+  adminAction?: string;
+  resolvedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

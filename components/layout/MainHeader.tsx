@@ -8,6 +8,8 @@ import {
     Animated,
     Dimensions,
     Easing,
+    NativeScrollEvent,
+    NativeSyntheticEvent,
     Platform,
     ScrollView,
     StyleSheet,
@@ -101,8 +103,16 @@ export default function MainHeader({
     const [loading, setLoading] = useState(true);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
 
-    // Category Continuous Glide + Manual Swipe
+    // Category Horizontal Scroll & Smooth Auto-Glide
     const categoryScrollRef = useRef<ScrollView>(null);
+    const scrollPosRef = useRef(0);
+    const isInteractingRef = useRef(false);
+    const isDraggingRef = useRef(false);
+    const isMomentumRef = useRef(false);
+    const resumeTimeoutRef = useRef<any>(null);
+    const animFrameRef = useRef<number | null>(null);
+    const lastTimestampRef = useRef<number | null>(null);
+    const hasInitialScrolledRef = useRef(false);
     const categoryFadeAnim = useRef(new Animated.Value(1)).current;
     const isInitialGenderMount = useRef(true);
 
@@ -115,6 +125,158 @@ export default function MainHeader({
         });
         return filtered.length > 0 ? filtered : categories;
     }, [categories, selectedGender]);
+
+    const singleSetWidth = useMemo(() => {
+        return visibleCategories.length * (CATEGORY_ITEM_WIDTH + CATEGORY_GAP);
+    }, [visibleCategories]);
+
+    const displayCategories = useMemo(() => {
+        if (visibleCategories.length === 0) return [];
+        // Ensure track width is wide enough for seamless infinite scroll (at least 4 sets)
+        const setsNeeded = Math.max(4, Math.ceil((SCREEN_WIDTH * 3) / Math.max(singleSetWidth, 1)));
+        const list: any[] = [];
+        for (let i = 0; i < setsNeeded; i++) {
+            for (let j = 0; j < visibleCategories.length; j++) {
+                list.push({ ...visibleCategories[j], _repeatIndex: i });
+            }
+        }
+        return list;
+    }, [visibleCategories, singleSetWidth]);
+
+    const stopAutoGlide = () => {
+        if (animFrameRef.current !== null) {
+            cancelAnimationFrame(animFrameRef.current);
+            animFrameRef.current = null;
+        }
+        lastTimestampRef.current = null;
+    };
+
+    const startAutoGlide = () => {
+        stopAutoGlide();
+        if (singleSetWidth <= 0 || visibleCategories.length === 0) return;
+
+        const PIXELS_PER_SEC = 25; // Gentle, premium glide speed
+
+        const tick = (now: number) => {
+            if (!lastTimestampRef.current) {
+                lastTimestampRef.current = now;
+            }
+            const delta = Math.min((now - lastTimestampRef.current) / 1000, 0.05); // Cap at 50ms to prevent jumps
+            lastTimestampRef.current = now;
+
+            if (!isInteractingRef.current && singleSetWidth > 0 && !loading) {
+                let nextX = scrollPosRef.current + PIXELS_PER_SEC * delta;
+
+                // Seamless loop wrap-around
+                if (nextX >= singleSetWidth * 2) {
+                    nextX = nextX - singleSetWidth;
+                }
+
+                scrollPosRef.current = nextX;
+                categoryScrollRef.current?.scrollTo({ x: nextX, animated: false });
+            }
+
+            animFrameRef.current = requestAnimationFrame(tick);
+        };
+
+        animFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    const pauseGlide = () => {
+        isInteractingRef.current = true;
+        if (resumeTimeoutRef.current) {
+            clearTimeout(resumeTimeoutRef.current);
+            resumeTimeoutRef.current = null;
+        }
+        lastTimestampRef.current = null;
+    };
+
+    const scheduleResume = (delay = 1800) => {
+        if (resumeTimeoutRef.current) {
+            clearTimeout(resumeTimeoutRef.current);
+        }
+        resumeTimeoutRef.current = setTimeout(() => {
+            if (!isDraggingRef.current && !isMomentumRef.current) {
+                isInteractingRef.current = false;
+                lastTimestampRef.current = null;
+            }
+        }, delay);
+    };
+
+    const normalizeScrollPosition = (currentX: number) => {
+        if (singleSetWidth <= 0) return;
+        // Keep scroll position within a comfortable middle band [singleSetWidth, singleSetWidth * 2]
+        if (currentX >= singleSetWidth * 2) {
+            const normalizedX = currentX - singleSetWidth;
+            scrollPosRef.current = normalizedX;
+            categoryScrollRef.current?.scrollTo({ x: normalizedX, animated: false });
+        } else if (currentX < singleSetWidth * 0.5) {
+            const normalizedX = currentX + singleSetWidth;
+            scrollPosRef.current = normalizedX;
+            categoryScrollRef.current?.scrollTo({ x: normalizedX, animated: false });
+        }
+    };
+
+    const handleTouchStart = () => {
+        pauseGlide();
+    };
+
+    const handleTouchEnd = () => {
+        if (!isDraggingRef.current && !isMomentumRef.current) {
+            scheduleResume(1800);
+        }
+    };
+
+    const handleScrollBeginDrag = () => {
+        isDraggingRef.current = true;
+        pauseGlide();
+    };
+
+    const handleScrollEndDrag = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        isDraggingRef.current = false;
+        scrollPosRef.current = e.nativeEvent.contentOffset.x;
+        const velocityX = Math.abs(e.nativeEvent.velocity?.x || 0);
+        if (velocityX < 0.1) {
+            normalizeScrollPosition(e.nativeEvent.contentOffset.x);
+            scheduleResume(1800);
+        }
+    };
+
+    const handleMomentumScrollBegin = () => {
+        isMomentumRef.current = true;
+        pauseGlide();
+    };
+
+    const handleMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        isMomentumRef.current = false;
+        scrollPosRef.current = e.nativeEvent.contentOffset.x;
+        normalizeScrollPosition(e.nativeEvent.contentOffset.x);
+        scheduleResume(1800);
+    };
+
+    const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        if (isInteractingRef.current) {
+            scrollPosRef.current = e.nativeEvent.contentOffset.x;
+        }
+    };
+
+    const handleContentSizeChange = (contentWidth: number) => {
+        if (!hasInitialScrolledRef.current && singleSetWidth > 0 && contentWidth > singleSetWidth * 2) {
+            hasInitialScrolledRef.current = true;
+            scrollPosRef.current = singleSetWidth;
+            categoryScrollRef.current?.scrollTo({ x: singleSetWidth, animated: false });
+        }
+    };
+
+    const handleCategoryPress = (cat: any) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push({
+            pathname: '/(app)/(tabs)/categories' as any,
+            params: {
+                categoryId: cat._id,
+            }
+        });
+    };
 
     useEffect(() => {
         const loadCategories = async () => {
@@ -129,7 +291,8 @@ export default function MainHeader({
                 if (topLevel.length > 0) {
                     setSelectedCategoryId(topLevel[0]._id);
                 }
-                categoryScrollRef.current?.scrollTo({ x: 0, animated: false });
+                hasInitialScrolledRef.current = false;
+                scrollPosRef.current = 0;
             } catch (error) {
                 console.error("Failed to load categories:", error);
             } finally {
@@ -141,7 +304,19 @@ export default function MainHeader({
         loadCategories();
     }, [refreshKey]);
 
-    // Reset category scroll position on gender switch
+    useEffect(() => {
+        if (loading || visibleCategories.length === 0 || singleSetWidth <= 0) return;
+
+        isInteractingRef.current = false;
+        startAutoGlide();
+
+        return () => {
+            stopAutoGlide();
+            if (resumeTimeoutRef.current) clearTimeout(resumeTimeoutRef.current);
+        };
+    }, [loading, visibleCategories, singleSetWidth]);
+
+    // Reset category on gender switch
     useEffect(() => {
         if (isInitialGenderMount.current) {
             isInitialGenderMount.current = false;
@@ -149,8 +324,8 @@ export default function MainHeader({
             return;
         }
 
-        // Reset scroll position on gender switch
-        categoryScrollRef.current?.scrollTo({ x: 0, animated: false });
+        pauseGlide();
+        hasInitialScrolledRef.current = false;
 
         categoryFadeAnim.setValue(0);
         const animation = Animated.timing(categoryFadeAnim, {
@@ -163,6 +338,11 @@ export default function MainHeader({
             if (!finished) {
                 categoryFadeAnim.setValue(1);
             }
+            if (singleSetWidth > 0) {
+                scrollPosRef.current = singleSetWidth;
+                categoryScrollRef.current?.scrollTo({ x: singleSetWidth, animated: false });
+            }
+            scheduleResume(500);
         });
 
         return () => {
@@ -526,30 +706,43 @@ export default function MainHeader({
                     </View>
                 </Animated.View>
 
-                {/* ── Category List with Smooth Continuous Glide + Manual Swipe ── */}
-                {!hideCategories && (
+                {/* ── Category List with Smooth Manual Scroll & Idle Auto-Glide ── */}
+                {!hideCategories && selectedGender !== 'Kids' && (
                     <Animated.View
                         style={{
                             opacity: categoryFadeAnim,
                             marginTop: 10,
                         }}
                     >
-                        <ScrollView
-                            ref={categoryScrollRef}
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.categoriesContainer}
-                            scrollEventThrottle={32}
-                            decelerationRate="fast"
-                        >
-                            {loading
-                                ? [1, 2, 3, 4, 5].map((i) => (
+                        {loading ? (
+                            <View style={styles.skeletonRow}>
+                                {[1, 2, 3, 4, 5].map((i) => (
                                     <View key={i} style={styles.categoryItem}>
                                         <Skeleton width={LOGO_SIZE} height={LOGO_SIZE} borderRadius={16} style={{ marginBottom: 4 }} />
                                         <Skeleton width={CATEGORY_ITEM_WIDTH * 0.7} height={10} />
                                     </View>
-                                ))
-                                : visibleCategories.map((cat, idx) => {
+                                ))}
+                            </View>
+                        ) : (
+                            <ScrollView
+                                ref={categoryScrollRef}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                style={styles.categoriesScrollView}
+                                contentContainerStyle={styles.categoriesContainer}
+                                scrollEventThrottle={16}
+                                decelerationRate="normal"
+                                onContentSizeChange={handleContentSizeChange}
+                                onTouchStart={handleTouchStart}
+                                onTouchEnd={handleTouchEnd}
+                                onTouchCancel={handleTouchEnd}
+                                onScrollBeginDrag={handleScrollBeginDrag}
+                                onScrollEndDrag={handleScrollEndDrag}
+                                onMomentumScrollBegin={handleMomentumScrollBegin}
+                                onMomentumScrollEnd={handleMomentumScrollEnd}
+                                onScroll={handleScroll}
+                            >
+                                {displayCategories.map((cat, idx) => {
                                     const isActive = selectedCategoryId === cat._id;
                                     const genderKey = selectedGender.toUpperCase() as 'MEN' | 'WOMEN' | 'KIDS';
                                     const logoUrl = (cat.logos?.[genderKey]?.url && typeof cat.logos[genderKey].url === 'string' && cat.logos[genderKey].url.trim() !== '')
@@ -558,18 +751,10 @@ export default function MainHeader({
 
                                     return (
                                         <TouchableOpacity
-                                            key={`${cat._id}-${idx}`}
+                                            key={`${cat._id}-${cat._repeatIndex || 0}-${idx}`}
                                             style={styles.categoryItem}
                                             activeOpacity={0.7}
-                                            onPress={() => {
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                router.push({
-                                                    pathname: '/(app)/(tabs)/categories' as any,
-                                                    params: {
-                                                        categoryId: cat._id,
-                                                    }
-                                                });
-                                            }}
+                                            onPress={() => handleCategoryPress(cat)}
                                         >
                                             <View style={[styles.logoWrapper, isActive && styles.logoWrapperActive]}>
                                                 {logoUrl ? (
@@ -591,9 +776,9 @@ export default function MainHeader({
                                             </Text>
                                         </TouchableOpacity>
                                     );
-                                })
-                            }
-                        </ScrollView>
+                                })}
+                            </ScrollView>
+                        )}
                     </Animated.View>
                 )}
             </LinearGradient>
@@ -855,9 +1040,21 @@ const styles = StyleSheet.create({
     subGenderTextActive: {
         color: '#FFFFFF',
     },
+    categoriesScrollView: {
+        marginHorizontal: -16,
+    },
     categoriesContainer: {
-        paddingRight: 16,
+        paddingHorizontal: 16,
         gap: CATEGORY_GAP,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    skeletonRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        gap: CATEGORY_GAP,
+        marginHorizontal: -16,
     },
     categoryItem: {
         alignItems: 'center',

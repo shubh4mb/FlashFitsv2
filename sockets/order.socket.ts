@@ -37,40 +37,80 @@ export const leaveOrderRoom = async (orderId: string) => {
     activeOrders = activeOrders.filter((id) => id !== cleanId && id !== orderId);
 };
 
-export const listenOrderUpdates = async (callback: (data: any) => void) => {
-    const socket = await initSocket();
-    socket.off('orderUpdate');
-    socket.off('trialPhaseStart');
-    socket.off('trialPhaseEnded');
-    socket.off('cashCollected');
-    socket.off('photoVerified');
+type OrderCallback = (data: any) => void;
+const orderListeners = new Set<OrderCallback>();
+let isSocketListening = false;
 
-    socket.on('orderUpdate', (updateData: any) => {
-        console.log('📦 Order update:', updateData);
-        callback(updateData);
-    });
-    socket.on('trialPhaseStart', (data: any) => {
-        callback(data);
-    });
-    socket.on('trialPhaseEnded', (data: any) => {
-        callback(data);
-    });
-    socket.on('cashCollected', (data: any) => {
-        callback(data);
-    });
-    socket.on('photoVerified', (data: any) => {
-        callback(data);
+const dispatchToListeners = (data: any) => {
+    orderListeners.forEach((cb) => {
+        try {
+            cb(data);
+        } catch (err) {
+            console.error('Error in order listener callback:', err);
+        }
     });
 };
 
-export const removeOrderListeners = () => {
-    const socket = getSocket();
-    if (socket) {
-        socket.off('orderUpdate');
-        socket.off('trialPhaseStart');
-        socket.off('trialPhaseEnded');
-        socket.off('cashCollected');
-        socket.off('photoVerified');
+/**
+ * Dispatch an order update locally across the app (optimistic update without waiting for network/socket)
+ */
+export const notifyLocalOrderUpdate = (data: any) => {
+    console.log('📣 Local order update dispatched:', data);
+    dispatchToListeners(data);
+};
+
+const setupGlobalSocketListeners = (socket: any) => {
+    if (isSocketListening) return;
+    isSocketListening = true;
+
+    socket.on('orderUpdate', (updateData: any) => {
+        console.log('📦 Order update received via socket:', updateData);
+        dispatchToListeners(updateData);
+    });
+
+    socket.on('orderCancelled', (cancelData: any) => {
+        console.log('🚫 Order cancelled received via socket:', cancelData);
+        const enriched = {
+            ...cancelData,
+            orderStatus: 'cancelled',
+            customerDeliveryStatus: 'cancelled',
+            deliveryRiderStatus: 'cancelled',
+            isCancelled: true,
+            _id: cancelData?.orderId || cancelData?._id,
+        };
+        dispatchToListeners(enriched);
+    });
+
+    socket.on('trialPhaseStart', (data: any) => {
+        dispatchToListeners(data);
+    });
+    socket.on('trialPhaseEnded', (data: any) => {
+        dispatchToListeners(data);
+    });
+    socket.on('cashCollected', (data: any) => {
+        dispatchToListeners(data);
+    });
+    socket.on('photoVerified', (data: any) => {
+        dispatchToListeners(data);
+    });
+};
+
+export const listenOrderUpdates = async (callback: OrderCallback) => {
+    orderListeners.add(callback);
+    const socket = await initSocket();
+    setupGlobalSocketListeners(socket);
+
+    // Return unsubscribe function
+    return () => {
+        orderListeners.delete(callback);
+    };
+};
+
+export const removeOrderListeners = (callback?: OrderCallback) => {
+    if (callback) {
+        orderListeners.delete(callback);
+    } else {
+        orderListeners.clear();
     }
 };
 

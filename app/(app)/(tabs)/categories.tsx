@@ -14,6 +14,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
 import { fetchCategories } from '@/api/categories';
 import MainHeader from '@/components/layout/MainHeader';
+import KidsComingSoonSection from '@/components/sections/KidsComingSoonSection';
 import { ThemedView } from '@/components/common/themed-view';
 import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
@@ -81,7 +82,7 @@ interface Category {
 
 export default function CategoriesScreen() {
   const { categoryId } = useLocalSearchParams<{ categoryId?: string }>();
-  const { selectedGender } = useGender();
+  const { selectedGender, selectedSubGender } = useGender();
   const router = useRouter();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   
@@ -206,11 +207,19 @@ export default function CategoriesScreen() {
 
   const handleSubcategoryPress = (subCatName: string, subCategoryId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    let targetGender: string | undefined = undefined;
+    if (selectedGender === 'Kids') {
+      if (selectedSubGender === 'Boys') targetGender = 'BOYS';
+      else if (selectedSubGender === 'Girls') targetGender = 'GIRLS';
+      else targetGender = undefined;
+    } else {
+      targetGender = selectedGender.toUpperCase();
+    }
     router.push({
       pathname: '/search-results' as any,
       params: {
         subCategoryId: subCategoryId,
-        gender: selectedGender.toUpperCase(),
+        gender: targetGender,
       },
     });
   };
@@ -230,8 +239,14 @@ export default function CategoriesScreen() {
       />
 
       <View style={[styles.mainContent, { paddingTop: headerHeight }]}>
-        {/* Left Sidebar */}
-        <ScrollView style={styles.sidebar} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
+        {selectedGender === 'Kids' ? (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}>
+            <KidsComingSoonSection tabType="categories" onRefresh={onRefresh} refreshing={refreshing} />
+          </ScrollView>
+        ) : (
+          <>
+            {/* Left Sidebar */}
+            <ScrollView style={styles.sidebar} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
           {mainCategories.map((cat) => {
             const isActive = selectedMainId === cat._id;
             return (
@@ -386,6 +401,8 @@ export default function CategoriesScreen() {
           />
         </PremiumRefreshWrapper>
         </View>
+          </>
+        )}
       </View>
     </ThemedView>
   );

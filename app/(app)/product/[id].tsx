@@ -16,13 +16,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useToast } from '@/context/AlertContext';
+import { useAlert, useToast } from '@/context/AlertContext';
+import { useAuth } from '@/context/AuthContext';
 import { useCourierCart } from '@/context/CourierCartContext';
-import { FlashList } from '@shopify/flash-list';
 import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  FlatList,
   Modal,
   Platform,
   RefreshControl,
@@ -67,6 +68,8 @@ const ProductDetailPage = () => {
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const { userLocation, selectedAddress } = useAddress();
   const showToast = useToast();
+  const showAlert = useAlert();
+  const { isAuthenticated } = useAuth();
 
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { cart, addToCart: addItemToCart } = useCart();
@@ -127,6 +130,10 @@ const ProductDetailPage = () => {
     };
   }, [product, isShopProduct]);
 
+  const merchantShopName = useMemo(() => {
+    return product?.shopMerchantName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Store';
+  }, [product]);
+
   const targetStoreInfo = useMemo(() => {
     if (lastAddedCartType === 'courier') {
       const totalCourierQty = courierCart?.items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || courierCartCount || 0;
@@ -171,7 +178,8 @@ const ProductDetailPage = () => {
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
-  const isWishlisted = product ? isInWishlist(product._id, (product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0])?._id) : false;
+  const activeVariantForWishlist = product?.variants?.find((v: any) => v.color?.name === selectedColor) || product?.variants?.[0];
+  const isWishlisted = product ? isInWishlist(product._id, activeVariantForWishlist?.colorVariantId || activeVariantForWishlist?._id) : false;
 
   const [isZoomVisible, setIsZoomVisible] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
@@ -253,8 +261,10 @@ const ProductDetailPage = () => {
         }
 
         const activeVariant = variantId
-          ? data.variants.find((v: any) => v._id === variantId) || data.variants[0]
+          ? data.variants.find((v: any) => v._id === variantId || v.colorVariantId === variantId) || data.variants[0]
           : data.variants[0];
+
+        const targetVariantId = activeVariant?.colorVariantId || activeVariant?._id;
 
         addToRecentlyViewed({
           id: data._id,
@@ -263,7 +273,7 @@ const ProductDetailPage = () => {
           mrp: activeVariant?.mrp,
           images: activeVariant?.images,
           ratings: data.ratings,
-          variantId: activeVariant?._id,
+          variantId: targetVariantId,
         });
       } catch (error) {
         console.error('Error fetching product:', error);
@@ -282,7 +292,8 @@ const ProductDetailPage = () => {
         setLoadingRelated(true);
         const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
         const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
-        const data = await fetchRelatedProducts(product._id, lat, lng);
+        const prodGender = Array.isArray(product.gender) ? product.gender[0] : (product.gender || selectedGender);
+        const data = await fetchRelatedProducts(product._id, lat, lng, prodGender ? String(prodGender).toUpperCase() : undefined);
         setRelatedProducts(data || []);
       } catch (error) {
         console.error('Error fetching related products:', error);
@@ -292,12 +303,32 @@ const ProductDetailPage = () => {
     };
 
     loadRelated();
-  }, [product?._id, selectedAddress, userLocation]);
+  }, [product?._id, product?.gender, selectedGender, selectedAddress, userLocation]);
 
   const filteredRelated = useMemo(() => {
-    if (!showOnlyNearby) return relatedProducts;
-    return relatedProducts.filter(p => p.isInstantBuyable);
-  }, [relatedProducts, showOnlyNearby]);
+    let list = relatedProducts;
+    if (showOnlyNearby) {
+      list = list.filter(p => p.isInstantBuyable);
+    }
+    // Filter out inactive products / inactive store or warehouse brand products
+    list = list.filter((p: any) => p.isStoreInactive !== true && p.isAvailable !== false);
+
+    // Enforce same gender products for "You may also like"
+    const targetGenders = Array.isArray(product?.gender)
+      ? product.gender.map((g: string) => String(g).toUpperCase())
+      : product?.gender
+      ? [String(product.gender).toUpperCase()]
+      : (selectedGender ? [String(selectedGender).toUpperCase()] : []);
+
+    if (targetGenders.length > 0) {
+      list = list.filter((p: any) => {
+        if (!p.gender || (Array.isArray(p.gender) && p.gender.length === 0)) return true;
+        const pGenders = (Array.isArray(p.gender) ? p.gender : [p.gender]).map((g: string) => String(g).toUpperCase());
+        return pGenders.some((g: string) => targetGenders.includes(g) || g === 'UNISEX');
+      });
+    }
+    return list;
+  }, [relatedProducts, showOnlyNearby, product?.gender, selectedGender]);
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 120],
@@ -374,8 +405,9 @@ const ProductDetailPage = () => {
 
   const handleWishlistToggle = () => {
     if (product) {
-      const activeVariant = product.variants.find((v: any) => v.color.name === selectedColor) || product.variants[0];
-      toggleWishlist(product._id, activeVariant._id);
+      const activeVariant = product.variants.find((v: any) => v.color?.name === selectedColor) || product.variants[0];
+      const targetVariantId = activeVariant?.colorVariantId || activeVariant?._id;
+      toggleWishlist(product._id, targetVariantId);
 
       Animated.sequence([
         Animated.spring(wishlistScale, { toValue: 1.3, useNativeDriver: true, friction: 3 }),
@@ -383,6 +415,11 @@ const ProductDetailPage = () => {
       ]).start();
     }
   };
+
+  const isStoreInactive =
+    product?.isStoreInactive === true ||
+    product?.isAvailable === false ||
+    product?.merchantId?.isActive === false;
 
   const totalAvailableStock = useMemo(() => {
     if (!product?.variants) return 0;
@@ -392,10 +429,28 @@ const ProductDetailPage = () => {
     }, 0);
   }, [product?.variants]);
 
-  const isEntirelyOutOfStock = totalAvailableStock <= 0;
+  const isEntirelyOutOfStock = isStoreInactive || totalAvailableStock <= 0;
 
   const handleOpenDeliveryOptions = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    if (!isAuthenticated) {
+      showAlert({
+        title: 'Sign In Required',
+        message: 'Please sign in or create an account to add items to your bag and place orders.',
+        buttons: [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/(auth)') },
+        ],
+      });
+      return;
+    }
+
+    if (isStoreInactive) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      showToast({ message: 'This store is currently not taking orders.', type: 'warning' });
+      return;
+    }
 
     if (isEntirelyOutOfStock) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -489,6 +544,11 @@ const ProductDetailPage = () => {
           quantity: 1,
           merchantId: targetMerchantId,
           image: { url: variantImage },
+          product,
+          productName: product.name,
+          price: activeVariant.price || product.price,
+          mrp: activeVariant.mrp || product.mrp,
+          shopName: merchantShopName,
         });
         setLastAddedCartType('courier');
       } else if (selectedFulfillmentMode === 'flashmart') {
@@ -500,6 +560,11 @@ const ProductDetailPage = () => {
           merchantId: targetMerchantId,
           image: { url: variantImage },
           source: 'warehouse',
+          product,
+          productName: product.name,
+          price: activeVariant.price || product.price,
+          mrp: activeVariant.mrp || product.mrp,
+          shopName: 'FlashFits Warehouse',
         });
         setLastAddedCartType('flashmart');
       } else {
@@ -511,16 +576,26 @@ const ProductDetailPage = () => {
           merchantId: targetMerchantId,
           image: { url: variantImage },
           source: 'shop',
+          product,
+          productName: product.name,
+          price: activeVariant.price || product.price,
+          mrp: activeVariant.mrp || product.mrp,
+          shopName: merchantShopName,
         });
         setLastAddedCartType('directStore');
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDeliveryOptionsModalVisible(false);
+      const targetStoreName = merchantShopName;
       showToast({
         message: (selectedFulfillmentMode === 'directStore' && isMerchantOffline)
-          ? 'Added to Try & Buy bag (Store is currently offline)'
-          : 'Added to cart',
+          ? `Added to ${targetStoreName} cart (Store offline)`
+          : selectedFulfillmentMode === 'directStore'
+            ? `Added to ${targetStoreName} cart`
+            : selectedFulfillmentMode === 'flashmart'
+              ? 'Added to Warehouse cart'
+              : 'Added to cart',
         type: 'success'
       });
     } catch (error: any) {
@@ -735,6 +810,55 @@ const ProductDetailPage = () => {
               </View>
             )}
           </View>
+
+          {/* Store Inactive or Out of Stock Alert Banner */}
+          {isStoreInactive && (
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#FEF2F2',
+              borderWidth: 1,
+              borderColor: '#FECACA',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 16,
+              gap: 10,
+            }}>
+              <Ionicons name="alert-circle" size={20} color="#DC2626" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#991B1B' }}>
+                  Store Currently Inactive
+                </Text>
+                <Text style={{ fontSize: 11.5, color: '#B91C1C', marginTop: 2, lineHeight: 16 }}>
+                  This partner merchant is temporarily not accepting orders. Items cannot be added to your bag.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {!isStoreInactive && isEntirelyOutOfStock && (
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#F8FAFC',
+              borderWidth: 1,
+              borderColor: '#E2E8F0',
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 16,
+              gap: 10,
+            }}>
+              <Ionicons name="information-circle" size={20} color="#64748B" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontFamily: Typography.fontFamily.bold, color: '#1E293B' }}>
+                  Currently Out of Stock
+                </Text>
+                <Text style={{ fontSize: 11.5, color: '#64748B', marginTop: 2, lineHeight: 16 }}>
+                  All sizes for this product are currently sold out. Check back later or save to your wishlist.
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Merchant / Brand Section */}
           <TouchableOpacity
@@ -1028,9 +1152,11 @@ const ProductDetailPage = () => {
               <View style={[styles.relatedHeader, { marginBottom: 14 }]}>
                 <Text style={[styles.sectionTitle, { marginBottom: 0, marginTop: 0 }]}>Complete the Look</Text>
               </View>
-              <FlashList
+              <FlatList
                 data={product.matchingProducts}
                 horizontal
+                nestedScrollEnabled={true}
+                removeClippedSubviews={false}
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item: any) => item._id}
                 contentContainerStyle={styles.relatedList}
@@ -1077,9 +1203,11 @@ const ProductDetailPage = () => {
             </View>
 
             {filteredRelated.length > 0 ? (
-              <FlashList
+              <FlatList
                 data={filteredRelated}
                 horizontal
+                nestedScrollEnabled={true}
+                removeClippedSubviews={false}
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item: any) => item._id}
                 contentContainerStyle={styles.relatedList}
@@ -1168,7 +1296,7 @@ const ProductDetailPage = () => {
             <>
               <Ionicons name={isEntirelyOutOfStock ? "alert-circle-outline" : "bag-handle-outline"} size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
               <Text style={styles.cartBtnText}>
-                {isEntirelyOutOfStock ? 'OUT OF STOCK' : 'ADD TO BAG'}
+                {isStoreInactive ? 'STORE INACTIVE' : isEntirelyOutOfStock ? 'OUT OF STOCK' : 'ADD TO BAG'}
               </Text>
             </>
           )}
@@ -1297,131 +1425,125 @@ const ProductDetailPage = () => {
             </View>
 
             {/* Options List */}
-            {(() => {
-              const merchantShopName = product?.shopMerchantName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Store';
-
-              return (
-                <View style={{ gap: 10, marginBottom: 18 }}>
-                  {/* Option 1: Warehouse Try & Buy - Only show if available */}
-                  {flashmartAvailable && (
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        setSelectedFulfillmentMode('flashmart');
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                      style={[
-                        styles.fulfillmentCard,
-                        selectedFulfillmentMode === 'flashmart' && styles.fulfillmentCardActiveFlashmart,
-                      ]}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons
-                            name={selectedFulfillmentMode === 'flashmart' ? "radio-button-on" : "radio-button-off"}
-                            size={18}
-                            color={selectedFulfillmentMode === 'flashmart' ? '#10B981' : '#94A3B8'}
-                          />
-                          <Ionicons name="flash" size={16} color="#10B981" />
-                          <Text style={styles.fulfillmentTitle}>
-                            FlashMart Hub (Warehouse)
-                          </Text>
-                        </View>
-                        <View style={[styles.fulfillmentBadge, { backgroundColor: '#ECFDF5' }]}>
-                          <Text style={[styles.fulfillmentBadgeText, { color: '#059669' }]}>
-                            30 MINS
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
-                        ⚡ Try & Buy at doorstep from FlashFits Hub
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Option 2: Dynamic Merchant Store Try & Buy - Always show for shop products */}
-                  {(directStoreAvailable || isShopProduct) && (
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        setSelectedFulfillmentMode('directStore');
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                      style={[
-                        styles.fulfillmentCard,
-                        selectedFulfillmentMode === 'directStore' && styles.fulfillmentCardActiveStore,
-                      ]}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
-                          <Ionicons
-                            name={selectedFulfillmentMode === 'directStore' ? "radio-button-on" : "radio-button-off"}
-                            size={18}
-                            color={selectedFulfillmentMode === 'directStore' ? '#F59E0B' : '#94A3B8'}
-                          />
-                          <Ionicons name="storefront-outline" size={16} color="#F59E0B" />
-                          <Text style={styles.fulfillmentTitle} numberOfLines={1}>
-                            {merchantShopName} (Shop)
-                          </Text>
-                        </View>
-                        <View style={[styles.fulfillmentBadge, { backgroundColor: isMerchantOffline ? '#FEE2E2' : '#FEF3C7' }]}>
-                          <Text style={[styles.fulfillmentBadgeText, { color: isMerchantOffline ? '#EF4444' : '#D97706' }]}>
-                            {isMerchantOffline ? 'STORE OFFLINE' : '30 MINS'}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
-                        {isMerchantOffline
-                          ? `🌙 Doorstep Try & Buy from ${merchantShopName} (Store closed · Order when open)`
-                          : `🏪 Doorstep Try & Buy directly from ${merchantShopName}`}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {/* If neither Try & Buy option is available */}
-                  {!hasAnyTryAndBuy && (
-                    <View style={{ padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
-                      <Text style={{ fontSize: 12, color: '#64748B', fontFamily: Typography.fontFamily.medium }}>
-                        ⚡ Doorstep Try & Buy is currently unavailable for this item in your area. You can order with Pan-India Courier delivery below.
+            <View style={{ gap: 10, marginBottom: 18 }}>
+              {/* Option 1: Warehouse Try & Buy - Only show if available */}
+              {flashmartAvailable && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedFulfillmentMode('flashmart');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={[
+                    styles.fulfillmentCard,
+                    selectedFulfillmentMode === 'flashmart' && styles.fulfillmentCardActiveFlashmart,
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons
+                        name={selectedFulfillmentMode === 'flashmart' ? "radio-button-on" : "radio-button-off"}
+                        size={18}
+                        color={selectedFulfillmentMode === 'flashmart' ? '#10B981' : '#94A3B8'}
+                      />
+                      <Ionicons name="flash" size={16} color="#10B981" />
+                      <Text style={styles.fulfillmentTitle}>
+                        FlashMart Hub
                       </Text>
                     </View>
-                  )}
-
-                  {/* Option 3: Pan-India Courier - Show when Try & Buy is unavailable or when store is offline as alternative */}
-                  {(!hasAnyTryAndBuy || isMerchantOffline) && (
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        setSelectedFulfillmentMode('courier');
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                      style={[
-                        styles.fulfillmentCard,
-                        selectedFulfillmentMode === 'courier' && styles.fulfillmentCardActiveCourier,
-                      ]}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons
-                            name={selectedFulfillmentMode === 'courier' ? "radio-button-on" : "radio-button-off"}
-                            size={18}
-                            color={selectedFulfillmentMode === 'courier' ? theme.primary : '#94A3B8'}
-                          />
-                          <Ionicons name="cube-outline" size={16} color="#64748B" />
-                          <Text style={styles.fulfillmentTitle}>Pan-India Courier</Text>
-                        </View>
-                        <View style={[styles.fulfillmentBadge, { backgroundColor: '#F1F5F9' }]}>
-                          <Text style={[styles.fulfillmentBadgeText, { color: '#475569' }]}>2–4 DAYS</Text>
-                        </View>
-                      </View>
-                      <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
-                        📦 Doorstep Shipping Across India
+                    <View style={[styles.fulfillmentBadge, { backgroundColor: '#ECFDF5' }]}>
+                      <Text style={[styles.fulfillmentBadgeText, { color: '#059669' }]}>
+                        30 MINS
                       </Text>
-                    </TouchableOpacity>
-                  )}
+                    </View>
+                  </View>
+                  <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                    ⚡ Try at home • Delivered to doorstep in 30 mins
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Option 2: Dynamic Merchant Store Try & Buy - Always show for shop products */}
+              {(directStoreAvailable || isShopProduct) && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedFulfillmentMode('directStore');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={[
+                    styles.fulfillmentCard,
+                    selectedFulfillmentMode === 'directStore' && styles.fulfillmentCardActiveStore,
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                      <Ionicons
+                        name={selectedFulfillmentMode === 'directStore' ? "radio-button-on" : "radio-button-off"}
+                        size={18}
+                        color={selectedFulfillmentMode === 'directStore' ? '#F59E0B' : '#94A3B8'}
+                      />
+                      <Ionicons name="storefront-outline" size={16} color="#F59E0B" />
+                      <Text style={styles.fulfillmentTitle} numberOfLines={1}>
+                        {merchantShopName}
+                      </Text>
+                    </View>
+                    <View style={[styles.fulfillmentBadge, { backgroundColor: isMerchantOffline ? '#FEE2E2' : '#FEF3C7' }]}>
+                      <Text style={[styles.fulfillmentBadgeText, { color: isMerchantOffline ? '#EF4444' : '#D97706' }]}>
+                        {isMerchantOffline ? 'STORE OFFLINE' : '30 MINS'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                    {isMerchantOffline
+                      ? `🌙 Store closed · Delivered to doorstep when open`
+                      : `⚡ Try at home • Delivered to doorstep in 30 mins`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* If neither Try & Buy option is available */}
+              {!hasAnyTryAndBuy && (
+                <View style={{ padding: 12, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
+                  <Text style={{ fontSize: 12, color: '#64748B', fontFamily: Typography.fontFamily.medium }}>
+                    ⚡ Doorstep Try & Buy is currently unavailable for this item in your area. You can order with Pan-India Courier delivery below.
+                  </Text>
                 </View>
-              );
-            })()}
+              )}
+
+              {/* Option 3: Pan-India Courier - Show when Try & Buy is unavailable or when store is offline as alternative */}
+              {(!hasAnyTryAndBuy || isMerchantOffline) && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedFulfillmentMode('courier');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={[
+                    styles.fulfillmentCard,
+                    selectedFulfillmentMode === 'courier' && styles.fulfillmentCardActiveCourier,
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons
+                        name={selectedFulfillmentMode === 'courier' ? "radio-button-on" : "radio-button-off"}
+                        size={18}
+                        color={selectedFulfillmentMode === 'courier' ? theme.primary : '#94A3B8'}
+                      />
+                      <Ionicons name="cube-outline" size={16} color="#64748B" />
+                      <Text style={styles.fulfillmentTitle}>Pan-India Courier</Text>
+                    </View>
+                    <View style={[styles.fulfillmentBadge, { backgroundColor: '#F1F5F9' }]}>
+                      <Text style={[styles.fulfillmentBadgeText, { color: '#475569' }]}>2–4 DAYS</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.fulfillmentSub, { marginLeft: 26 }]}>
+                    📦 Standard Doorstep Courier Delivery (2-4 Days)
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             {/* Confirm Add Button */}
             <TouchableOpacity
@@ -1450,11 +1572,15 @@ const ProductDetailPage = () => {
               ) : (
                 <>
                   <Ionicons name="bag-add-outline" size={18} color="#FFFFFF" />
-                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontFamily: Typography.fontFamily.bold }}>
+                  <Text
+                    style={{ color: '#FFFFFF', fontSize: 14, fontFamily: Typography.fontFamily.bold, maxWidth: '85%' }}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
                     {selectedFulfillmentMode === 'flashmart'
                       ? 'Add to Warehouse Cart'
                       : selectedFulfillmentMode === 'directStore'
-                        ? `Add to ${product?.shopMerchantName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Shop'} Cart`
+                        ? `Add to ${merchantShopName} Cart`
                         : 'Confirm & Add to Bag'}
                   </Text>
                 </>

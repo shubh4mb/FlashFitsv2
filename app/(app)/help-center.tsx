@@ -576,6 +576,20 @@ export default function HelpCenterScreen() {
                     </ScrollView>
                   </View>
                 )}
+
+                {t.resolutionNotes ? (
+                  <View style={{ marginTop: 12, padding: 12, backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                      <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: '700', color: '#15803D' }}>
+                        Support Resolution {t.adminAction && t.adminAction !== 'none' ? `• ${t.adminAction.replace(/_/g, ' ').toUpperCase()}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 13, color: '#166534', lineHeight: 18 }}>
+                      {t.resolutionNotes}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             ))
           )}

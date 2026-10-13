@@ -377,7 +377,7 @@ export default function CampaignScreen() {
                         pathname: `/(app)/product/${item._id || item.id}` as any,
                         params: { 
                           id: item._id || item.id, 
-                          fromExplore: 'false',
+                          fromExplore: (item.isInstantBuyable || item.isNearby) ? 'false' : 'true',
                           variantId: item.variantId || undefined
                         },
                       });

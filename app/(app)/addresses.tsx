@@ -21,6 +21,7 @@ import logo from '@/assets/images/logo/logo.png';
 import BrandFooter from '@/components/common/BrandFooter';
 import { getAddresses, deleteAddress, Address } from '@/api/address';
 import { useGender } from '@/context/GenderContext';
+import { useAuth } from '@/context/AuthContext';
 import { GenderThemes, Typography } from '@/constants/theme';
 import Loader from '@/components/common/Loader';
 import { useAlert, useToast } from '@/context/AlertContext';
@@ -28,6 +29,7 @@ import { useAlert, useToast } from '@/context/AlertContext';
 const AddressesScreen = () => {
   const router = useRouter();
   const { selectedGender } = useGender();
+  const { isAuthenticated } = useAuth();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
   const showAlert = useAlert();
@@ -45,6 +47,11 @@ const AddressesScreen = () => {
   };
 
   const fetchAddresses = async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      setAddresses([]);
+      return;
+    }
     try {
       setLoading(true);
       const res = await getAddresses();
@@ -122,8 +129,23 @@ const AddressesScreen = () => {
             <View style={styles.emptyIconCircle}>
               <Ionicons name="location-outline" size={60} color="#E2E8F0" />
             </View>
-            <Text style={styles.emptyTitle}>No Addresses Saved</Text>
-            <Text style={styles.emptySubtitle}>You haven't saved any addresses yet. Add one to speed up your checkout!</Text>
+            <Text style={styles.emptyTitle}>
+              {isAuthenticated ? 'No Addresses Saved' : 'Sign In to View Addresses'}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {isAuthenticated 
+                ? "You haven't saved any addresses yet. Add one to speed up your checkout!"
+                : "Please sign in or create an account to view and manage your saved addresses."}
+            </Text>
+            {!isAuthenticated && (
+              <TouchableOpacity
+                style={[styles.addButton, { backgroundColor: theme.primary, marginTop: 16 }]}
+                onPress={() => router.push('/(auth)')}
+              >
+                <Ionicons name="log-in-outline" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Sign In</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           addresses.map((item) => (
@@ -178,7 +200,20 @@ const AddressesScreen = () => {
 
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: theme.primary }]}
-          onPress={() => router.push('/(app)/select-location' as any)}
+          onPress={() => {
+            if (!isAuthenticated) {
+              showAlert({
+                title: 'Sign In Required',
+                message: 'Please sign in or register to add delivery addresses.',
+                buttons: [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Sign In', onPress: () => router.push('/(auth)') }
+                ]
+              });
+              return;
+            }
+            router.push('/(app)/select-location' as any);
+          }}
         >
           <Ionicons name="add" size={24} color="#fff" />
           <Text style={styles.addButtonText}>Add New Address</Text>

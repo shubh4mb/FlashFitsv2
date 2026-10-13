@@ -8,8 +8,10 @@ import { GenderThemes } from '@/constants/theme';
 import { useGender } from '@/context/GenderContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { useAddress } from '@/context/AddressContext';
+import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Loader from '@/components/common/Loader';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import {
@@ -28,8 +30,9 @@ const COLUMN_WIDTH = (width - 48) / 2;
 
 export default function StandaloneWishlistScreen() {
   const router = useRouter();
-  const { wishlistIds } = useWishlist();
+  const { wishlistIds, toggleWishlist } = useWishlist();
   const { selectedGender } = useGender();
+  const { isAuthenticated } = useAuth();
   const { userLocation, selectedAddress } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
@@ -41,17 +44,49 @@ export default function StandaloneWishlistScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
+  // Identify items that are out of stock or have inactive merchants
+  const unavailableItems = useMemo(() => {
+    return wishlistItems.filter(
+      (item) => item.isStoreInactive === true || item.isAvailable === false || item.inStock === false || item.stock === 0
+    );
+  }, [wishlistItems]);
+
+  const handleRemoveUnavailable = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      for (const item of unavailableItems) {
+        const pId = String(item._id || item.id);
+        const vId = item.variantId;
+        if (pId && vId) {
+          await toggleWishlist(pId, vId);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to clean up unavailable wishlist items:', err);
+    }
+  };
+
   // ── Fetch Full Wishlist ──
   const fetchFullWishlist = async () => {
+    if (!isAuthenticated) {
+      setWishlistItems([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
       const response = await getMyWishlist(lat, lng);
       const items = response?.wishlist || [];
 
+      const seenPids = new Set<string>();
       const mappedProducts = items
         .map((item: any) => {
           if (!item.product) return null;
+          const pId = String(item.product._id || item.product.id || '');
+          if (!pId || seenPids.has(pId)) return null;
+          seenPids.add(pId);
           return {
             ...item.product,
             wishlistItemId: item._id,
@@ -78,7 +113,7 @@ export default function StandaloneWishlistScreen() {
       // Smart Wishlist-driven recommendation:
       // Gender is intentionally undefined so the backend engine personalizes recommendations
       // directly based on what is in the user's wishlist (e.g. Men's shirt -> Men's shirts)
-      const currentWishlistIds = wishlistIds.map(String);
+      const currentWishlistIds = wishlistIds.map(item => String(item.productId || item));
       let list = await fetchRecommendedProductsData(undefined, lat, lng, currentWishlistIds);
 
       // Supplement with trending products if recommended list is small
@@ -91,7 +126,7 @@ export default function StandaloneWishlistScreen() {
 
       if (Array.isArray(list)) {
         // Exclude products that are already in the user's wishlist and deduplicate
-        const wishlistedSet = new Set(wishlistIds.map(String));
+        const wishlistedSet = new Set(wishlistIds.map(item => String(item.productId || item)));
         const seen = new Set();
         const filtered = list.filter((p: any) => {
           const id = String(p._id);
@@ -158,15 +193,34 @@ export default function StandaloneWishlistScreen() {
             <ThemedText style={styles.count}>{wishlistItems.length} Items</ThemedText>
           </View>
 
+          {/* Unavailable Items Alert Banner */}
+          {unavailableItems.length > 0 && (
+            <View style={styles.unavailableBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                <Ionicons name="alert-circle" size={18} color="#D97706" />
+                <ThemedText style={styles.unavailableBannerText} numberOfLines={1}>
+                  {unavailableItems.length} {unavailableItems.length === 1 ? 'item is' : 'items are'} out of stock or unavailable
+                </ThemedText>
+              </View>
+              <TouchableOpacity onPress={handleRemoveUnavailable} activeOpacity={0.7} style={styles.cleanBtn}>
+                <ThemedText style={styles.cleanBtnText}>Remove All</ThemedText>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Wishlist Items Grid or Empty Banner */}
           {wishlistItems.length === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={[styles.emptyIconContainer, { backgroundColor: theme.primary + '10' }]}>
                 <Ionicons name="heart-outline" size={54} color={theme.primary} />
               </View>
-              <ThemedText type="subtitle" style={styles.emptyTitle}>Your wishlist is empty</ThemedText>
+              <ThemedText type="subtitle" style={styles.emptyTitle}>
+                {isAuthenticated ? 'Your wishlist is empty' : 'Sign in to save favorites'}
+              </ThemedText>
               <ThemedText style={styles.emptyText}>
-                Explore suggested styles below and tap the heart icon to save your favorite fits!
+                {isAuthenticated
+                  ? 'Explore suggested styles below and tap the heart icon to save your favorite fits!'
+                  : 'Explore suggested styles below and sign in to keep your favorites synced across devices.'}
               </ThemedText>
             </View>
           ) : (
@@ -294,6 +348,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
     fontWeight: '600',
+  },
+  unavailableBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  unavailableBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#92400E',
+    flex: 1,
+  },
+  cleanBtn: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  cleanBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#B45309',
   },
   grid: {
     flexDirection: 'row',

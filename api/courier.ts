@@ -7,6 +7,11 @@ export interface AddToCourierCartParams {
   quantity: number;
   merchantId: string;
   image: string | { url: string };
+  product?: any;
+  productName?: string;
+  price?: number;
+  mrp?: number;
+  shopName?: string;
 }
 
 /**

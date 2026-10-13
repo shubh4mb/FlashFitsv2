@@ -1,4 +1,6 @@
+
 import api from './axiosConfig';
+import { notifyLocalOrderUpdate } from '@/sockets/order.socket';
 
 // ── T&B Orders ──
 
@@ -35,7 +37,7 @@ export const createRazorpayOrder = async (addressId: string, deliveryTip: number
 /**
  * Confirm cloth selection via COD (Cash to Rider)
  */
-export const confirmCodSelection = async (payload: { orderId: string; items: any[]; finalPaymentMethod: string }) => {
+export const confirmCodSelection = async (payload: { orderId: string; items: any[]; finalPaymentMethod: string; couponCode?: string; removeCoupon?: boolean }) => {
     try {
         const res = await api.post(`/user/order/verifyFinalPaymentCod`, payload);
         return res.data;
@@ -66,9 +68,19 @@ export const verifyPayment = async (params: {
 /**
  * Cancel a T&B order
  */
-export const cancelOrder = async (orderId: string) => {
+export const cancelOrder = async (orderId: string, reason?: string) => {
     try {
-        const res = await api.post(`/user/order/cancel/${orderId}`);
+        const res = await api.post(`/user/order/cancel/${orderId}`, { reason });
+        notifyLocalOrderUpdate({
+            _id: orderId,
+            orderId,
+            orderStatus: 'cancelled',
+            customerDeliveryStatus: 'cancelled',
+            deliveryRiderStatus: 'cancelled',
+            isCancelled: true,
+            cancelledBy: 'user',
+            reason: reason || 'Cancelled by user',
+        });
         return res.data;
     } catch (error: any) {
         console.error('Cancel order error:', error.response?.data || error.message);
@@ -92,7 +104,7 @@ export const reportUnresponsiveRider = async (orderId: string) => {
 /**
  * Confirm cloth selection (Keep/Return) — initiateReturn
  */
-export const confirmClothSelection = async (payload: { orderId: string; items: any[]; couponCode?: string }) => {
+export const confirmClothSelection = async (payload: { orderId: string; items: any[]; couponCode?: string; removeCoupon?: boolean }) => {
     try {
         const res = await api.post(`/user/order/initiateReturn/${payload.orderId}`, payload);
         return res.data;
@@ -106,12 +118,12 @@ export const confirmClothSelection = async (payload: { orderId: string; items: a
  * Create a final Razorpay order for kept items (T&B flow)
  * Sends items with tryStatus to backend, gets Razorpay order details back
  */
-export const finalpaymentInitiate = async (payload: { orderId: string; items: any[]; couponCode?: string }) => {
+export const finalpaymentInitiate = async (payload: { orderId: string; items: any[]; couponCode?: string; removeCoupon?: boolean }) => {
     try {
-        const { orderId, items, couponCode } = payload;
+        const { orderId, items, couponCode, removeCoupon } = payload;
         const res = await api.post(
             `/user/order/createFinalPaymentOrder/${orderId}`,
-            { items, couponCode }
+            { items, couponCode, removeCoupon }
         );
         return res.data?.data || res.data;
     } catch (error: any) {
@@ -218,6 +230,14 @@ export const getCourierOrderById = async (orderId: string) => {
 export const cancelCourierOrder = async (orderId: string) => {
     try {
         const res = await api.post(`/courier/orders/cancel/${orderId}`);
+        notifyLocalOrderUpdate({
+            _id: orderId,
+            orderId,
+            orderStatus: 'cancelled',
+            customerDeliveryStatus: 'cancelled',
+            isCancelled: true,
+            cancelledBy: 'user',
+        });
         return res.data;
     } catch (error: any) {
         console.error('Cancel courier order error:', error.response?.data || error.message);

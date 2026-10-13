@@ -103,11 +103,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
-    // Do not trigger token refresh for public / auth endpoints
+    // Do not trigger token refresh for public / auth endpoints or unauthenticated guest requests
     const isPublicEndpoint = originalRequest.url?.includes('auth/') || 
                              originalRequest.url?.includes('user/checkDeliveryAvailability');
+    const hasToken = !!originalRequest.headers?.Authorization;
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isPublicEndpoint) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isPublicEndpoint && hasToken) {
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject });

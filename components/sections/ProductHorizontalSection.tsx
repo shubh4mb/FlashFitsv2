@@ -9,7 +9,6 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { GenderThemes, Typography, SectionHeaderStyles, BrandColors } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
@@ -162,7 +161,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
         </TouchableOpacity>
       )}
 
-      <FlashList
+      <FlatList
         data={products}
         renderItem={renderItem}
         keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
@@ -171,6 +170,10 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"
         snapToInterval={155 + 16}
+        removeClippedSubviews={false}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={10}
       />
     </View>
   );

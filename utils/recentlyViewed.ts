@@ -28,6 +28,8 @@ export interface Product {
   stock?: number;
   totalStock?: number;
   inStock?: boolean;
+  isStoreInactive?: boolean;
+  isAvailable?: boolean;
 }
 
 /**

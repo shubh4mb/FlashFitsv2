@@ -10,10 +10,12 @@ import ProductHorizontalSection from '@/components/sections/ProductHorizontalSec
 import PromotionalCarousel from '@/components/sections/PromotionalCarousel';
 import RecentlyViewedSection from '@/components/sections/RecentlyViewedSection';
 import TryComingSoonSection from '@/components/sections/TryComingSoonSection';
+import KidsComingSoonSection from '@/components/sections/KidsComingSoonSection';
 import TryOfflineSection from '@/components/sections/TryOfflineSection';
 import TryGuaranteeBanner from '@/components/sections/TryGuaranteeBanner';
+import SlimFreeDeliveryBanner from '@/components/common/SlimFreeDeliveryBanner';
 import { Typography } from '@/constants/theme';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, DEFAULT_FALLBACK_COORDS } from '@/context/AddressContext';
 import { useAuth } from '@/context/AuthContext';
 import { useCampaign } from '@/context/CampaignContext';
 import { useGender } from '@/context/GenderContext';
@@ -43,6 +45,7 @@ export default function HomeScreen() {
     tbOffline,
     openAddressModal,
     enableLocation,
+    requestInitialLocation,
   } = useAddress();
   const { setCampaignFromCollections } = useCampaign();
   const scrollY = React.useRef(new Animated.Value(0)).current;
@@ -59,8 +62,8 @@ export default function HomeScreen() {
   const [merchants, setMerchants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const targetLat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-  const targetLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+  const targetLat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude ?? DEFAULT_FALLBACK_COORDS.latitude;
+  const targetLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude ?? DEFAULT_FALLBACK_COORDS.longitude;
   const addressId = selectedAddress?._id;
 
   const loadData = useCallback(async () => {
@@ -97,6 +100,10 @@ export default function HomeScreen() {
     loadData();
   }, [loadData, refreshKey]);
 
+  useEffect(() => {
+    requestInitialLocation();
+  }, [requestInitialLocation]);
+
   // Derived state for readability
   const isServiceAvailable = tbAvailable !== false;
 
@@ -129,69 +136,41 @@ export default function HomeScreen() {
         >
           {headerHeight > 0 && <View style={{ height: headerHeight }} />}
 
-          {(!selectedAddress && !userLocation) ? (
-            // ── Location / Address Not Chosen Yet ──
-            <View style={styles.promptContainer}>
-              <View style={styles.promptIconCircle}>
-                <Ionicons name="location-outline" size={38} color="#0F172A" />
-              </View>
-              <Text style={styles.promptTitle}>Where should we deliver?</Text>
-              <Text style={styles.promptSubtitle}>
-                Select a saved address or enable device location to view trending styles, partner stores, and 30-minute Try at Home in your area.
-              </Text>
-              <View style={styles.promptButtonsRow}>
-                <TouchableOpacity
-                  style={styles.promptPrimaryButton}
-                  activeOpacity={0.8}
-                  onPress={openAddressModal}
-                >
-                  <Ionicons name="home-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                  <Text style={styles.promptPrimaryButtonText}>Select Delivery Address</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.promptSecondaryButton}
-                  activeOpacity={0.8}
-                  onPress={async () => {
-                    setEnablingLocation(true);
-                    await enableLocation();
-                    setEnablingLocation(false);
-                  }}
-                  disabled={enablingLocation}
-                >
-                  {enablingLocation ? (
-                    <ActivityIndicator size="small" color="#0F172A" />
-                  ) : (
-                    <>
-                      <Ionicons name="flash-outline" size={16} color="#0F172A" style={{ marginRight: 6 }} />
-                      <Text style={styles.promptSecondaryButtonText}>Enable Device Location</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : loading && tbAvailable === null ? (
-            // ── Initial Loading ──
-            <View style={{ padding: 20 }}>
-              <Skeleton width="100%" height={200} borderRadius={20} style={{ marginBottom: 24 }} />
-              <Skeleton width="60%" height={24} borderRadius={10} style={{ marginBottom: 16 }} />
-              <View style={{ flexDirection: 'row', gap: 16 }}>
-                <Skeleton width={width * 0.4} height={200} borderRadius={16} />
-                <Skeleton width={width * 0.4} height={200} borderRadius={16} />
-              </View>
-            </View>
-          ) : tbAvailable === false ? (
-            // ── Service Not Available or Offline ──
+          {selectedGender === 'Kids' ? (
             <View>
-              {tbOffline ? (
-                <TryOfflineSection refreshKey={refreshKey} />
-              ) : (
-                <TryComingSoonSection />
-              )}
+              <KidsComingSoonSection tabType="tryAndBuy" onRefresh={onRefresh} refreshing={refreshing} />
+              <BrandFooter />
             </View>
           ) : (
-            // ── Service Available ──
-            <>
+            <View>
+              {/* Optional non-blocking delivery address pill if not selected */}
+              {!selectedAddress && !userLocation && (
+                <View style={styles.inlinePromptContainer}>
+                  <Ionicons name="location-outline" size={18} color="#0F172A" />
+                  <View style={{ flex: 1, marginHorizontal: 8 }}>
+                    <Text style={styles.inlinePromptTitle}>Location not set</Text>
+                    <Text style={styles.inlinePromptSubtitle}>Set delivery address for 30-min Try at Home</Text>
+                  </View>
+                  <TouchableOpacity style={styles.inlinePromptButton} onPress={openAddressModal} activeOpacity={0.8}>
+                    <Text style={styles.inlinePromptButtonText}>Set Location</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Optional non-blocking notice pill if out of service area */}
+              {tbAvailable === false && (
+                <View style={styles.serviceNoticeContainer}>
+                  <Ionicons name="information-circle-outline" size={18} color="#0284C7" />
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <Text style={styles.serviceNoticeTitle}>Browsing Catalog</Text>
+                    <Text style={styles.serviceNoticeSubtitle}>30-min doorstep try-on is active in select zones. Feel free to browse our full collection!</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Slim Free Delivery & Referral Banner */}
+              <SlimFreeDeliveryBanner style={{ marginTop: 2, marginBottom: 6 }} />
+
               {/* Promotional Carousel */}
               <PromotionalCarousel />
 
@@ -260,7 +239,7 @@ export default function HomeScreen() {
 
               {/* Brand Footer */}
               <BrandFooter />
-            </>
+            </View>
           )}
 
           <View style={{ height: 100 }} />
@@ -350,5 +329,64 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: Typography.fontFamily.bold,
     letterSpacing: 0.2,
+  },
+  inlinePromptContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  inlinePromptTitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0F172A',
+  },
+  inlinePromptSubtitle: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  inlinePromptButton: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  inlinePromptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+  },
+  serviceNoticeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#F0F9FF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  serviceNoticeTitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#0369A1',
+  },
+  serviceNoticeSubtitle: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#0284C7',
+    marginTop: 1,
   },
 });

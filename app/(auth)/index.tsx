@@ -1,17 +1,18 @@
 import React, { useEffect } from 'react';
 import { BackHandler } from 'react-native';
+import { useRouter } from 'expo-router';
 import PhoneLogin from '@/components/auth/PhoneLogin';
 
 export default function LoginScreen() {
-  // Prevent Android back button from navigating back to tabs after logout
+  const router = useRouter();
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      BackHandler.exitApp();
+      router.replace('/(app)/(tabs)');
       return true;
     });
 
     return () => backHandler.remove();
-  }, []);
+  }, [router]);
 
   return <PhoneLogin />;
 }

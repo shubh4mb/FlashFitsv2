@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, DEFAULT_FALLBACK_COORDS } from '@/context/AddressContext';
 import { fetchCourierProducts } from '@/api/products';
 import { GenderThemes, Typography, BrandColors } from '@/constants/theme';
 
@@ -80,8 +80,8 @@ export default function AvailableBrandsSection({
         ? selectedSubGender.toUpperCase()
         : (selectedGender === 'Kids' ? 'KIDS' : selectedGender.toUpperCase());
       
-      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude ?? DEFAULT_FALLBACK_COORDS.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude ?? DEFAULT_FALLBACK_COORDS.longitude;
 
       const data = await fetchCourierProducts(apiGender, 1, lat, lng);
       const list = data?.merchants || [];

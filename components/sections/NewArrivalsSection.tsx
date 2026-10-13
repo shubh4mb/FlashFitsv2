@@ -6,8 +6,8 @@ import {
   Text,
   ScrollView,
   StyleSheet,
+  FlatList,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { fetchnewArrivalsProductsData } from '../../api/products';
 import { GenderThemes, Typography, BrandColors } from '../../constants/theme';
 import { useGender } from '../../context/GenderContext';
@@ -99,7 +99,7 @@ const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         </TouchableOpacity>
       </View>
 
-      <FlashList
+      <FlatList
         data={products}
         renderItem={renderItem}
         keyExtractor={(item: any, index: number) => item._id || item.id || String(index)}
@@ -108,6 +108,10 @@ const NewArrivalsSection = ({ refreshKey = 0 }: { refreshKey?: number }) => {
         contentContainerStyle={styles.listContent}
         decelerationRate="fast"
         snapToInterval={155 + 16}
+        removeClippedSubviews={false}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={10}
       />
     </View>
   );

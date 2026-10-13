@@ -6,10 +6,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  Modal,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { listenRiderLocation, removeRiderLocationListener } from '@/sockets/order.socket';
+
+const CARTO_KEY = Constants.expoConfig?.extra?.CARTO_BASEMAP_KEY || process.env.EXPO_PUBLIC_CARTO_BASEMAP_KEY || 'cb1_4fv4_1_1edec64bef590f4afb83cafc';
 
 interface LiveOrderMapProps {
   orderId?: string;
@@ -20,6 +26,10 @@ interface LiveOrderMapProps {
   merchantName?: string;
   riderName?: string;
   estimatedMinutes?: number | string;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
+  onTouchStart?: () => void;
+  onTouchEnd?: () => void;
 }
 
 export default function LiveOrderMap({
@@ -31,10 +41,28 @@ export default function LiveOrderMap({
   merchantName = 'Merchant Store',
   riderName = 'Rider',
   estimatedMinutes,
+  onInteractionStart,
+  onInteractionEnd,
+  onTouchStart,
+  onTouchEnd,
 }: LiveOrderMapProps) {
   const webviewRef = useRef<WebView>(null);
+  const fullScreenWebviewRef = useRef<WebView>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [fullMapReady, setFullMapReady] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const [riderCoords, setRiderCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Helper to trigger interaction start/end
+  const handleTouchBegin = () => {
+    onInteractionStart?.();
+    onTouchStart?.();
+  };
+
+  const handleTouchFinish = () => {
+    onInteractionEnd?.();
+    onTouchEnd?.();
+  };
 
   // Normalize coordinates: [lng, lat] -> { lat, lng }
   const storeLat = pickupCoordinates?.[1] || 10.8505;
@@ -42,6 +70,10 @@ export default function LiveOrderMap({
 
   const custLat = deliveryCoordinates?.[1] || 10.8505;
   const custLng = deliveryCoordinates?.[0] || 76.2711;
+
+  // Initial rider position: use live riderCoords or store coordinates
+  const initialRiderLat = riderCoords?.lat || storeLat;
+  const initialRiderLng = riderCoords?.lng || storeLng;
 
   // Listen to live rider location via WebSocket
   useEffect(() => {
@@ -60,6 +92,7 @@ export default function LiveOrderMap({
         true;
       `;
       webviewRef.current?.injectJavaScript(script);
+      fullScreenWebviewRef.current?.injectJavaScript(script);
     });
 
     return () => {
@@ -86,22 +119,41 @@ export default function LiveOrderMap({
     }
   }, [deliveryRiderStatus]);
 
-  // Initial rider position: use live riderCoords or store coordinates
-  const initialRiderLat = riderCoords?.lat || storeLat;
-  const initialRiderLng = riderCoords?.lng || storeLng;
-
-  // Leaflet + OpenStreetMap HTML
+  // Leaflet HTML with smooth touch, high-performance gestures, and Carto Basemaps
   const leafletHTML = useMemo(() => {
     return `
     <!DOCTYPE html>
     <html>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
-          html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; background: #f8fafc; }
-          .leaflet-control-attribution { font-size: 8px !important; opacity: 0.7; }
+          * {
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+          }
+          html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background: #f8fafc;
+            overflow: hidden;
+            touch-action: none !important;
+            -webkit-touch-callout: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+          }
+          #map {
+            height: 100%;
+            width: 100%;
+            background: #f1f5f9;
+            touch-action: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+          }
+          .leaflet-control-attribution { font-size: 8px !important; opacity: 0.6; }
           .leaflet-control-zoom { display: none; }
 
           /* Custom Marker Pins */
@@ -174,22 +226,53 @@ export default function LiveOrderMap({
         <script>
           let map;
           let storeMarker, customerMarker, riderMarker;
-          let routeLine;
 
           const storePos = [${storeLat}, ${storeLng}];
           const custPos = [${custLat}, ${custLng}];
           let riderPos = [${initialRiderLat}, ${initialRiderLng}];
 
           function initMap() {
-            // CartoDB Voyager tiles (OpenStreetMap data, beautiful light e-commerce styling)
+            // High precision smooth gestures
             map = L.map('map', { 
               zoomControl: false, 
-              attributionControl: false 
+              attributionControl: false,
+              // Fractional continuous pinch-zoom (prevents violent integer snapping)
+              zoomSnap: 0,
+              zoomDelta: 0.5,
+              // Inertial momentum for fluid sliding
+              inertia: true,
+              inertiaDeceleration: 2500,
+              inertiaMaxSpeed: 1800,
+              touchZoom: true,
+              dragging: true,
+              bounceAtLimits: false,
+              wheelPxPerZoomLevel: 60,
+              tap: false,
+              maxBoundsViscosity: 0.6,
             }).setView(riderPos, 14);
 
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            // Notify React Native when user touches/drags inside webview
+            map.on('movestart zoomstart dragstart', function() {
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'INTERACTION_START' }));
+              }
+            });
+
+            map.on('moveend zoomend dragend', function() {
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'INTERACTION_END' }));
+              }
+            });
+
+            // CartoDB Voyager tiles with CARTO API key
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}', {
               maxZoom: 19,
+              minZoom: 4,
               subdomains: 'abcd',
+              updateWhenZooming: false, // Prevents lag & flashing by scaling existing tiles during pinch
+              updateWhenIdle: true,     // Smoother panning
+              keepBuffer: 3,            // Keeps buffer of surrounding tiles loaded for frictionless drag
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
             }).addTo(map);
 
             // Store Marker
@@ -219,28 +302,12 @@ export default function LiveOrderMap({
             });
             riderMarker = L.marker(riderPos, { icon: riderIcon, zIndexOffset: 1000 }).addTo(map);
 
-            // Dashed route line
-            drawRoute();
-
             // Fit all markers in view with padding
             fitAllBounds();
 
             if (window.ReactNativeWebView) {
               window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
             }
-          }
-
-          function drawRoute() {
-            if (routeLine) {
-              map.removeLayer(routeLine);
-            }
-            routeLine = L.polyline([storePos, riderPos, custPos], {
-              color: '#3b82f6',
-              weight: 4,
-              opacity: 0.85,
-              dashArray: '8, 8',
-              lineCap: 'round',
-            }).addTo(map);
           }
 
           function fitAllBounds() {
@@ -253,13 +320,20 @@ export default function LiveOrderMap({
             if (riderMarker) {
               riderMarker.setLatLng(riderPos);
             }
-            drawRoute();
           }
 
           function recenterOnRider() {
             if (riderMarker) {
               map.setView(riderPos, 16, { animate: true, duration: 0.8 });
             }
+          }
+
+          function zoomIn() {
+            if (map) map.zoomIn(1, { animate: true });
+          }
+
+          function zoomOut() {
+            if (map) map.zoomOut(1, { animate: true });
           }
 
           window.onload = initMap;
@@ -269,15 +343,33 @@ export default function LiveOrderMap({
     `;
   }, [storeLat, storeLng, custLat, custLng, merchantName, riderName]);
 
-  const handleRecenter = () => {
-    webviewRef.current?.injectJavaScript(`
+  const handleZoomIn = (isModal = false) => {
+    const ref = isModal ? fullScreenWebviewRef : webviewRef;
+    ref.current?.injectJavaScript(`
+      if (typeof zoomIn === 'function') zoomIn();
+      true;
+    `);
+  };
+
+  const handleZoomOut = (isModal = false) => {
+    const ref = isModal ? fullScreenWebviewRef : webviewRef;
+    ref.current?.injectJavaScript(`
+      if (typeof zoomOut === 'function') zoomOut();
+      true;
+    `);
+  };
+
+  const handleRecenter = (isModal = false) => {
+    const ref = isModal ? fullScreenWebviewRef : webviewRef;
+    ref.current?.injectJavaScript(`
       if (typeof recenterOnRider === 'function') recenterOnRider();
       true;
     `);
   };
 
-  const handleFitBounds = () => {
-    webviewRef.current?.injectJavaScript(`
+  const handleFitBounds = (isModal = false) => {
+    const ref = isModal ? fullScreenWebviewRef : webviewRef;
+    ref.current?.injectJavaScript(`
       if (typeof fitAllBounds === 'function') fitAllBounds();
       true;
     `);
@@ -294,16 +386,32 @@ export default function LiveOrderMap({
           </Text>
         </View>
 
-        {estimatedMinutes ? (
-          <View style={styles.etaBadge}>
-            <Ionicons name="flash" size={12} color="#f59e0b" />
-            <Text style={styles.etaText}>~{estimatedMinutes}m</Text>
-          </View>
-        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {estimatedMinutes ? (
+            <View style={styles.etaBadge}>
+              <Ionicons name="flash" size={12} color="#f59e0b" />
+              <Text style={styles.etaText}>~{estimatedMinutes}m</Text>
+            </View>
+          ) : null}
+
+          {/* Full Screen Toggle */}
+          <TouchableOpacity
+            style={styles.expandHeaderBtn}
+            onPress={() => setIsFullScreen(true)}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="fullscreen" size={18} color="#475569" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Map Canvas */}
-      <View style={styles.mapWrapper}>
+      {/* Map Canvas with interaction handlers */}
+      <View
+        style={styles.mapWrapper}
+        onTouchStart={handleTouchBegin}
+        onTouchEnd={handleTouchFinish}
+        onTouchCancel={handleTouchFinish}
+      >
         <WebView
           ref={webviewRef}
           originWhitelist={['*']}
@@ -314,6 +422,10 @@ export default function LiveOrderMap({
               const data = JSON.parse(event.nativeEvent.data);
               if (data.type === 'MAP_READY') {
                 setMapReady(true);
+              } else if (data.type === 'INTERACTION_START') {
+                handleTouchBegin();
+              } else if (data.type === 'INTERACTION_END') {
+                handleTouchFinish();
               }
             } catch (e) {}
           }}
@@ -321,6 +433,8 @@ export default function LiveOrderMap({
           domStorageEnabled={true}
           scalesPageToFit={false}
           scrollEnabled={false}
+          nestedScrollEnabled={true}
+          overScrollMode="never"
         />
 
         {!mapReady && (
@@ -330,12 +444,18 @@ export default function LiveOrderMap({
           </View>
         )}
 
-        {/* Floating Controls: Recenter & Zoom Extents */}
+        {/* Floating Controls: Zoom In, Zoom Out, Recenter & Fit Route */}
         <View style={styles.mapControls}>
-          <TouchableOpacity style={styles.controlBtn} onPress={handleRecenter} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.controlBtn} onPress={() => handleZoomIn(false)} activeOpacity={0.8}>
+            <Ionicons name="add" size={18} color="#0f172a" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.controlBtn} onPress={() => handleZoomOut(false)} activeOpacity={0.8}>
+            <Ionicons name="remove" size={18} color="#0f172a" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.controlBtn} onPress={() => handleRecenter(false)} activeOpacity={0.8}>
             <MaterialCommunityIcons name="crosshairs-gps" size={18} color="#0f172a" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.controlBtn} onPress={handleFitBounds} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.controlBtn} onPress={() => handleFitBounds(false)} activeOpacity={0.8}>
             <MaterialCommunityIcons name="arrow-expand-all" size={18} color="#0f172a" />
           </TouchableOpacity>
         </View>
@@ -356,6 +476,102 @@ export default function LiveOrderMap({
           <Text style={styles.legendText}>You</Text>
         </View>
       </View>
+
+      {/* ── Fullscreen Interactive Map Modal ── */}
+      <Modal
+        visible={isFullScreen}
+        animationType="slide"
+        onRequestClose={() => setIsFullScreen(false)}
+      >
+        <SafeAreaView style={styles.fullScreenContainer}>
+          <StatusBar barStyle="dark-content" />
+
+          {/* Modal Header */}
+          <View style={styles.fullScreenHeader}>
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={() => setIsFullScreen(false)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-down" size={24} color="#0f172a" />
+            </TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.fullScreenTitle}>Live Delivery Route</Text>
+              <Text style={[styles.fullScreenSubtitle, { color: statusInfo.color }]}>
+                {statusInfo.text}
+              </Text>
+            </View>
+            {estimatedMinutes ? (
+              <View style={styles.etaBadge}>
+                <Ionicons name="flash" size={12} color="#f59e0b" />
+                <Text style={styles.etaText}>~{estimatedMinutes}m</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Full Screen Map View */}
+          <View style={styles.fullScreenMapWrap}>
+            <WebView
+              ref={fullScreenWebviewRef}
+              originWhitelist={['*']}
+              source={{ html: leafletHTML }}
+              style={styles.webview}
+              onMessage={(event) => {
+                try {
+                  const data = JSON.parse(event.nativeEvent.data);
+                  if (data.type === 'MAP_READY') {
+                    setFullMapReady(true);
+                  }
+                } catch (e) {}
+              }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              scalesPageToFit={false}
+              scrollEnabled={false}
+              overScrollMode="never"
+            />
+
+            {!fullMapReady && (
+              <View style={styles.loaderOverlay}>
+                <ActivityIndicator size="small" color="#2563eb" />
+                <Text style={styles.loaderText}>Loading map view...</Text>
+              </View>
+            )}
+
+            {/* Floating Controls for Fullscreen View */}
+            <View style={styles.fullScreenMapControls}>
+              <TouchableOpacity style={styles.controlBtn} onPress={() => handleZoomIn(true)} activeOpacity={0.8}>
+                <Ionicons name="add" size={20} color="#0f172a" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.controlBtn} onPress={() => handleZoomOut(true)} activeOpacity={0.8}>
+                <Ionicons name="remove" size={20} color="#0f172a" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.controlBtn} onPress={() => handleRecenter(true)} activeOpacity={0.8}>
+                <MaterialCommunityIcons name="crosshairs-gps" size={20} color="#0f172a" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.controlBtn} onPress={() => handleFitBounds(true)} activeOpacity={0.8}>
+                <MaterialCommunityIcons name="arrow-expand-all" size={20} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Full Screen Footer Legend */}
+          <View style={styles.fullScreenFooter}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#f59e0b' }]} />
+              <Text style={styles.legendText}>Store: {merchantName}</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
+              <Text style={styles.legendText}>Rider: {riderName}</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
+              <Text style={styles.legendText}>Your Place</Text>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -408,8 +624,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#b45309',
   },
+  expandHeaderBtn: {
+    padding: 4,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   mapWrapper: {
-    height: 220,
+    height: 270,
     width: '100%',
     position: 'relative',
     backgroundColor: '#f8fafc',
@@ -434,11 +657,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     bottom: 12,
-    gap: 8,
+    gap: 6,
   },
   controlBtn: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     backgroundColor: '#ffffff',
     justifyContent: 'center',
@@ -474,5 +697,60 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748b',
     fontWeight: '600',
+  },
+  // ── Fullscreen Modal Styles ──
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  fullScreenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullScreenTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  fullScreenSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  fullScreenMapWrap: {
+    flex: 1,
+    position: 'relative',
+    backgroundColor: '#f8fafc',
+  },
+  fullScreenMapControls: {
+    position: 'absolute',
+    right: 16,
+    bottom: 24,
+    gap: 8,
+  },
+  fullScreenFooter: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    gap: 12,
   },
 });

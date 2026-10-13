@@ -56,8 +56,9 @@ export default function ReturnItemsScreen() {
 
   // Listen for order completion via socket
   useEffect(() => {
+    let unsub: (() => void) | undefined;
     const initListener = async () => {
-      await listenOrderUpdates((data) => {
+      unsub = await listenOrderUpdates((data) => {
         const orderStatus = data?.orderStatus;
         if (orderStatus === 'return_in_progress' || orderStatus === 'completed') {
           setShowCompletion(true);
@@ -66,6 +67,9 @@ export default function ReturnItemsScreen() {
     };
 
     initListener();
+    return () => {
+      if (unsub) unsub();
+    };
   }, [orderId]);
 
   // ─── Completion State ───

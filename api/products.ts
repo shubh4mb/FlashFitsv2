@@ -125,10 +125,10 @@ export const fetchCourierProducts = async (gender?: string, page: number = 1, la
     }
 };
 
-export const fetchRelatedProducts = async (id: string, lat?: number, lng?: number) => {
+export const fetchRelatedProducts = async (id: string, lat?: number, lng?: number, gender?: string) => {
     try {
         const res = await api.get(`user/products/${id}/related`, {
-            params: { lat, lng }
+            params: { lat, lng, gender }
         });
         return res.data;
     } catch (error) {
