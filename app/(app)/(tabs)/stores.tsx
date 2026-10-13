@@ -20,7 +20,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useGender } from '@/context/GenderContext';
 import { fetchMerchants } from '@/api/merchants';
-import { useAddress, distanceInMeters } from '@/context/AddressContext';
+import { useAddress, distanceInMeters, DEFAULT_FALLBACK_COORDS } from '@/context/AddressContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import MainHeader from '@/components/layout/MainHeader';
 import { GenderThemes, Typography } from '@/constants/theme';
@@ -74,15 +74,34 @@ const MerchantSkeleton = () => (
 export default function StoresScreen() {
   const router = useRouter();
   const { selectedGender } = useGender();
-  const { userLocation, selectedAddress } = useAddress();
+  const { userLocation, selectedAddress, locationPermission, openAddressModal } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+
+  const hasLocation = Boolean(selectedAddress || (userLocation && locationPermission === 'granted'));
   
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
-  const [instantTry, setInstantTry] = useState(true);
+  const [instantTry, setInstantTry] = useState(hasLocation);
   const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  // Keep instantTry synced with location state
+  useEffect(() => {
+    if (!hasLocation) {
+      setInstantTry(false);
+    }
+  }, [hasLocation]);
+
+  const handleToggleInstantTry = (value: boolean) => {
+    if (value && !hasLocation) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      openAddressModal();
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setInstantTry(value);
+  };
 
   const handleScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (event.nativeEvent.contentOffset.y < -80 && !refreshing) {
@@ -97,8 +116,8 @@ export default function StoresScreen() {
   const loadMerchants = async () => {
     try {
       setLoading(true);
-      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
-      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude ?? DEFAULT_FALLBACK_COORDS.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude ?? DEFAULT_FALLBACK_COORDS.longitude;
       
       const response = await fetchMerchants(lat, lng, selectedGender, false);
       const merchantsList = response?.merchants || response?.data?.merchants || [];
@@ -124,17 +143,18 @@ export default function StoresScreen() {
         m.genderCategory.some(g => g.toUpperCase() === selectedGender.toUpperCase())
       );
 
-      if (instantTry) {
+      if (hasLocation && instantTry) {
         return matchesGender && m.isOnline && m.isNearby;
       }
       return matchesGender;
     });
-  }, [merchants, selectedGender, instantTry]);
+  }, [merchants, selectedGender, instantTry, hasLocation]);
 
   const userLat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
   const userLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
 
   const getDistanceStr = (merchant: Merchant) => {
+    if (!hasLocation) return null; // Never display distance if user location is not set
     const mCoords = merchant.address?.location?.coordinates;
     if (!mCoords || !userLat || !userLng) return null;
     const dist = distanceInMeters(userLat, userLng, mCoords[1], mCoords[0]);
@@ -152,14 +172,14 @@ export default function StoresScreen() {
         m.genderCategory.includes('Unisex') ||
         m.genderCategory.some(g => g.toUpperCase() === selectedGender.toUpperCase())
       );
-      return matchesGender && m.isNearby;
+      return matchesGender && (hasLocation ? m.isNearby : true);
     });
     return nearby.sort((a, b) => {
       const ratingA = a.rating && a.rating > 0 ? a.rating : 4.5;
       const ratingB = b.rating && b.rating > 0 ? b.rating : 4.5;
       return ratingB - ratingA;
     });
-  }, [merchants, selectedGender]);
+  }, [merchants, selectedGender, hasLocation]);
 
   // Only show full-page loader on initial mount if we have absolutely nothing
   const isInitialLoading = loading && merchants.length === 0 && !refreshing;
@@ -188,10 +208,10 @@ export default function StoresScreen() {
       >
         {headerHeight > 0 && <View style={{ height: headerHeight }} />}
 
-        {/* Top Stores Near You */}
+        {/* Top Stores Section */}
         {topStores.length > 0 && (
           <View style={styles.topStoresSection}>
-            <Text style={styles.sectionTitle}>Top Stores Near You</Text>
+            <Text style={styles.sectionTitle}>{hasLocation ? "Top Stores Near You" : "Stores Available"}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -227,31 +247,38 @@ export default function StoresScreen() {
         
         {/* Instant Try Toggle Section */}
         <View style={styles.filterSection}>
-          <View style={styles.instantTryContainer}>
+          <TouchableOpacity 
+            style={styles.instantTryContainer}
+            activeOpacity={hasLocation ? 1 : 0.75}
+            onPress={() => {
+              if (!hasLocation) {
+                handleToggleInstantTry(true);
+              }
+            }}
+          >
             <View style={styles.instantTryLabelContainer}>
               <View style={[styles.flashIconContainer, { backgroundColor: theme.primary + '15' }]}>
                 <Ionicons name="flash" size={16} color={theme.primary} />
               </View>
               <View>
                 <Text style={styles.instantTryTitle}>Instant Try</Text>
-                <Text style={styles.instantTrySubtitle}>Try & Buy available</Text>
+                <Text style={styles.instantTrySubtitle}>
+                  {hasLocation ? "Try & Buy available" : "Set location to enable 30-min Try at Home"}
+                </Text>
               </View>
             </View>
             <Switch
-              value={instantTry}
-              onValueChange={(value) => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setInstantTry(value);
-              }}
+              value={hasLocation && instantTry}
+              onValueChange={handleToggleInstantTry}
               trackColor={{ false: '#E2E8F0', true: theme.primary }}
               thumbColor="#FFFFFF"
               ios_backgroundColor="#E2E8F0"
             />
-          </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.title}>{instantTry ? 'Instant Try Stores' : 'All Stores'}</Text>
+          <Text style={styles.title}>{!hasLocation ? 'Stores Available' : (instantTry ? 'Instant Try Stores' : 'All Stores')}</Text>
           
           <View style={styles.grid}>
             {loading && !refreshing ? (

@@ -76,8 +76,10 @@ export default function MerchantLogosSection({
 }) {
   const router = useRouter();
   const { selectedGender } = useGender();
-  const { userLocation, selectedAddress } = useAddress();
+  const { userLocation, selectedAddress, locationPermission } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+
+  const hasLocation = Boolean(selectedAddress || (userLocation && locationPermission === 'granted'));
 
   const [merchants, setMerchants] = useState<Merchant[]>(initialMerchants || []);
   const [loading, setLoading] = useState(!initialMerchants);
@@ -114,6 +116,7 @@ export default function MerchantLogosSection({
   const userLng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
 
   const getDistanceStr = (merchant: Merchant) => {
+    if (!hasLocation) return null; // Never display distance if user location is not set
     const mCoords = merchant.address?.location?.coordinates;
     if (!mCoords || !userLat || !userLng) return null;
     const dist = distanceInMeters(userLat, userLng, mCoords[1], mCoords[0]);
@@ -133,7 +136,7 @@ export default function MerchantLogosSection({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Stores near you</Text>
+        <Text style={styles.title}>{hasLocation ? 'Stores near you' : 'Stores Available'}</Text>
         <TouchableOpacity onPress={() => router.push('/stores')}>
           <Text style={styles.viewAll}>View All</Text>
         </TouchableOpacity>
