@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useGender } from '@/context/GenderContext';
-import { useAddress } from '@/context/AddressContext';
+import { useAddress, DEFAULT_FALLBACK_COORDS } from '@/context/AddressContext';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Animated,
@@ -51,7 +51,8 @@ export default function MerchantDetailScreen() {
   const router = useRouter();
 
   const { selectedGender, setSelectedGender } = useGender();
-  const { selectedAddress, userLocation } = useAddress();
+  const { selectedAddress, userLocation, locationPermission } = useAddress();
+  const hasLocation = Boolean(selectedAddress || (userLocation && locationPermission === 'granted'));
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [loading, setLoading] = useState(true);
@@ -84,8 +85,8 @@ export default function MerchantDetailScreen() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const lat = selectedAddress?.location?.coordinates?.[1] || userLocation?.latitude;
-      const lng = selectedAddress?.location?.coordinates?.[0] || userLocation?.longitude;
+      const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude ?? DEFAULT_FALLBACK_COORDS.latitude;
+      const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude ?? DEFAULT_FALLBACK_COORDS.longitude;
 
       const isWarehouseParam = isWarehouse === 'true';
       const nameLower = (shopName || '').toLowerCase();
@@ -173,20 +174,20 @@ export default function MerchantDetailScreen() {
   };
 
   const distanceInfo = useMemo(() => {
-    if (!merchant || merchant.distanceKm === undefined) {
-      return { km: '--', mins: '--', isNearby: false };
+    if (!hasLocation || !merchant || merchant.distanceKm === undefined) {
+      return { km: null, mins: null, isNearby: false };
     }
     return {
       km: merchant.distanceKm.toFixed(1),
       mins: merchant.durationMins ? String(merchant.durationMins) : '25-30',
       isNearby: !!merchant.isNearby,
     };
-  }, [merchant]);
+  }, [hasLocation, merchant]);
 
   useEffect(() => {
     if (!id) return;
     fetchData();
-  }, [id, selectedAddress, userLocation]);
+  }, [id, selectedAddress, userLocation, locationPermission]);
 
   const isProductInGender = (p: any, targetGender: string) => {
     if (!targetGender) return true;
@@ -451,13 +452,13 @@ export default function MerchantDetailScreen() {
             <View style={styles.locationRow}>
               <Ionicons name="cube-outline" size={13} color="#059669" style={{ marginRight: 4 }} />
               <Text style={[styles.locationText, { color: '#059669', fontFamily: Typography.fontFamily.medium }]}>
-                Dispatched from {merchant.warehouseName || 'FlashFits Hub'} · {distanceInfo.km} km
+                Dispatched from {merchant.warehouseName || 'FlashFits Hub'}{hasLocation && distanceInfo.km ? ` · ${distanceInfo.km} km` : ''}
               </Text>
             </View>
           ) : (
             <TouchableOpacity style={styles.locationRow} onPress={handleOpenMaps} activeOpacity={0.6}>
               <Text style={styles.locationText}>
-                {merchant.address?.area || merchant.address?.city || 'Location'} · {distanceInfo.km} km
+                {merchant.address?.area || merchant.address?.city || 'Location'}{hasLocation && distanceInfo.km ? ` · ${distanceInfo.km} km` : ''}
               </Text>
               <Ionicons name="arrow-forward" size={11} color={MUTED} />
             </TouchableOpacity>
@@ -483,15 +484,23 @@ export default function MerchantDetailScreen() {
               <Text style={styles.statValue}>{reviewCount}</Text>
               <Text style={styles.statLabel}>Reviews</Text>
             </TouchableOpacity>
+            {hasLocation && distanceInfo.mins ? (
+              <>
+                <View style={styles.statDivider} />
+                <View style={styles.stat}>
+                  <Text style={styles.statValue}>{distanceInfo.mins}m</Text>
+                  <Text style={styles.statLabel}>Delivery</Text>
+                </View>
+              </>
+            ) : null}
             <View style={styles.statDivider} />
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{distanceInfo.mins}m</Text>
-              <Text style={styles.statLabel}>Delivery</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.stat}>
-              <Text style={styles.statValue}>{distanceInfo.isNearby ? 'Try & Buy' : 'Courier'}</Text>
-              <Text style={styles.statLabel}>Mode</Text>
+              <Text style={styles.statValue}>
+                {hasLocation ? (distanceInfo.isNearby ? 'Try & Buy' : 'Courier') : 'Fashion Store'}
+              </Text>
+              <Text style={styles.statLabel}>
+                {hasLocation ? 'Mode' : 'Type'}
+              </Text>
             </View>
           </View>
         </View>
