@@ -1167,9 +1167,9 @@ export default function PhoneLogin({ returnUrl }: PhoneLoginProps = {}) {
                   <Ionicons name="timer-outline" size={20} color={BrandColors.primaryDark} />
                 </View>
                 <View style={styles.ruleContent}>
-                  <Text style={styles.ruleTitle}>1. 10–15 Min Doorstep Fitting Window</Text>
+                  <Text style={styles.ruleTitle}>1. Doorstep Fitting Window</Text>
                   <Text style={styles.ruleDesc}>
-                    Our delivery partner brings your selected styles directly to your door. You have a private 10–15 minute window to try on garments while the partner waits. Items cannot be taken away from the delivery address.
+                    Our delivery partner brings your selected styles directly to your door. You can try on garments in private comfort while the partner waits outside. Items cannot be taken away from the delivery address.
                   </Text>
                 </View>
               </View>

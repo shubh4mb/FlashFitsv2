@@ -1183,7 +1183,7 @@ const ProductDetailPage = () => {
             >
               <Ionicons name="shield-checkmark" size={12} color="#059669" />
               <Text style={styles.perksFooterText}>
-                Rider waits up to 15 mins • 100% Original Brand Sourcing
+                Rider waits while you try • 100% Original Brand Sourcing
               </Text>
             </TouchableOpacity>
           </View>
@@ -1836,7 +1836,7 @@ const ProductDetailPage = () => {
                     <Ionicons name="timer" size={18} color="#EA580C" />
                   </View>
                   <View style={styles.promiseRowText}>
-                    <Text style={styles.promiseRowTitle}>Rider Waits 10–15 Minutes</Text>
+                    <Text style={styles.promiseRowTitle}>Rider Waits While You Try</Text>
                     <Text style={styles.promiseRowDesc}>
                       Take your time trying the garments. Our delivery partner waits outside while you decide what to keep.
                     </Text>

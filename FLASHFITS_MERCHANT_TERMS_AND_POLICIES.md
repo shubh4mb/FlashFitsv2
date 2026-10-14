@@ -55,7 +55,7 @@ To ensure the customer promise of 30-minute doorstep fashion delivery:
 
 ## 5. The Try & Buy Model & Doorstep Trial Protocol
 - **₹0 Upfront Payment:** Customers select multiple styles and sizes to try at home with ₹0 upfront payment.
-- **Dedicated Doorstep Trial:** A FlashFits delivery rider waits outside the customer's doorstep for up to 15–30 minutes while the customer fits the apparel.
+- **Dedicated Doorstep Trial:** A FlashFits delivery rider waits outside the customer's doorstep while the customer fits the apparel.
 - **Partial Keeps & Instant Returns:** The customer marks which items to keep and which to return in their app. Payment is collected only for kept garments + delivery fee.
 - **Zero Merchant Loss on Partial Keeps:** Merchants earn full margin on all retained garments. Unkept items are brought back to the store immediately by the same rider.
 

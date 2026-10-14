@@ -1504,7 +1504,7 @@ export default function CartScreen() {
                   <Ionicons name="timer-outline" size={20} color={theme.primary} />
                 </View>
                 <View style={styles.tbRuleTextContainer}>
-                  <Text style={styles.tbRuleHeading}>10–15 Min Fitting Window</Text>
+                  <Text style={styles.tbRuleHeading}>Doorstep Fitting Window</Text>
                   <Text style={styles.tbRuleBody}>
                     Our delivery rider arrives in ~30 mins and will wait outside your door while you try on your items in private comfort.
                   </Text>
