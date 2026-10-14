@@ -155,7 +155,7 @@ const CartItem = ({ item, isCourier = false }: CartItemProps) => {
           </View>
 
           <Text style={styles.variantInfo}>
-            Size: {item.size} • Store: {item.merchantId?.shopName || 'Store'}
+            Size: {item.size} • Store: {item.merchantId?.shopName || (item as any).shopName || item.productId?.shopMerchantName || item.productId?.merchantId?.shopName || item.productId?.shopName || 'Store'}
           </Text>
 
           {item.isOutOfStock || (item.stockQuantity !== undefined && item.stockQuantity <= 0) ? (

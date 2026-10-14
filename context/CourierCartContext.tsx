@@ -27,6 +27,7 @@ interface CourierCartItem {
   image: string;
   price: number;
   mrp: number;
+  shopName?: string;
 }
 
 interface CourierCartData {
@@ -175,14 +176,19 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
         } else {
           const newItem: CourierCartItem = {
             _id: `${params.variantId || params.productId}_${params.size}_${Date.now()}`,
-            productId: params.product || {
-              _id: params.productId,
-              name: params.productName || 'Product',
-              images: [{ url: imgUrl }],
-              price: params.price,
-              mrp: params.mrp,
-              shopName: params.shopName,
-            },
+            productId: params.product
+              ? {
+                  ...params.product,
+                  shopName: params.shopName || params.product.shopMerchantName || params.product.merchantId?.shopName || params.product.shopName,
+                }
+              : {
+                  _id: params.productId,
+                  name: params.productName || 'Product',
+                  images: [{ url: imgUrl }],
+                  price: params.price,
+                  mrp: params.mrp,
+                  shopName: params.shopName,
+                },
             variantId: params.variantId || '',
             size: params.size,
             quantity: params.quantity || 1,
@@ -191,6 +197,7 @@ export const CourierCartProvider = ({ children }: { children: ReactNode }) => {
             image: imgUrl,
             price: params.price || 0,
             mrp: params.mrp || params.price || 0,
+            shopName: params.shopName,
           };
           newItems = [...currentItems, newItem];
         }

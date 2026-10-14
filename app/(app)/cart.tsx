@@ -108,6 +108,26 @@ export default function CartScreen() {
   const merchantHubScrollRef = useRef<ScrollView>(null);
   const swipeAnim = useRef(new Animated.Value(0)).current;
   const [showSwipeCoachmark, setShowSwipeCoachmark] = useState(false);
+  // Safe helper to extract actual merchant shop name without ever falling back to product title
+  const getMerchantShopName = useCallback((mc: any) => {
+    if (!mc) return 'Store';
+    const mdName = mc.merchantDetails?.shopName;
+    const firstItem = mc.items?.[0];
+    const prodName = firstItem?.productId?.name;
+    const validMdName = (mdName && mdName !== prodName && mdName.trim().toLowerCase() !== 'store') ? mdName : null;
+    const isWh = mc.merchantId === 'flashmart' || mc.merchantId === 'warehouse' || mc.merchantId === 'ff-warehouse-hub';
+
+    return (
+      validMdName ||
+      (firstItem as any)?.shopName ||
+      firstItem?.productId?.shopMerchantName ||
+      firstItem?.productId?.merchantId?.shopName ||
+      firstItem?.productId?.shopName ||
+      firstItem?.merchantId?.shopName ||
+      (mdName && mdName !== prodName ? mdName : null) ||
+      (isWh ? 'FlashFits Warehouse' : 'Store')
+    );
+  }, []);
 
   // Optimized merchant carts memoization with O(N) precomputed timestamps
   const merchantCarts = useMemo(() => {
@@ -540,7 +560,19 @@ export default function CartScreen() {
     if (!courierItems.length) return null;
     const item = courierItems[0];
     const mid = item.merchantId?._id || (typeof item.merchantId === 'string' ? item.merchantId : null);
-    const name = item.merchantId?.shopName || (item as any).merchantDetails?.shopName || 'Store';
+    const prodName = item.productId?.name;
+    const cand1 = item.merchantId?.shopName;
+    const cand2 = (item as any).merchantDetails?.shopName;
+    const cand3 = (item as any).shopName;
+    const cand4 = item.productId?.shopMerchantName;
+    const cand5 = item.productId?.merchantId?.shopName;
+    const cand6 = item.productId?.shopName;
+
+    const validCandidate = [cand1, cand2, cand3, cand4, cand5, cand6].find(
+      (c) => typeof c === 'string' && c.trim() && c.trim() !== prodName && c.trim().toLowerCase() !== 'store'
+    );
+
+    const name = validCandidate || cand1 || cand2 || cand3 || 'Store';
     return mid ? { id: mid, shopName: name } : null;
   }, [courierItems]);
 
@@ -625,7 +657,7 @@ export default function CartScreen() {
             >
               {merchantCarts.map((mc, index) => {
                 const isActive = activeIndex === index;
-                const shopName = mc.merchantDetails?.shopName || 'Store';
+                const shopName = getMerchantShopName(mc);
                 const itemCount = mc.items?.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0) || 0;
                 const logoUri = mc.merchantDetails?.logo?.url || mc.merchantDetails?.logo;
 
@@ -887,7 +919,7 @@ export default function CartScreen() {
                               >
                                 <Ionicons name="arrow-back" size={12} color="#0F172A" />
                                 <Text style={styles.slideNavBtnText} numberOfLines={1}>
-                                  {merchantCarts[index - 1]?.merchantDetails?.shopName || 'Previous'}
+                                  {getMerchantShopName(merchantCarts[index - 1])}
                                 </Text>
                               </TouchableOpacity>
                             ) : (
@@ -907,7 +939,7 @@ export default function CartScreen() {
                                 activeOpacity={0.7}
                               >
                                 <Text style={styles.slideNavBtnText} numberOfLines={1}>
-                                  {merchantCarts[index + 1]?.merchantDetails?.shopName || 'Next'}
+                                  {getMerchantShopName(merchantCarts[index + 1])}
                                 </Text>
                                 <Ionicons name="arrow-forward" size={12} color="#0F172A" />
                               </TouchableOpacity>
@@ -924,7 +956,7 @@ export default function CartScreen() {
                           onPress={() => router.push(`/merchant/${mc.merchantId}` as any)}
                         >
                           <View style={styles.brandingInfo}>
-                            <Text style={styles.brandingShopName}>{mc.merchantDetails?.shopName} ({mc.items.reduce((sum: number, i: any) => sum + i.quantity, 0)}/6)</Text>
+                            <Text style={styles.brandingShopName}>{getMerchantShopName(mc)} ({mc.items.reduce((sum: number, i: any) => sum + i.quantity, 0)}/6)</Text>
                             <View style={styles.brandingStatusRow}>
                               {!isEligible ? (
                                 <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
@@ -998,7 +1030,7 @@ export default function CartScreen() {
                         {/* More Products from Merchant Section */}
                         <MerchantMoreProducts
                           merchantId={mc.merchantId}
-                          shopName={mc.merchantDetails?.shopName || 'Store'}
+                          shopName={getMerchantShopName(mc)}
                           cartProductIds={mc.items.map((i: any) => i.productId?._id || i.productId || i._id)}
                           isOnline={mc.merchantDetails?.isOnline !== false}
                           isNearby={mc.deliveryDetails?.isEligibleForTryBuy !== false}
@@ -1376,7 +1408,7 @@ export default function CartScreen() {
                   <View style={styles.bottomMultiStoreLeft}>
                     <View style={styles.bottomStorePulseDot} />
                     <Text style={styles.bottomMultiStoreText} numberOfLines={1}>
-                      Ordering from <Text style={styles.bottomMultiStoreBold}>{currentMerchantCart?.merchantDetails?.shopName || 'Store'}</Text> ({activeIndex + 1}/{merchantCarts.length})
+                      Ordering from <Text style={styles.bottomMultiStoreBold}>{getMerchantShopName(currentMerchantCart)}</Text> ({activeIndex + 1}/{merchantCarts.length})
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -1421,7 +1453,7 @@ export default function CartScreen() {
                         : currentHasOutOfStock
                           ? 'Item(s) Out of Stock • Remove to Proceed'
                           : merchantCarts.length > 1
-                            ? `Swipe to Order • ${currentMerchantCart?.merchantDetails?.shopName || 'Store'}`
+                            ? `Swipe to Order • ${getMerchantShopName(currentMerchantCart)}`
                             : 'Swipe to Try & Buy • Pay After Trial'
                   }
                 />

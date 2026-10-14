@@ -48,10 +48,32 @@ export default function MerchantMoreProducts({
   const effectiveLat = propLat ?? selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
   const effectiveLng = propLng ?? selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
 
+  const effectiveShopName = useMemo(() => {
+    const isGeneric = !shopName || shopName.trim().toLowerCase() === 'store';
+    const isLikelyProductName = products.some(
+      (p: any) => p.name && shopName && p.name.trim().toLowerCase() === shopName.trim().toLowerCase()
+    );
+
+    if (!isGeneric && !isLikelyProductName) {
+      return shopName;
+    }
+
+    const storeFromProduct =
+      products[0]?.merchantId?.shopName ||
+      products[0]?.shopMerchantName ||
+      products[0]?.shopName;
+
+    if (storeFromProduct) {
+      return storeFromProduct;
+    }
+
+    return shopName || 'Store';
+  }, [shopName, products]);
+
   const isWarehouseMerchant = useMemo(() => {
     if (isWarehouse) return true;
     const lowerId = (merchantId || '').toLowerCase();
-    const lowerName = (shopName || '').toLowerCase();
+    const lowerName = (effectiveShopName || shopName || '').toLowerCase();
     return (
       lowerId === 'flashmart' ||
       lowerId === 'ff-warehouse-hub' ||
@@ -61,7 +83,7 @@ export default function MerchantMoreProducts({
       lowerName.includes('flashfit mart') ||
       lowerName.includes('flashfits mart')
     );
-  }, [merchantId, shopName, isWarehouse]);
+  }, [merchantId, shopName, effectiveShopName, isWarehouse]);
 
   useEffect(() => {
     let isMounted = true;
@@ -126,7 +148,7 @@ export default function MerchantMoreProducts({
       pathname: '/merchant/[id]',
       params: {
         id: merchantId,
-        shopName: shopName,
+        shopName: effectiveShopName,
         isWarehouse: isWarehouseMerchant ? 'true' : 'false',
       },
     } as any);
@@ -182,7 +204,7 @@ export default function MerchantMoreProducts({
           </View>
           <View style={{ flex: 1, paddingRight: 6 }}>
             <Text style={styles.title} numberOfLines={1}>
-              More from {shopName}
+              More from {effectiveShopName}
             </Text>
             <Text style={styles.subtitle} numberOfLines={1}>
               Discover more styles from this store
@@ -238,7 +260,7 @@ export default function MerchantMoreProducts({
           </View>
           <Text style={styles.viewMoreEndTitle}>See More</Text>
           <Text style={styles.viewMoreEndSubtitle} numberOfLines={2}>
-            from {shopName}
+            from {effectiveShopName}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -252,7 +274,7 @@ export default function MerchantMoreProducts({
         <View style={styles.bottomNavLeft}>
           <Ionicons name="bag-handle-outline" size={15} color="#475569" />
           <Text style={styles.bottomNavText} numberOfLines={1}>
-            See more products from {shopName}
+            See more products from {effectiveShopName}
           </Text>
         </View>
         <View style={styles.bottomNavArrow}>

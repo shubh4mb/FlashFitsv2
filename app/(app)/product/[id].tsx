@@ -131,7 +131,14 @@ const ProductDetailPage = () => {
   }, [product, isShopProduct]);
 
   const merchantShopName = useMemo(() => {
-    return product?.shopMerchantName || product?.merchantId?.shopName || product?.merchantName || product?.shopName || 'Store';
+    return (
+      product?.shopMerchantName ||
+      product?.merchantId?.shopName ||
+      product?.fulfillmentOptions?.directStore?.shopName ||
+      product?.merchantName ||
+      product?.shopName ||
+      'Store'
+    );
   }, [product]);
 
   const targetStoreInfo = useMemo(() => {

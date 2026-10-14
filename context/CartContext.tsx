@@ -29,7 +29,14 @@ const calculateGuestMerchantCarts = (items: CartItem[]): MerchantCart[] => {
   return Object.keys(map).map(mId => {
     const mItems = map[mId];
     const firstItem = mItems[0];
-    const shopName = firstItem?.productId?.shopName || firstItem?.productId?.name || 'Store';
+    const isWh = mId === 'flashmart' || mId === 'warehouse' || mId === 'ff-warehouse-hub';
+    const shopName =
+      (firstItem as any)?.shopName ||
+      firstItem?.productId?.shopMerchantName ||
+      firstItem?.productId?.merchantId?.shopName ||
+      firstItem?.productId?.shopName ||
+      firstItem?.merchantId?.shopName ||
+      (isWh ? 'FlashFits Warehouse' : 'Store');
     const subtotal = mItems.reduce((acc, i) => acc + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
     const mrpTotal = mItems.reduce((acc, i) => acc + (Number(i.mrp) || Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
     const discount = Math.max(0, mrpTotal - subtotal);
@@ -73,6 +80,7 @@ interface CartItem {
   price: number;
   mrp: number;
   merchantDelivery?: any;
+  shopName?: string;
 }
 
 interface MerchantCartTotals {
@@ -141,7 +149,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         const stored = await AsyncStorage.getItem(GUEST_CART_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          setCart(parsed);
+          const items = parsed.items || [];
+          const merchantCarts = calculateGuestMerchantCarts(items);
+          setCart({
+            ...parsed,
+            merchantCarts,
+          });
         } else {
           setCart({ items: [], totalItems: 0, merchantCarts: [] });
         }
@@ -249,14 +262,19 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         } else {
           const newItem: CartItem = {
             _id: `${params.variantId || params.productId}_${params.size}_${Date.now()}`,
-            productId: params.product || {
-              _id: params.productId,
-              name: params.productName || 'Product',
-              images: [{ url: imgUrl }],
-              price: params.price,
-              mrp: params.mrp,
-              shopName: params.shopName,
-            },
+            productId: params.product
+              ? {
+                  ...params.product,
+                  shopName: params.shopName || params.product.shopMerchantName || params.product.merchantId?.shopName || params.product.shopName,
+                }
+              : {
+                  _id: params.productId,
+                  name: params.productName || 'Product',
+                  images: [{ url: imgUrl }],
+                  price: params.price,
+                  mrp: params.mrp,
+                  shopName: params.shopName,
+                },
             variantId: params.variantId,
             size: params.size,
             quantity: params.quantity || 1,
@@ -265,6 +283,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
             image: imgUrl,
             price: params.price ?? 0,
             mrp: params.mrp ?? (params.price ?? 0),
+            shopName: params.shopName,
           };
           (newItem as any).source = params.source || 'shop';
           newItems = [...currentItems, newItem];
