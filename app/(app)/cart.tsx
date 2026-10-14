@@ -129,6 +129,83 @@ export default function CartScreen() {
     );
   }, []);
 
+  // Robust helper to extract estimated delivery time and distance based on selected address
+  const getDeliveryEstimate = useCallback((mc: any) => {
+    if (!selectedAddress) {
+      return {
+        hasAddress: false,
+        estimatedTime: null,
+        distanceKm: null,
+        distanceText: null,
+        displayText: 'Select address to get estimated delivery time',
+      };
+    }
+
+    // 1. Check if backend deliveryDetails has estimatedTime
+    const beEstimatedTime = mc?.deliveryDetails?.estimatedTime;
+    const beDistanceKm = mc?.deliveryDetails?.distanceKm;
+
+    if (typeof beEstimatedTime === 'number' && beEstimatedTime > 0) {
+      const distText = (typeof beDistanceKm === 'number' && beDistanceKm > 0)
+        ? `${Number(beDistanceKm).toFixed(1)} km`
+        : null;
+      return {
+        hasAddress: true,
+        estimatedTime: beEstimatedTime,
+        distanceKm: beDistanceKm,
+        distanceText: distText,
+        displayText: distText ? `Delivery in ~${beEstimatedTime} mins (${distText})` : `Delivery in ~${beEstimatedTime} mins`,
+      };
+    }
+
+    // 2. Client-side distance calculation fallback between selectedAddress and store coordinates
+    const userLat = selectedAddress.location?.coordinates?.[1] ?? (selectedAddress as any)?.latitude;
+    const userLng = selectedAddress.location?.coordinates?.[0] ?? (selectedAddress as any)?.longitude;
+
+    const firstItem = mc?.items?.[0];
+    const merchAddr =
+      firstItem?.productId?.merchantId?.address ||
+      (firstItem?.productId as any)?.address ||
+      (mc?.merchantDetails as any)?.address;
+
+    const shopLat = merchAddr?.location?.coordinates?.[1] ?? merchAddr?.latitude;
+    const shopLng = merchAddr?.location?.coordinates?.[0] ?? merchAddr?.longitude;
+
+    if (
+      typeof userLat === 'number' &&
+      typeof userLng === 'number' &&
+      typeof shopLat === 'number' &&
+      typeof shopLng === 'number'
+    ) {
+      const R = 6371;
+      const dLat = (shopLat - userLat) * (Math.PI / 180);
+      const dLon = (shopLng - userLng) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(userLat * (Math.PI / 180)) * Math.cos(shopLat * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distKm = Number((R * c).toFixed(1));
+      const calcMins = 15 + Math.ceil(20 + distKm * 4);
+      return {
+        hasAddress: true,
+        estimatedTime: calcMins,
+        distanceKm: distKm,
+        distanceText: `${distKm} km`,
+        displayText: `Delivery in ~${calcMins} mins (${distKm} km)`,
+      };
+    }
+
+    const defaultMins = mc?.merchantId === 'flashmart' || mc?.merchantId === 'warehouse' ? 30 : 45;
+    return {
+      hasAddress: true,
+      estimatedTime: defaultMins,
+      distanceKm: null,
+      distanceText: null,
+      displayText: `Delivery in ~${defaultMins} mins`,
+    };
+  }, [selectedAddress]);
+
   // Optimized merchant carts memoization with O(N) precomputed timestamps
   const merchantCarts = useMemo(() => {
     if (!cart?.merchantCarts?.length) return [];
@@ -835,7 +912,8 @@ export default function CartScreen() {
                 const mTotals = mc.totals;
                 const mOffers = mc.appliedOffers;
                 const isOffline = mc.merchantDetails?.isOnline === false;
-                const isEligible = mc.deliveryDetails?.isEligibleForTryBuy !== false;
+                const isEligible = !selectedAddress ? true : mc.deliveryDetails?.isEligibleForTryBuy !== false;
+                const deliveryEstimate = getDeliveryEstimate(mc);
 
                 const itemSubtotal = Math.round(Number(mTotals?.subtotal || 0));
                 const itemMrpTotal = Math.round(Number(mTotals?.mrpTotal || 0));
@@ -885,28 +963,107 @@ export default function CartScreen() {
 
                         {/* Delivery Address Header Card */}
                         <TouchableOpacity
-                          style={styles.addressHeaderCard}
+                          style={[
+                            styles.addressHeaderCard,
+                            !selectedAddress && styles.addressHeaderCardUnselected,
+                          ]}
                           activeOpacity={0.8}
                           onPress={() => setModalVisible(true)}
                         >
                           <View style={styles.addressHeaderLeft}>
-                            <View style={[styles.addressIconCircle, { backgroundColor: '#F1F5F9' }]}>
-                              <Ionicons name="location" size={18} color="#0F172A" />
+                            <View style={[
+                              styles.addressIconCircle,
+                              { backgroundColor: selectedAddress ? '#F1F5F9' : '#FEF3C7' }
+                            ]}>
+                              <Ionicons
+                                name="location"
+                                size={18}
+                                color={selectedAddress ? '#0F172A' : '#D97706'}
+                              />
                             </View>
                             <View style={{ flex: 1 }}>
-                              <Text style={styles.addressSubHeader}>Delivering Try & Buy to</Text>
-                              <Text style={styles.addressMainText} numberOfLines={1}>
+                              <Text style={[
+                                styles.addressSubHeader,
+                                !selectedAddress && { color: '#B45309' }
+                              ]}>
+                                {selectedAddress ? 'Delivering Try & Buy to' : 'Delivery Address'}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.addressMainText,
+                                  !selectedAddress && { color: '#92400E', fontWeight: '700' }
+                                ]}
+                                numberOfLines={1}
+                              >
                                 {selectedAddress
                                   ? `${selectedAddress.addressType ? selectedAddress.addressType.toUpperCase() + ': ' : ''}${selectedAddress.addressLine1 || (selectedAddress as any)?.street || selectedAddress.city || 'Saved Address'}`
-                                  : 'Tap to select delivery address'}
+                                  : 'Select address to get estimated delivery time'}
                               </Text>
                             </View>
                           </View>
-                          <View style={[styles.changePill, { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' }]}>
-                            <Text style={[styles.changePillText, { color: '#0F172A', fontWeight: '700' }]}>Change</Text>
-                            <Ionicons name="chevron-forward" size={14} color="#64748B" />
+                          <View style={[
+                            styles.changePill,
+                            !selectedAddress
+                              ? { borderColor: '#FCD34D', backgroundColor: '#FEF3C7' }
+                              : { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' }
+                          ]}>
+                            <Text style={[
+                              styles.changePillText,
+                              { color: selectedAddress ? '#0F172A' : '#B45309', fontWeight: '700' }
+                            ]}>
+                              {selectedAddress ? 'Change' : 'Select'}
+                            </Text>
+                            <Ionicons
+                              name="chevron-forward"
+                              size={14}
+                              color={selectedAddress ? '#64748B' : '#B45309'}
+                            />
                           </View>
                         </TouchableOpacity>
+
+                        {/* Estimated Delivery Time Card (Based on Distance & Address) */}
+                        {!selectedAddress ? (
+                          <TouchableOpacity
+                            style={styles.deliveryEstimateBannerPrompt}
+                            activeOpacity={0.8}
+                            onPress={() => setModalVisible(true)}
+                          >
+                            <View style={styles.deliveryEstimateIconWrapAmber}>
+                              <Ionicons name="time-outline" size={18} color="#D97706" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.deliveryEstimateTitleAmber}>Estimated Delivery Time</Text>
+                              <Text style={styles.deliveryEstimateSubAmber}>
+                                Select address to get estimated delivery time
+                              </Text>
+                            </View>
+                            <View style={styles.deliveryEstimateSelectBtn}>
+                              <Text style={styles.deliveryEstimateSelectBtnText}>Select</Text>
+                              <Ionicons name="chevron-forward" size={12} color="#B45309" />
+                            </View>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.deliveryEstimateBanner}>
+                            <View style={styles.deliveryEstimateIconWrapGreen}>
+                              <Ionicons name="flash" size={16} color="#10B981" />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={styles.deliveryEstimateTitle}>
+                                  Delivery in ~{deliveryEstimate.estimatedTime} mins
+                                </Text>
+                                {deliveryEstimate.distanceText && (
+                                  <View style={styles.distanceBadge}>
+                                    <Text style={styles.distanceBadgeText}>{deliveryEstimate.distanceText} away</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={styles.deliveryEstimateSub}>
+                                Live estimate based on distance from store • Try before paying
+                              </Text>
+                            </View>
+                          </View>
+                        )}
 
                         {/* Multi-Store Slide Navigation Quick Bar */}
                         {merchantCarts.length > 1 && (
@@ -958,18 +1115,34 @@ export default function CartScreen() {
                           <View style={styles.brandingInfo}>
                             <Text style={styles.brandingShopName}>{getMerchantShopName(mc)} ({mc.items.reduce((sum: number, i: any) => sum + i.quantity, 0)}/6)</Text>
                             <View style={styles.brandingStatusRow}>
-                              {!isEligible ? (
-                                <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>Too Far</Text>
+                              {!selectedAddress ? (
+                                <TouchableOpacity
+                                  style={styles.selectAddressEtaPill}
+                                  onPress={() => setModalVisible(true)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="time-outline" size={11} color="#B45309" />
+                                  <Text style={styles.selectAddressEtaText}>Select address for delivery time</Text>
+                                </TouchableOpacity>
+                              ) : !isEligible ? (
+                                <Text style={[styles.statusTag, { color: '#F59E0B', backgroundColor: '#FEF3C7' }]}>
+                                  Too Far {deliveryEstimate.distanceText ? `(${deliveryEstimate.distanceText})` : ''}
+                                </Text>
                               ) : isOffline ? (
                                 <View style={{ gap: 4, alignItems: 'flex-start' }}>
                                   <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#FEE2E2' }]}>Shop Closed</Text>
                                   <Text style={[styles.statusTag, { color: '#EF4444', backgroundColor: '#ffffffff', fontSize: 8 }]}>Reopens tomorrow at 9 AM</Text>
                                 </View>
                               ) : (
-                                <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>Try & Buy</Text>
-                              )}
-                              {isEligible && !isOffline && (
-                                <Text style={styles.brandingMins}>Delivery in {mc.deliveryDetails?.estimatedTime || '25-30'} mins</Text>
+                                <>
+                                  <Text style={[styles.statusTag, { color: '#10B981', backgroundColor: '#DCFCE7' }]}>Try & Buy</Text>
+                                  <View style={styles.brandingEtaRow}>
+                                    <Ionicons name="flash" size={11} color="#10B981" />
+                                    <Text style={styles.brandingMins}>
+                                      ~{deliveryEstimate.estimatedTime} mins {deliveryEstimate.distanceText ? `(${deliveryEstimate.distanceText})` : ''}
+                                    </Text>
+                                  </View>
+                                </>
                               )}
                             </View>
                           </View>
@@ -1325,7 +1498,23 @@ export default function CartScreen() {
 
                 <View style={styles.standardBanner}>
                   <MaterialCommunityIcons name="truck-delivery" size={20} color="#7C3AED" />
-                  <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.standardBannerText}>Standard delivery across India • Flat ₹40</Text>
+                    <Text style={styles.standardBannerSubText}>
+                      {selectedAddress
+                        ? `Estimated delivery to ${selectedAddress.city || (selectedAddress as any)?.street || 'Saved Address'} in 2-4 business days`
+                        : 'Select address to get estimated delivery time'}
+                    </Text>
+                  </View>
+                  {!selectedAddress && (
+                    <TouchableOpacity
+                      style={styles.standardSelectAddressBtn}
+                      onPress={() => setModalVisible(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.standardSelectAddressBtnText}>Select</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 <View style={styles.itemsContainer}>
@@ -1424,7 +1613,19 @@ export default function CartScreen() {
                 </View>
               )}
 
-              {deliveryAvailable === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ? (
+              {!selectedAddress ? (
+                <TouchableOpacity
+                  style={[
+                    styles.checkoutBtn,
+                    { backgroundColor: BrandColors.matteBlack, flex: 1, justifyContent: 'center' }
+                  ]}
+                  onPress={() => setModalVisible(true)}
+                >
+                  <Text style={[styles.checkoutBtnText, { textAlign: 'center', fontFamily: Typography.fontFamily.bold }]}>
+                    Select Address to Get Estimated Time
+                  </Text>
+                </TouchableOpacity>
+              ) : deliveryAvailable === false || currentMerchantCart?.deliveryDetails?.isEligibleForTryBuy === false ? (
                 <TouchableOpacity
                   style={[
                     styles.checkoutBtn,
@@ -1810,6 +2011,21 @@ const styles = StyleSheet.create({
   brandingStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   statusTag: { fontSize: 9, fontWeight: '800', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4, textTransform: 'uppercase' },
   brandingMins: { fontSize: 11, color: '#64748B', fontWeight: '600' },
+  brandingEtaRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  selectAddressEtaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 3,
+  },
+  selectAddressEtaText: {
+    fontSize: 9.5,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#B45309',
+  },
   brandingLogo: { width: 44, height: 44, borderRadius: 10 },
 
   warningBanner: {
@@ -2106,6 +2322,118 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.02,
     shadowRadius: 4,
     elevation: 1,
+  },
+  addressHeaderCardUnselected: {
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+  },
+  deliveryEstimateBannerPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    gap: 10,
+  },
+  deliveryEstimateIconWrapAmber: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deliveryEstimateTitleAmber: {
+    fontSize: 12.5,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#92400E',
+  },
+  deliveryEstimateSubAmber: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#B45309',
+    marginTop: 1,
+  },
+  deliveryEstimateSelectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 2,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  deliveryEstimateSelectBtnText: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#B45309',
+  },
+
+  deliveryEstimateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    gap: 10,
+  },
+  deliveryEstimateIconWrapGreen: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deliveryEstimateTitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#14532D',
+  },
+  deliveryEstimateSub: {
+    fontSize: 10.5,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#166534',
+    marginTop: 1,
+  },
+  distanceBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  distanceBadgeText: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#15803D',
+  },
+
+  standardBannerSubText: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 2,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  standardSelectAddressBtn: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  standardSelectAddressBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
   },
   addressHeaderLeft: {
     flex: 1,

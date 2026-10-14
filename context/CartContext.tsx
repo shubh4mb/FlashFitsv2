@@ -18,7 +18,7 @@ import { useAuth } from './AuthContext';
 
 const GUEST_CART_KEY = '@flashfits_guest_cart';
 
-const calculateGuestMerchantCarts = (items: CartItem[]): MerchantCart[] => {
+const calculateGuestMerchantCarts = (items: CartItem[], address?: any): MerchantCart[] => {
   const map: Record<string, CartItem[]> = {};
   items.forEach(item => {
     const mId = String(item.merchantId?._id || item.merchantId || 'flashmart');
@@ -41,6 +41,34 @@ const calculateGuestMerchantCarts = (items: CartItem[]): MerchantCart[] => {
     const mrpTotal = mItems.reduce((acc, i) => acc + (Number(i.mrp) || Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
     const discount = Math.max(0, mrpTotal - subtotal);
 
+    let distanceKm: number | null = null;
+    let estimatedTime: number | null = null;
+    let isEligibleForTryBuy = true;
+
+    if (address) {
+      const userLat = address.location?.coordinates?.[1] ?? address.latitude;
+      const userLng = address.location?.coordinates?.[0] ?? address.longitude;
+      const merchAddr = firstItem?.productId?.merchantId?.address || (firstItem?.productId as any)?.address;
+      const shopLat = merchAddr?.location?.coordinates?.[1] ?? merchAddr?.latitude;
+      const shopLng = merchAddr?.location?.coordinates?.[0] ?? merchAddr?.longitude;
+
+      if (typeof userLat === 'number' && typeof userLng === 'number' && typeof shopLat === 'number' && typeof shopLng === 'number') {
+        const R = 6371;
+        const dLat = ((shopLat - userLat) * Math.PI) / 180;
+        const dLon = ((shopLng - userLng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((userLat * Math.PI) / 180) * Math.cos((shopLat * Math.PI) / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        distanceKm = Number((R * c).toFixed(1));
+        estimatedTime = 15 + Math.ceil(20 + distanceKm * 4);
+        isEligibleForTryBuy = distanceKm <= 10;
+      } else {
+        estimatedTime = isWh ? 30 : 45;
+      }
+    }
+
     return {
       merchantId: mId,
       merchantDetails: {
@@ -50,7 +78,9 @@ const calculateGuestMerchantCarts = (items: CartItem[]): MerchantCart[] => {
       },
       items: mItems,
       deliveryDetails: {
-        isEligibleForTryBuy: true,
+        isEligibleForTryBuy,
+        distanceKm: distanceKm ?? undefined,
+        estimatedTime: estimatedTime ?? undefined,
       },
       totals: {
         subtotal,
@@ -150,7 +180,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         if (stored) {
           const parsed = JSON.parse(stored);
           const items = parsed.items || [];
-          const merchantCarts = calculateGuestMerchantCarts(items);
+          const merchantCarts = calculateGuestMerchantCarts(items, selectedAddress);
           setCart({
             ...parsed,
             merchantCarts,
@@ -289,7 +319,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           newItems = [...currentItems, newItem];
         }
 
-        const newMerchantCarts = calculateGuestMerchantCarts(newItems);
+        const newMerchantCarts = calculateGuestMerchantCarts(newItems, selectedAddress);
         const newCart: CartData = {
           items: newItems,
           totalItems: newItems.reduce((acc, i) => acc + (i.quantity || 1), 0),
@@ -315,7 +345,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error;
     }
-  }, [isAuthenticated, fetchCart]);
+  }, [isAuthenticated, selectedAddress, fetchCart]);
 
   const updateQuantity = useCallback(async (cartId: string, quantity: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -326,7 +356,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       if (quantity <= 0) {
         newItems = newItems.filter(item => item._id !== cartId);
       }
-      const newMerchantCarts = calculateGuestMerchantCarts(newItems);
+      const newMerchantCarts = calculateGuestMerchantCarts(newItems, selectedAddress);
       const newCart: CartData = {
         items: newItems,
         totalItems: newItems.reduce((acc, i) => acc + (i.quantity || 1), 0),
@@ -375,7 +405,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (!isAuthenticated) {
       if (!cart) return;
       const newItems = cart.items.filter(item => item._id !== itemId);
-      const newMerchantCarts = calculateGuestMerchantCarts(newItems);
+      const newMerchantCarts = calculateGuestMerchantCarts(newItems, selectedAddress);
       const newCart: CartData = {
         items: newItems,
         totalItems: newItems.reduce((acc, i) => acc + (i.quantity || 1), 0),
@@ -420,7 +450,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (!isAuthenticated) {
       if (merchantId && cart) {
         const newItems = cart.items.filter(item => String(item.merchantId?._id || item.merchantId) !== String(merchantId));
-        const newMerchantCarts = calculateGuestMerchantCarts(newItems);
+        const newMerchantCarts = calculateGuestMerchantCarts(newItems, selectedAddress);
         const newCart: CartData = {
           items: newItems,
           totalItems: newItems.reduce((acc, i) => acc + (i.quantity || 1), 0),
