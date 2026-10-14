@@ -69,7 +69,7 @@ const ProductDetailPage = () => {
   const { userLocation, selectedAddress } = useAddress();
   const showToast = useToast();
   const showAlert = useAlert();
-  const { isAuthenticated, setReturnUrl } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const { toggleWishlist, isInWishlist } = useWishlist();
   const { cart, addToCart: addItemToCart } = useCart();
@@ -434,38 +434,6 @@ const ProductDetailPage = () => {
 
   const handleOpenDeliveryOptions = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    if (!isAuthenticated) {
-      const queryParts: string[] = [];
-      if (selectedSize) queryParts.push(`size=${encodeURIComponent(selectedSize)}`);
-      if (selectedColor) {
-        const v = product?.variants?.find((item: any) => (item.color?.name || 'Default') === (selectedColor || 'Default'));
-        if (v?._id) queryParts.push(`variantId=${encodeURIComponent(v._id)}`);
-      }
-      if (fromExplore) queryParts.push(`fromExplore=${encodeURIComponent(String(fromExplore))}`);
-      if (fromStore) queryParts.push(`fromStore=${encodeURIComponent(String(fromStore))}`);
-      const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
-      const returnUrl = `/(app)/product/${id}${queryString}`;
-
-      showAlert({
-        title: 'Sign In Required',
-        message: 'Please sign in or create an account to add items to your bag and place orders.',
-        buttons: [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Sign In',
-            onPress: () => {
-              setReturnUrl(returnUrl);
-              router.push({
-                pathname: '/(auth)',
-                params: { returnUrl },
-              });
-            },
-          },
-        ],
-      });
-      return;
-    }
 
     if (isStoreInactive) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
