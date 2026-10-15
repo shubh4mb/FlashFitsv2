@@ -3,7 +3,7 @@ import BrandFooter from '@/components/common/BrandFooter';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import Skeleton from '@/components/common/Skeleton';
 import MainHeader from '@/components/layout/MainHeader';
-import CampaignHeroSection from '@/components/sections/CampaignHeroSection';
+import FeaturedCollectionsSection from '@/components/sections/FeaturedCollectionsSection';
 import MerchantLogosSection from '@/components/sections/MerchantLogosSection';
 import OfferBanner from '@/components/sections/OfferBanner';
 import ProductHorizontalSection from '@/components/sections/ProductHorizontalSection';
@@ -36,7 +36,7 @@ import {
 } from 'react-native';
 
 export default function HomeScreen() {
-  const { signOut } = useAuth();
+  const { signOut, isAuthenticated } = useAuth();
   const { selectedGender, selectedSubGender } = useGender();
   const {
     userLocation,
@@ -157,8 +157,8 @@ export default function HomeScreen() {
                 </View>
               )}
 
-              {/* Optional non-blocking notice pill if out of service area */}
-              {tbAvailable === false && (
+              {/* Optional non-blocking notice pill if out of service area (only show for unauthenticated / guest users) */}
+              {!isAuthenticated && tbAvailable === false && (
                 <View style={styles.serviceNoticeContainer}>
                   <Ionicons name="information-circle-outline" size={18} color="#0284C7" />
                   <View style={{ flex: 1, marginLeft: 8 }}>
@@ -174,32 +174,14 @@ export default function HomeScreen() {
               {/* Promotional Carousel */}
               <PromotionalCarousel />
 
-              {/* ═══ CAMPAIGN HERO (Swiggy-Inspired) ═══ */}
-              {/* Only renders when an active campaign exists via CampaignContext */}
-              <CampaignHeroSection />
+              {/* ═══ FEATURED COLLECTIONS SECTION (Explore-style UI/UX) ═══ */}
+              <FeaturedCollectionsSection collections={collections} />
 
               {/* Verified Partner Stores Near You */}
               <MerchantLogosSection refreshKey={refreshKey} initialMerchants={merchants} />
 
               {/* Offers & Flash Deals */}
               <OfferBanner />
-
-              {/* Render Remote Collections */}
-              {Array.isArray(collections) && collections.map((coll, idx) => (
-                <ProductHorizontalSection
-                  key={coll._id || idx}
-                  title={coll.name ? coll.name.charAt(0).toUpperCase() + coll.name.slice(1) : ''}
-                  subtitle={coll.tagline || (coll.description ? coll.description.charAt(0).toUpperCase() + coll.description.slice(1) : 'Special curated list')}
-                  products={coll.products || []}
-                  isLoading={loading}
-                  banner={coll.banner}
-                  collectionId={coll._id}
-                  slug={coll.slug}
-                  campaignType={coll.campaignType}
-                  badgeText={coll.badgeText}
-                  theme={coll.theme}
-                />
-              ))}
 
               {/* Recently Viewed Fits */}
               <RecentlyViewedSection refreshKey={refreshKey} />

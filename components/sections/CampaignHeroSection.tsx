@@ -7,6 +7,7 @@ import {
   Dimensions,
   Animated,
   Platform,
+  ScrollView,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
@@ -15,9 +16,10 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Typography, BrandColors } from '@/constants/theme';
-import { useCampaign } from '@/context/CampaignContext';
+import { useCampaign, ActiveCampaign } from '@/context/CampaignContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const HERO_WIDTH = SCREEN_WIDTH - 32;
 const GRID_GAP = 8;
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - 32 - GRID_GAP) / 2;
 const GRID_CARD_HEIGHT = 90;
@@ -33,6 +35,10 @@ const SUB_CURATION_ICONS: Record<string, string> = {
   budget: '💰',
   budget_festive: '💰',
   kids: '🧒',
+  streetwear: '🔥',
+  oversized: '👕',
+  baggy: '👖',
+  graphic: '🎨',
   default: '✨',
 };
 
@@ -44,15 +50,52 @@ const SUB_CURATION_COLORS = [
   { bg: '#F0F9FF', border: '#BAE6FD', text: '#075985' }, // sky
 ];
 
+function CountdownBadge({ endDate }: { endDate: string }) {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    if (!endDate) return;
+    const updateTimer = () => {
+      const end = new Date(endDate).getTime();
+      const now = Date.now();
+      const diff = end - now;
+      if (diff <= 0) {
+        setTimeLeft('Sale Ended');
+        return;
+      }
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      setTimeLeft(days > 0 ? `${days}d ${hours}h left` : `${hours}h ${mins}m left`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 60000);
+    return () => clearInterval(interval);
+  }, [endDate]);
+
+  if (!timeLeft) return null;
+
+  return (
+    <View style={styles.countdownBadge}>
+      <Ionicons name="time-outline" size={10} color="#78350F" />
+      <Text style={styles.countdownText}>{timeLeft}</Text>
+    </View>
+  );
+}
+
 export default function CampaignHeroSection() {
-  const { activeCampaign, hasCampaign } = useCampaign();
+  const { activeCampaign, activeCampaigns = [], hasCampaign } = useCampaign();
   const router = useRouter();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const scrollRef = useRef<ScrollView>(null);
 
+  const [activeIndex, setActiveIndex] = useState(0);
   const [copiedCoupon, setCopiedCoupon] = useState(false);
-  const [timeLeft, setTimeLeft] = useState('');
+
+  const campaigns = activeCampaigns.length > 0 ? activeCampaigns : (activeCampaign ? [activeCampaign] : []);
 
   // Entry animation
   useEffect(() => {
@@ -73,66 +116,134 @@ export default function CampaignHeroSection() {
     }
   }, [hasCampaign]);
 
-  // Countdown
+  // Auto-scroll carousel if multiple campaigns exist
   useEffect(() => {
-    if (!activeCampaign?.schedule?.endDate) return;
+    if (campaigns.length <= 1) return;
+    const timer = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % campaigns.length;
+        scrollRef.current?.scrollTo({ x: next * HERO_WIDTH, animated: true });
+        return next;
+      });
+    }, 5500);
+    return () => clearInterval(timer);
+  }, [campaigns.length]);
 
-    const updateTimer = () => {
-      const end = new Date(activeCampaign.schedule!.endDate!).getTime();
-      const now = Date.now();
-      const diff = end - now;
-      if (diff <= 0) {
-        setTimeLeft('Sale Ended');
-        return;
-      }
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      setTimeLeft(days > 0 ? `${days}d ${hours}h left` : `${hours}h ${mins}m left`);
-    };
+  if (!hasCampaign || campaigns.length === 0) return null;
 
-    updateTimer();
-    const interval = setInterval(updateTimer, 60000);
-    return () => clearInterval(interval);
-  }, [activeCampaign?.schedule?.endDate]);
+  const currentCampaign = campaigns[activeIndex] || campaigns[0];
+  const theme = currentCampaign.theme || {
+    primaryColor: '#0F172A',
+    secondaryColor: '#EF4444',
+    bgGradientStart: '#0F172A',
+    bgGradientEnd: '#1E293B',
+    textColor: '#FFFFFF',
+  };
+  const subCurations = currentCampaign.subCurations || [];
 
-  if (!hasCampaign || !activeCampaign) return null;
-
-  const theme = activeCampaign.theme;
-  const bannerUrl = activeCampaign.heroBannerImage?.url || activeCampaign.bannerImage?.url;
-  const subCurations = activeCampaign.subCurations || [];
-
-  const handleCampaignPress = () => {
+  const handleCampaignPress = (camp: ActiveCampaign) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push({
-      pathname: '/(app)/search-results',
-      params: {
-        collectionId: activeCampaign._id || activeCampaign.slug,
-        title: activeCampaign.name,
-      },
-    } as any);
+    if (camp.slug) {
+      router.push(`/campaign/${camp.slug}` as any);
+    } else {
+      router.push({
+        pathname: '/(app)/search-results',
+        params: {
+          collectionId: camp._id || camp.slug,
+          title: camp.name,
+        },
+      } as any);
+    }
   };
 
-  const handleSubCurationPress = (sub: any) => {
+  const handleSubCurationPress = (sub: any, camp: ActiveCampaign) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({
-      pathname: '/(app)/search-results',
-      params: {
-        collectionId: activeCampaign._id || activeCampaign.slug,
-        query: sub.filterTag || undefined,
-        title: `${activeCampaign.name} - ${sub.label}`,
-        gender: sub.gender || undefined,
-        categoryId: sub.categoryId || undefined,
-      },
-    } as any);
+    if (camp.slug) {
+      router.push({
+        pathname: `/campaign/${camp.slug}`,
+        params: {
+          subCurationId: sub.id,
+          title: `${camp.name} - ${sub.label}`,
+        },
+      } as any);
+    } else {
+      router.push({
+        pathname: '/(app)/search-results',
+        params: {
+          collectionId: camp._id || camp.slug,
+          query: sub.filterTag || undefined,
+          title: `${camp.name} - ${sub.label}`,
+          gender: sub.gender || undefined,
+          categoryId: sub.categoryId || undefined,
+        },
+      } as any);
+    }
   };
 
-  const handleCopyCoupon = async () => {
-    if (!activeCampaign.attachedCouponCode) return;
+  const handleCopyCoupon = async (code?: string) => {
+    const couponToCopy = code || currentCampaign.attachedCouponCode;
+    if (!couponToCopy) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await Clipboard.setStringAsync(activeCampaign.attachedCouponCode);
+    await Clipboard.setStringAsync(couponToCopy);
     setCopiedCoupon(true);
     setTimeout(() => setCopiedCoupon(false), 3000);
+  };
+
+  const renderBannerCard = (camp: ActiveCampaign, idx: number) => {
+    const bannerUrl = camp.heroBannerImage?.url || camp.bannerImage?.url || camp.heroBanner?.imageUrl || camp.banner?.imageUrl;
+    const campTheme = camp.theme || theme;
+
+    return (
+      <TouchableOpacity
+        key={camp._id || camp.slug || idx}
+        activeOpacity={0.92}
+        onPress={() => handleCampaignPress(camp)}
+        style={[styles.heroCard, campaigns.length > 1 && { width: HERO_WIDTH }]}
+      >
+        <LinearGradient
+          colors={[campTheme.bgGradientStart || '#0F172A', campTheme.bgGradientEnd || '#1E293B']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroGradient}
+        >
+          {bannerUrl ? (
+            <Image
+              source={{ uri: bannerUrl }}
+              style={styles.heroBannerImage}
+              contentFit="cover"
+              transition={300}
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={styles.heroBannerFallback}>
+              <Text style={[styles.heroBadge, { backgroundColor: campTheme.primaryColor }]}>
+                {camp.badgeText || '✨ SPECIAL CURATION'}
+              </Text>
+              <Text style={[styles.heroTitle, { color: campTheme.textColor }]}>
+                {camp.name}
+              </Text>
+              {camp.tagline ? (
+                <Text style={[styles.heroTagline, { color: campTheme.secondaryColor }]}>
+                  {camp.tagline}
+                </Text>
+              ) : null}
+            </View>
+          )}
+
+          {/* Countdown badge if scheduled */}
+          {camp.schedule?.endDate ? (
+            <CountdownBadge endDate={camp.schedule.endDate} />
+          ) : null}
+
+          {/* Overlay badge on banner image */}
+          {bannerUrl && camp.badgeText ? (
+            <View style={[styles.overlayBadge, { backgroundColor: campTheme.primaryColor }]}>
+              <Text style={styles.overlayBadgeText}>{camp.badgeText}</Text>
+            </View>
+          ) : null}
+        </LinearGradient>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -145,61 +256,52 @@ export default function CampaignHeroSection() {
         },
       ]}
     >
-      {/* Hero Banner Card */}
-      <TouchableOpacity
-        activeOpacity={0.92}
-        onPress={handleCampaignPress}
-        style={styles.heroCard}
-      >
-        <LinearGradient
-          colors={[theme.bgGradientStart, theme.bgGradientEnd]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroGradient}
-        >
-          {/* Banner Image */}
-          {bannerUrl ? (
-            <Image
-              source={{ uri: bannerUrl }}
-              style={styles.heroBannerImage}
-              contentFit="cover"
-              transition={400}
-            />
-          ) : (
-            /* Fallback: Themed gradient with text */
-            <View style={styles.heroBannerFallback}>
-              <Text style={[styles.heroBadge, { backgroundColor: theme.primaryColor }]}>
-                {activeCampaign.badgeText || '✨ FESTIVE SALE'}
-              </Text>
-              <Text style={[styles.heroTitle, { color: theme.textColor }]}>
-                {activeCampaign.name}
-              </Text>
-              {activeCampaign.tagline ? (
-                <Text style={[styles.heroTagline, { color: theme.secondaryColor }]}>
-                  {activeCampaign.tagline}
-                </Text>
-              ) : null}
-            </View>
-          )}
+      {/* Hero Banner (Single or Multi-Campaign Carousel) */}
+      {campaigns.length > 1 ? (
+        <View>
+          <ScrollView
+            ref={scrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            nestedScrollEnabled={true}
+            onMomentumScrollEnd={(e) => {
+              const offset = e.nativeEvent.contentOffset.x;
+              const idx = Math.round(offset / HERO_WIDTH);
+              if (idx >= 0 && idx < campaigns.length) {
+                setActiveIndex(idx);
+              }
+            }}
+          >
+            {campaigns.map((camp, idx) => renderBannerCard(camp, idx))}
+          </ScrollView>
 
-          {/* Countdown badge */}
-          {timeLeft ? (
-            <View style={styles.countdownBadge}>
-              <Ionicons name="time-outline" size={10} color="#78350F" />
-              <Text style={styles.countdownText}>{timeLeft}</Text>
-            </View>
-          ) : null}
+          {/* Carousel Dot Indicators */}
+          <View style={styles.carouselIndicators}>
+            {campaigns.map((camp, idx) => (
+              <TouchableOpacity
+                key={`dot-${camp._id || camp.slug || idx}`}
+                onPress={() => {
+                  scrollRef.current?.scrollTo({ x: idx * HERO_WIDTH, animated: true });
+                  setActiveIndex(idx);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={[
+                  styles.indicatorDot,
+                  idx === activeIndex && [
+                    styles.indicatorActive,
+                    { backgroundColor: theme.primaryColor || BrandColors.matteBlack },
+                  ],
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+      ) : (
+        renderBannerCard(campaigns[0], 0)
+      )}
 
-          {/* Overlay badge on banner image */}
-          {bannerUrl && activeCampaign.badgeText ? (
-            <View style={[styles.overlayBadge, { backgroundColor: theme.primaryColor }]}>
-              <Text style={styles.overlayBadgeText}>{activeCampaign.badgeText}</Text>
-            </View>
-          ) : null}
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* 2×2 Sub-Curation Grid (Swiggy Style) */}
+      {/* 2×2 Sub-Curation Grid (for current campaign) */}
       {subCurations.length > 0 && (
         <View style={styles.gridContainer}>
           {subCurations.slice(0, 4).map((sub, idx) => {
@@ -208,9 +310,9 @@ export default function CampaignHeroSection() {
 
             return (
               <TouchableOpacity
-                key={sub.id}
+                key={sub.id || idx}
                 activeOpacity={0.85}
-                onPress={() => handleSubCurationPress(sub)}
+                onPress={() => handleSubCurationPress(sub, currentCampaign)}
                 style={[
                   styles.gridCard,
                   {
@@ -236,21 +338,21 @@ export default function CampaignHeroSection() {
         </View>
       )}
 
-      {/* "See All" link */}
+      {/* "See All" link for current campaign */}
       <TouchableOpacity
-        onPress={handleCampaignPress}
+        onPress={() => handleCampaignPress(currentCampaign)}
         style={styles.seeAllRow}
         activeOpacity={0.7}
       >
         <Text style={[styles.seeAllText, { color: BrandColors.matteBlack }]}>
-          Explore All {activeCampaign.name} →
+          Explore All {currentCampaign.name} →
         </Text>
       </TouchableOpacity>
 
-      {/* 1-Tap Coupon Strip */}
-      {activeCampaign.attachedCouponCode ? (
+      {/* 1-Tap Coupon Strip (for current campaign) */}
+      {currentCampaign.attachedCouponCode ? (
         <TouchableOpacity
-          onPress={handleCopyCoupon}
+          onPress={() => handleCopyCoupon(currentCampaign.attachedCouponCode)}
           activeOpacity={0.85}
           style={styles.couponStrip}
         >
@@ -265,9 +367,9 @@ export default function CampaignHeroSection() {
                 <MaterialCommunityIcons name="ticket-percent" size={16} color={theme.primaryColor} />
               </View>
               <View>
-                <Text style={styles.couponLabel}>Festival Special Code</Text>
+                <Text style={styles.couponLabel}>Special Coupon Code</Text>
                 <Text style={[styles.couponCode, { color: theme.primaryColor }]}>
-                  {activeCampaign.attachedCouponCode}
+                  {currentCampaign.attachedCouponCode}
                 </Text>
               </View>
             </View>
@@ -372,6 +474,25 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.extraBold,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+  },
+  carouselIndicators: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 2,
+    gap: 6,
+  },
+  indicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
+  },
+  indicatorActive: {
+    width: 20,
+    height: 6,
+    borderRadius: 3,
   },
   gridContainer: {
     flexDirection: 'row',

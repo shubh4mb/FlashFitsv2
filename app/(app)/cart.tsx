@@ -186,7 +186,7 @@ export default function CartScreen() {
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distKm = Number((R * c).toFixed(1));
-      const calcMins = 15 + Math.ceil(20 + distKm * 4);
+      const calcMins = 13 + Math.ceil(5 + distKm * 2.5); // 3m merchant prep + 10m rider pickup
       return {
         hasAddress: true,
         estimatedTime: calcMins,
@@ -442,12 +442,23 @@ export default function CartScreen() {
       } else {
         const isMaint = error?.response?.data?.isMaintenance;
         const msg = error?.response?.data?.message || error?.message || 'Payment failed. Please try again.';
+        const isStockError = 
+          error?.response?.data?.code === 'OUT_OF_STOCK' || 
+          /out of stock|insufficient stock|left in stock|available stock|no longer available/i.test(msg);
+
         if (isMaint) {
           showAlert({
             title: maintenanceTitle || 'Maintenance in Progress',
             message: msg,
             type: 'warning',
           });
+        } else if (isStockError) {
+          showAlert({
+            title: 'Item Just Sold Out ⚡',
+            message: msg,
+            type: 'error',
+          });
+          refreshCart().catch(() => {});
         } else {
           showToast({ message: msg, type: 'error' });
         }

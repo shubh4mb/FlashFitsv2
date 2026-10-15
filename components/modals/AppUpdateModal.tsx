@@ -124,12 +124,12 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
 
   const displayTitle =
     title ||
-    (isMandatory ? 'Mandatory Update Required' : 'New Version Available');
+    (isMandatory ? 'App Update Required' : 'New Version Available');
 
   const displayMessage =
     message ||
     (isMandatory
-      ? 'A critical update is required to continue shopping and tracking orders on FlashFits.'
+      ? 'Please update FlashFits to the latest version to continue enjoying a seamless shopping and delivery experience.'
       : 'Upgrade to the latest version to enjoy faster checkout, fresh collections, and stability improvements.');
 
   return (

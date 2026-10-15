@@ -3062,7 +3062,7 @@ export default function OrderTrackingScreen() {
                     }}
                   >
                     <Ionicons name="flash" size={12} color="#0891B2" />
-                    <Text style={styles.rateQuickChipText}>15-Min Delivery</Text>
+                    <Text style={styles.rateQuickChipText}>30-Min Delivery</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity

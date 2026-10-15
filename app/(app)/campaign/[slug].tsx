@@ -37,7 +37,7 @@ export default function CampaignScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
-  const { userLocation, selectedAddress } = useAddress();
+  const { userLocation, selectedAddress, tbAvailable } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [campaign, setCampaign] = useState<any>(null);
@@ -244,7 +244,9 @@ export default function CampaignScreen() {
           <View style={styles.guaranteeStrip}>
             <View style={styles.guaranteeItem}>
               <Ionicons name="flash" size={14} color="#D97706" />
-              <Text style={styles.guaranteeText}>15-Min Instant Delivery Available</Text>
+              <Text style={styles.guaranteeText}>
+                {tbAvailable === false ? 'FlashFits Doorstep Delivery Available' : '30-Min Doorstep Try & Buy Available'}
+              </Text>
             </View>
             {timeLeft ? (
               <View style={styles.timerBadge}>

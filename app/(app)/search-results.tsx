@@ -1,11 +1,12 @@
 import { fetchCategories } from '@/api/categories';
 import { fetchMerchants } from '@/api/merchants';
-import { fetchFilteredProducts } from '@/api/products';
+import { fetchAvailableSizes, fetchFilteredProducts } from '@/api/products';
 import Loader from '@/components/common/Loader';
 import ProductCard from '@/components/common/ProductCard';
 import ColorFamilySelector from '@/components/common/ColorFilter';
 import PremiumRefreshWrapper from '@/components/common/PremiumRefreshWrapper';
 import { COLOR_FAMILIES, POPULAR_COLORS } from '@/utils/colors';
+import { ALL_STANDARD_SIZES, SIZE_GROUPS } from '@/utils/sizes';
 import { BrandColors, GenderThemes, Typography } from '@/constants/theme';
 import { useAddress } from '@/context/AddressContext';
 import { useGender } from '@/context/GenderContext';
@@ -41,7 +42,7 @@ type SortOption = 'relevance' | 'price_low' | 'price_high' | 'newest' | 'trendin
 type DeliveryMode = 'tryAndBuy' | 'courier' | null;
 
 export default function SearchResultsScreen() {
-  const { query, q, categoryId, subCategoryId, gender, collectionId, title, merchantId, sortBy: initialSortBy, flashmart } = useLocalSearchParams<{
+  const { query, q, categoryId, subCategoryId, gender, collectionId, title, merchantId, sortBy: initialSortBy, flashmart, size, sizes } = useLocalSearchParams<{
     query?: string;
     q?: string;
     categoryId?: string;
@@ -52,6 +53,8 @@ export default function SearchResultsScreen() {
     merchantId?: string;
     sortBy?: SortOption;
     flashmart?: string;
+    size?: string;
+    sizes?: string;
   }>();
   const effectiveQuery = query || q;
   const router = useRouter();
@@ -90,6 +93,12 @@ export default function SearchResultsScreen() {
   const [sortBy, setSortBy] = useState<SortOption>(initialSortBy || 'relevance');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(categoryId ? [categoryId] : []);
   const [selectedSubCategoryIds, setSelectedSubCategoryIds] = useState<string[]>(subCategoryId ? [subCategoryId] : []);
+  const initialSizes = useMemo(() => {
+    if (sizes) return sizes.split(',').map(s => s.trim()).filter(Boolean);
+    if (size) return [size.trim()];
+    return [];
+  }, [size, sizes]);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>(initialSizes);
   const [priceRange, setPriceRange] = useState<number[]>([0, 10000]);
   const initialGender = useMemo(() => {
     if (!gender || gender === 'ALL' || gender === 'UNISEX' || gender === 'KIDS') return '';
@@ -106,11 +115,14 @@ export default function SearchResultsScreen() {
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
 
   // Filter Draft States (Staged inside modal until Applied)
-  type FilterSection = 'categories' | 'subcategories' | 'price' | 'shops' | 'color' | 'collection';
+  type FilterSection = 'categories' | 'subcategories' | 'size' | 'price' | 'shops' | 'color' | 'collection';
   const [activeFilterSection, setActiveFilterSection] = useState<FilterSection>('categories');
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [draftCategoryIds, setDraftCategoryIds] = useState<string[]>([]);
   const [draftSubCategoryIds, setDraftSubCategoryIds] = useState<string[]>([]);
+  const [draftSizes, setDraftSizes] = useState<string[]>(initialSizes);
+  const [sizeSearchQuery, setSizeSearchQuery] = useState('');
+  const [availableSizes, setAvailableSizes] = useState<string[]>(ALL_STANDARD_SIZES);
   const [draftPriceRange, setDraftPriceRange] = useState<number[]>([0, 10000]);
   const [draftStoreIds, setDraftStoreIds] = useState<string[]>([]);
   const [draftColorFamily, setDraftColorFamily] = useState<string>('ALL');
@@ -120,10 +132,11 @@ export default function SearchResultsScreen() {
   const [availableMerchants, setAvailableMerchants] = useState<any[]>([]);
   const [merchantSearchQuery, setMerchantSearchQuery] = useState('');
 
-  // Clear merchant search when modal is closed
+  // Clear search inputs when modal is closed
   useEffect(() => {
     if (!isFilterModalVisible) {
       setMerchantSearchQuery('');
+      setSizeSearchQuery('');
     }
   }, [isFilterModalVisible]);
 
@@ -231,6 +244,7 @@ export default function SearchResultsScreen() {
         collectionId: collectionFilter,
         selectedStores: selectedStoreIds.length > 0 ? selectedStoreIds : undefined,
         selectedColors: colorsToFilter,
+        selectedSizes: selectedSizes.length > 0 ? selectedSizes : undefined,
         lat,
         lng,
       });
@@ -247,7 +261,7 @@ export default function SearchResultsScreen() {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [effectiveQuery, sortBy, selectedCategoryIds, selectedSubCategoryIds, priceRange, genderFilter, deliveryMode, collectionFilter, selectedStoreIds, selectedColorFamily, selectedColorHex, getCoords]);
+  }, [effectiveQuery, sortBy, selectedCategoryIds, selectedSubCategoryIds, selectedSizes, priceRange, genderFilter, deliveryMode, collectionFilter, selectedStoreIds, selectedColorFamily, selectedColorHex, getCoords]);
 
   // Reload from page 1 when filters change
   useEffect(() => {
@@ -277,6 +291,17 @@ export default function SearchResultsScreen() {
     };
     loadCategories();
     loadMerchants();
+    const loadSizes = async () => {
+      try {
+        const backendSizes = await fetchAvailableSizes();
+        if (Array.isArray(backendSizes) && backendSizes.length > 0) {
+          setAvailableSizes(prev => Array.from(new Set([...prev, ...backendSizes])));
+        }
+      } catch (error) {
+        // Fallback to ALL_STANDARD_SIZES
+      }
+    };
+    loadSizes();
   }, [getCoords]);
 
   // Auto-select parent category if subCategoryId is passed but categoryId is not
@@ -311,6 +336,7 @@ export default function SearchResultsScreen() {
   const openFilterModal = () => {
     setDraftCategoryIds([...selectedCategoryIds]);
     setDraftSubCategoryIds([...selectedSubCategoryIds]);
+    setDraftSizes([...selectedSizes]);
     setDraftPriceRange([...priceRange]);
     setDraftStoreIds([...selectedStoreIds]);
     setDraftColorFamily(selectedColorFamily);
@@ -318,6 +344,7 @@ export default function SearchResultsScreen() {
     setDraftCollectionFilter(collectionFilter);
     setCategorySearchQuery('');
     setMerchantSearchQuery('');
+    setSizeSearchQuery('');
     setActiveFilterSection(collectionFilter ? 'collection' : 'categories');
     setIsFilterModalVisible(true);
   };
@@ -325,12 +352,14 @@ export default function SearchResultsScreen() {
   const closeFilterModal = () => {
     setCategorySearchQuery('');
     setMerchantSearchQuery('');
+    setSizeSearchQuery('');
     setIsFilterModalVisible(false);
   };
 
   const applyDraftFilters = () => {
     setSelectedCategoryIds(draftCategoryIds);
     setSelectedSubCategoryIds(draftSubCategoryIds);
+    setSelectedSizes(draftSizes);
     setPriceRange(draftPriceRange);
     setSelectedStoreIds(draftStoreIds);
     setSelectedColorFamily(draftColorFamily);
@@ -342,6 +371,7 @@ export default function SearchResultsScreen() {
   const resetDraftFilters = () => {
     setDraftCategoryIds([]);
     setDraftSubCategoryIds([]);
+    setDraftSizes([]);
     setDraftPriceRange([0, 10000]);
     setDraftStoreIds([]);
     setDraftColorFamily('ALL');
@@ -349,6 +379,7 @@ export default function SearchResultsScreen() {
     setDraftCollectionFilter(undefined);
     setCategorySearchQuery('');
     setMerchantSearchQuery('');
+    setSizeSearchQuery('');
   };
 
   const toggleDraftCategory = (id: string) => {
@@ -374,18 +405,26 @@ export default function SearchResultsScreen() {
     );
   };
 
+  const toggleDraftSize = (sizeVal: string) => {
+    setDraftSizes(prev =>
+      prev.includes(sizeVal) ? prev.filter(s => s !== sizeVal) : [...prev, sizeVal]
+    );
+  };
+
   const activeFilterCount = selectedCategoryIds.length + selectedSubCategoryIds.length
     + (genderFilter ? 1 : 0) + (deliveryMode ? 1 : 0)
     + ((priceRange[0] !== 0 || priceRange[1] !== 10000) ? 1 : 0)
     + (collectionFilter ? 1 : 0)
     + selectedStoreIds.length
-    + (selectedColorFamily !== 'ALL' || selectedColorHex ? 1 : 0);
+    + (selectedColorFamily !== 'ALL' || selectedColorHex ? 1 : 0)
+    + selectedSizes.length;
 
   const draftActiveCount = draftCategoryIds.length + draftSubCategoryIds.length
     + ((draftPriceRange[0] !== 0 || draftPriceRange[1] !== 10000) ? 1 : 0)
     + (draftCollectionFilter ? 1 : 0)
     + draftStoreIds.length
-    + (draftColorFamily !== 'ALL' || draftColorHex ? 1 : 0);
+    + (draftColorFamily !== 'ALL' || draftColorHex ? 1 : 0)
+    + draftSizes.length;
 
   const hasDraftFilters = draftActiveCount > 0;
 
@@ -419,6 +458,7 @@ export default function SearchResultsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedCategoryIds([]);
     setSelectedSubCategoryIds([]);
+    setSelectedSizes([]);
     setPriceRange([0, 10000]);
     setSelectedStoreIds([]);
     setSelectedColorFamily('ALL');
@@ -507,8 +547,17 @@ export default function SearchResultsScreen() {
       });
     }
 
+    // 7. Sizes
+    selectedSizes.forEach(s => {
+      items.push({
+        id: `size-${s}`,
+        label: `Size: ${s}`,
+        onRemove: () => setSelectedSizes(prev => prev.filter(item => item !== s)),
+      });
+    });
+
     return items;
-  }, [collectionFilter, title, priceRange, selectedCategoryIds, selectedSubCategoryIds, categories, selectedStoreIds, availableMerchants, selectedColorHex, selectedColorFamily]);
+  }, [collectionFilter, title, priceRange, selectedCategoryIds, selectedSubCategoryIds, selectedSizes, categories, selectedStoreIds, availableMerchants, selectedColorHex, selectedColorFamily]);
 
   const topLevelCategories = useMemo(() => {
     return categories.filter(cat => cat.level !== 1);
@@ -606,6 +655,7 @@ export default function SearchResultsScreen() {
       ...(draftCollectionFilter ? [{ id: 'collection' as FilterSection, label: 'Collection', count: 1 }] : []),
       { id: 'categories', label: 'Categories', count: draftCategoryIds.length },
       { id: 'subcategories', label: 'Sub-Categories', count: draftSubCategoryIds.length },
+      { id: 'size', label: 'Size', count: draftSizes.length },
       { id: 'price', label: 'Price', count: (draftPriceRange[0] !== 0 || draftPriceRange[1] !== 10000) ? 1 : 0 },
       ...(availableMerchants.length > 0 ? [{ id: 'shops' as FilterSection, label: 'Shops', count: draftStoreIds.length }] : []),
       { id: 'color', label: 'Color', count: (draftColorFamily !== 'ALL' || !!draftColorHex) ? 1 : 0 },
@@ -819,6 +869,197 @@ export default function SearchResultsScreen() {
                         </TouchableOpacity>
                       </View>
                     )}
+                  </View>
+                )}
+
+                {/* 3.5. Size Detail */}
+                {activeFilterSection === 'size' && (
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.sectionSearchContainer}>
+                      <Ionicons name="search" size={16} color="#94A3B8" style={{ marginRight: 8 }} />
+                      <TextInput
+                        style={styles.sectionSearchInput}
+                        placeholder="Search size (e.g. M, 32, XL)..."
+                        value={sizeSearchQuery}
+                        onChangeText={setSizeSearchQuery}
+                        placeholderTextColor="#94A3B8"
+                        autoCapitalize="characters"
+                      />
+                      {sizeSearchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSizeSearchQuery('')}>
+                          <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <ScrollView style={styles.detailScroll} showsVerticalScrollIndicator={false}>
+                      {draftSizes.length > 0 && (
+                        <View style={styles.selectedSizesBanner}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap', gap: 6 }}>
+                            <Text style={styles.selectedSizesBannerLabel}>Selected ({draftSizes.length}):</Text>
+                            {draftSizes.map(sz => (
+                              <TouchableOpacity
+                                key={sz}
+                                style={[styles.selectedMiniBadge, { backgroundColor: theme.primary }]}
+                                onPress={() => {
+                                  Haptics.selectionAsync();
+                                  toggleDraftSize(sz);
+                                }}
+                              >
+                                <Text style={styles.selectedMiniBadgeText}>{sz}</Text>
+                                <Ionicons name="close" size={12} color="#FFFFFF" style={{ marginLeft: 3 }} />
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              setDraftSizes([]);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.clearSelectedSizesText}>Clear</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                      {sizeSearchQuery.trim().length > 0 ? (
+                        (() => {
+                          const q = sizeSearchQuery.trim().toUpperCase();
+                          const filtered = availableSizes.filter(s => s.toUpperCase().includes(q));
+                          const exactMatch = availableSizes.some(s => s.toUpperCase() === q);
+                          return (
+                            <View>
+                              {filtered.length > 0 && (
+                                <View style={styles.sizeChipsGrid}>
+                                  {filtered.map(s => {
+                                    const isSelected = draftSizes.includes(s);
+                                    return (
+                                      <TouchableOpacity
+                                        key={s}
+                                        style={[
+                                          styles.sizeChipButton,
+                                          isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }
+                                        ]}
+                                        onPress={() => {
+                                          Haptics.selectionAsync();
+                                          toggleDraftSize(s);
+                                        }}
+                                        activeOpacity={0.7}
+                                      >
+                                        <Text style={[
+                                          styles.sizeChipButtonText,
+                                          isSelected && styles.sizeChipButtonTextSelected
+                                        ]}>
+                                          {s}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              )}
+
+                              {!exactMatch && q.length > 0 && (
+                                <TouchableOpacity
+                                  style={[styles.customSizeOption, { borderColor: theme.primary + '40', backgroundColor: theme.primary + '10' }]}
+                                  onPress={() => {
+                                    Haptics.selectionAsync();
+                                    if (!availableSizes.includes(q)) {
+                                      setAvailableSizes(prev => [...prev, q]);
+                                    }
+                                    toggleDraftSize(q);
+                                    setSizeSearchQuery('');
+                                  }}
+                                >
+                                  <Ionicons name="add-circle" size={18} color={theme.primary} />
+                                  <Text style={[styles.customSizeOptionText, { color: theme.primary }]}>
+                                    Select "{q}"
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+
+                              {filtered.length === 0 && !exactMatch && (
+                                <View style={styles.emptyDetailContainer}>
+                                  <Text style={styles.emptyDetailText}>No standard sizes match "{sizeSearchQuery}"</Text>
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })()
+                      ) : (
+                        <>
+                          {SIZE_GROUPS.map((group) => (
+                            <View key={group.id} style={{ marginBottom: 16 }}>
+                              <Text style={styles.sizeSectionHeader}>{group.label}</Text>
+                              <View style={styles.sizeChipsGrid}>
+                                {group.sizes.map((s) => {
+                                  const isSelected = draftSizes.includes(s);
+                                  return (
+                                    <TouchableOpacity
+                                      key={s}
+                                      style={[
+                                        styles.sizeChipButton,
+                                        isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }
+                                      ]}
+                                      onPress={() => {
+                                        Haptics.selectionAsync();
+                                        toggleDraftSize(s);
+                                      }}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text style={[
+                                        styles.sizeChipButtonText,
+                                        isSelected && styles.sizeChipButtonTextSelected
+                                      ]}>
+                                        {s}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          ))}
+
+                          {(() => {
+                            const standardSet = new Set(ALL_STANDARD_SIZES.map(s => s.toUpperCase()));
+                            const otherSizes = availableSizes.filter(s => !standardSet.has(s.toUpperCase()));
+                            if (otherSizes.length === 0) return null;
+                            return (
+                              <View style={{ marginBottom: 16 }}>
+                                <Text style={styles.sizeSectionHeader}>Other Sizes</Text>
+                                <View style={styles.sizeChipsGrid}>
+                                  {otherSizes.map((s) => {
+                                    const isSelected = draftSizes.includes(s);
+                                    return (
+                                      <TouchableOpacity
+                                        key={s}
+                                        style={[
+                                          styles.sizeChipButton,
+                                          isSelected && { backgroundColor: theme.primary, borderColor: theme.primary }
+                                        ]}
+                                        onPress={() => {
+                                          Haptics.selectionAsync();
+                                          toggleDraftSize(s);
+                                        }}
+                                        activeOpacity={0.7}
+                                      >
+                                        <Text style={[
+                                          styles.sizeChipButtonText,
+                                          isSelected && styles.sizeChipButtonTextSelected
+                                        ]}>
+                                          {s}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              </View>
+                            );
+                          })()}
+                        </>
+                      )}
+                      <View style={{ height: 20 }} />
+                    </ScrollView>
                   </View>
                 )}
 
@@ -1921,5 +2162,87 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontFamily: Typography.fontFamily.medium,
     marginTop: 1,
+  },
+  selectedSizesBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  selectedSizesBannerLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    fontFamily: Typography.fontFamily.medium,
+    marginRight: 4,
+  },
+  selectedMiniBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  selectedMiniBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+  },
+  clearSelectedSizesText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.bold,
+    marginLeft: 8,
+  },
+  sizeSectionHeader: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  sizeChipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sizeChipButton: {
+    minWidth: 52,
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sizeChipButtonText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#334155',
+  },
+  sizeChipButtonTextSelected: {
+    color: '#FFFFFF',
+    fontFamily: Typography.fontFamily.bold,
+  },
+  customSizeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  customSizeOptionText: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.bold,
   },
 });

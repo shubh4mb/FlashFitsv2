@@ -62,8 +62,8 @@ const calculateGuestMerchantCarts = (items: CartItem[], address?: any): Merchant
           Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         distanceKm = Number((R * c).toFixed(1));
-        estimatedTime = 15 + Math.ceil(20 + distanceKm * 4);
-        isEligibleForTryBuy = distanceKm <= 10;
+        estimatedTime = 13 + Math.ceil(5 + distanceKm * 2.5); // 3m merchant prep + 10m rider pickup
+        isEligibleForTryBuy = distanceKm <= 14;
       } else {
         estimatedTime = isWh ? 30 : 45;
       }
@@ -282,12 +282,29 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           (i.variantId === params.variantId || !params.variantId)
         );
 
+        const availableStock = params.product?.variants?.find((v: any) => 
+          (v._id === params.variantId || !params.variantId) && v.size === params.size
+        )?.stock ?? (params as any).stockQuantity ?? 10;
+
         let newItems: CartItem[];
         if (existingIndex > -1) {
+          const currentQty = currentItems[existingIndex].quantity || 1;
+          const addQty = params.quantity || 1;
+          if (currentQty + addQty > availableStock) {
+            const itemText = availableStock === 1 ? '1 item' : `${availableStock} items`;
+            const err = new Error(
+              availableStock > 0 
+                ? `Only ${itemText} available for size ${params.size}, and you already have ${currentQty} in your bag.` 
+                : `Size ${params.size} is currently out of stock`
+            );
+            (err as any).response = { status: 400, data: { message: err.message } };
+            throw err;
+          }
+
           newItems = [...currentItems];
           newItems[existingIndex] = {
             ...newItems[existingIndex],
-            quantity: (newItems[existingIndex].quantity || 1) + (params.quantity || 1),
+            quantity: currentQty + addQty,
           };
         } else {
           const newItem: CartItem = {
@@ -332,6 +349,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       } catch (e) {
         console.error('Guest add to cart failed:', e);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        throw e;
       }
       return;
     }
@@ -341,7 +359,9 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       await fetchCart();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
-      console.error('Add to cart failed:', error?.response?.data?.message || error?.message || error);
+      if (error?.response?.status !== 400) {
+        console.error('Add to cart failed:', error?.response?.data?.message || error?.message || error);
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       throw error;
     }

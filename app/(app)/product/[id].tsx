@@ -489,10 +489,25 @@ const ProductDetailPage = () => {
       ) || product.variants[0];
 
       // Robust variant stock check
-      const variantStock = activeVariant?.stock ?? 0;
+      const variantStock = (selectedSize && activeVariant.sizes?.length)
+        ? (activeVariant.sizes.find((s: any) => s.size === selectedSize)?.stock ?? activeVariant?.stock ?? 0)
+        : (activeVariant?.stock ?? 0);
+
       if (variantStock <= 0) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         showToast({ message: `Size ${selectedSize} is currently out of stock`, type: 'error' });
+        setIsAdding(false);
+        return;
+      }
+
+      if (currentInCartQty >= variantStock) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        showToast({
+          message: variantStock === 1
+            ? `Size ${selectedSize} has only 1 in stock, and it's already in your bag!`
+            : `Size ${selectedSize} has reached maximum available stock (${variantStock}) in your bag.`,
+          type: 'warning'
+        });
         setIsAdding(false);
         return;
       }
@@ -605,7 +620,9 @@ const ProductDetailPage = () => {
         setLimitErrorMessage(serverMessage || "You can only have up to 6 Try & Buy item slots per merchant.");
         setLimitErrorModalVisible(true);
       } else {
-        console.error('Failed to add to cart:', error);
+        if (error?.response?.status !== 400) {
+          console.error('Failed to add to cart:', error);
+        }
         showToast({ message: serverMessage || 'Failed to add item to bag. Please try again.', type: 'error' });
       }
     } finally {
@@ -637,6 +654,33 @@ const ProductDetailPage = () => {
     );
     return match || availableSizes[0] || product.variants[0];
   }, [product?.variants, selectedColor, selectedSize, availableSizes]);
+
+  // Check how many of the selected variant/size are currently in user's cart
+  const currentInCartQty = useMemo(() => {
+    if (!product || !selectedSize || !activeVariant) return 0;
+    const isWh = selectedFulfillmentMode === 'flashmart';
+    const isCourier = selectedFulfillmentMode === 'courier';
+    const targetCartItems = isCourier ? (courierCart?.items || []) : (cart?.items || []);
+
+    const existing = targetCartItems.find((i: any) =>
+      String(i.productId?._id || i.productId) === String(product._id) &&
+      (String(i.variantId) === String(activeVariant._id) || i.size === selectedSize) &&
+      i.size === selectedSize &&
+      (isCourier ? true : (isWh ? i.source === 'warehouse' : i.source !== 'warehouse'))
+    );
+    return existing?.quantity || 0;
+  }, [product, selectedSize, activeVariant, selectedFulfillmentMode, courierCart?.items, cart?.items]);
+
+  const activeVariantStock = useMemo(() => {
+    if (!activeVariant) return 0;
+    if (selectedSize && activeVariant.sizes?.length) {
+      const sizeObj = activeVariant.sizes.find((s: any) => s.size === selectedSize);
+      if (sizeObj && typeof sizeObj.stock === 'number') return sizeObj.stock;
+    }
+    return activeVariant.stock ?? 0;
+  }, [activeVariant, selectedSize]);
+
+  const isMaxStockInCart = selectedSize ? (activeVariantStock > 0 && currentInCartQty >= activeVariantStock) : false;
 
   if (loading) {
     return (
@@ -1368,13 +1412,19 @@ const ProductDetailPage = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.cartBtn, (isAdding || isEntirelyOutOfStock) && { opacity: 0.8 }]}
+          style={[styles.cartBtn, (isAdding || isEntirelyOutOfStock || isMaxStockInCart) && { opacity: 0.85 }]}
           onPress={handleOpenDeliveryOptions}
           activeOpacity={0.85}
           disabled={isAdding || isEntirelyOutOfStock}
         >
           <LinearGradient
-            colors={isEntirelyOutOfStock ? ['#94A3B8', '#64748B'] : (theme.buttonGradient || BrandColors.buttonGradient)}
+            colors={
+              isEntirelyOutOfStock 
+                ? ['#94A3B8', '#64748B'] 
+                : isMaxStockInCart 
+                  ? ['#475569', '#334155'] 
+                  : (theme.buttonGradient || BrandColors.buttonGradient)
+            }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[StyleSheet.absoluteFill, { borderRadius: 14 }]}
@@ -1383,9 +1433,26 @@ const ProductDetailPage = () => {
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
             <>
-              <Ionicons name={isEntirelyOutOfStock ? "alert-circle-outline" : "bag-handle-outline"} size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Ionicons 
+                name={
+                  isEntirelyOutOfStock 
+                    ? "alert-circle-outline" 
+                    : isMaxStockInCart 
+                      ? "checkmark-circle-outline" 
+                      : "bag-handle-outline"
+                } 
+                size={18} 
+                color="#FFFFFF" 
+                style={{ marginRight: 8 }} 
+              />
               <Text style={styles.cartBtnText}>
-                {isStoreInactive ? 'STORE INACTIVE' : isEntirelyOutOfStock ? 'OUT OF STOCK' : 'ADD TO BAG'}
+                {isStoreInactive 
+                  ? 'STORE INACTIVE' 
+                  : isEntirelyOutOfStock 
+                    ? 'OUT OF STOCK' 
+                    : isMaxStockInCart 
+                      ? (activeVariantStock === 1 ? 'MAX IN BAG (1 LEFT)' : 'MAX QUANTITY IN BAG') 
+                      : 'ADD TO BAG'}
               </Text>
             </>
           )}
@@ -1645,13 +1712,18 @@ const ProductDetailPage = () => {
                 gap: 8,
                 overflow: 'hidden',
                 position: 'relative',
+                opacity: isMaxStockInCart ? 0.75 : 1,
               }}
               onPress={handleAddToCartSelectedMode}
               activeOpacity={0.85}
-              disabled={isAdding}
+              disabled={isAdding || isMaxStockInCart}
             >
               <LinearGradient
-                colors={theme.buttonGradient || BrandColors.buttonGradient}
+                colors={
+                  isMaxStockInCart 
+                    ? ['#475569', '#334155'] 
+                    : (theme.buttonGradient || BrandColors.buttonGradient)
+                }
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={StyleSheet.absoluteFill}
@@ -1660,17 +1732,23 @@ const ProductDetailPage = () => {
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <>
-                  <Ionicons name="bag-add-outline" size={18} color="#FFFFFF" />
+                  <Ionicons 
+                    name={isMaxStockInCart ? "checkmark-circle-outline" : "bag-add-outline"} 
+                    size={18} 
+                    color="#FFFFFF" 
+                  />
                   <Text
                     style={{ color: '#FFFFFF', fontSize: 14, fontFamily: Typography.fontFamily.bold, maxWidth: '85%' }}
                     numberOfLines={1}
                     ellipsizeMode="tail"
                   >
-                    {selectedFulfillmentMode === 'flashmart'
-                      ? 'Add to Warehouse Cart'
-                      : selectedFulfillmentMode === 'directStore'
-                        ? `Add to ${merchantShopName} Cart`
-                        : 'Confirm & Add to Bag'}
+                    {isMaxStockInCart
+                      ? (activeVariantStock === 1 ? 'Max in Bag (Only 1 in stock)' : `Max in Bag (${activeVariantStock} items)`)
+                      : selectedFulfillmentMode === 'flashmart'
+                        ? 'Add to Warehouse Cart'
+                        : selectedFulfillmentMode === 'directStore'
+                          ? `Add to ${merchantShopName} Cart`
+                          : 'Confirm & Add to Bag'}
                   </Text>
                 </>
               )}

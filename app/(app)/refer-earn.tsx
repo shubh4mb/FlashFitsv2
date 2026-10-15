@@ -72,7 +72,7 @@ export default function ReferAndEarnScreen() {
     if (stats?.referralCode) {
       try {
         await Share.share({
-          message: `Hey! Try FlashFits for 15-minute fashion delivery. Use my referral code ${stats.referralCode} during signup to get FREE DELIVERY on your first order! 🛍️ Download here: https://flashfits.com/app`,
+          message: `Hey! Try FlashFits for 30-minute fashion delivery. Use my referral code ${stats.referralCode} during signup to get FREE DELIVERY on your first order! 🛍️ Download here: https://flashfits.com/app`,
         });
       } catch (error) {
         console.error('Share failed:', error);

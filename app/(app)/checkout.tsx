@@ -452,12 +452,27 @@ export default function CheckoutScreen() {
         return;
       }
       const msg = error.response?.data?.message || error.message || 'Something went wrong';
+      const isStockError = 
+        error?.response?.data?.code === 'OUT_OF_STOCK' || 
+        /out of stock|insufficient stock|left in stock|available stock|no longer available/i.test(msg);
+
       if (msg.toLowerCase().includes('high traffic') || msg.toLowerCase().includes('partners are currently busy') || msg.toLowerCase().includes('riders are currently busy')) {
         showAlert({
           title: 'Riders Busy 🛵',
           message: 'All our delivery partners are currently busy in your zone. Please try placing your order again after some time.',
           type: 'warning'
         });
+      } else if (isStockError) {
+        showAlert({
+          title: 'Item Just Sold Out ⚡',
+          message: msg,
+          type: 'error',
+        });
+        if (isTB) {
+          refreshCart().catch(() => {});
+        } else {
+          refreshCourierCart().catch(() => {});
+        }
       } else {
         showToast({ message: msg, type: 'error' });
       }

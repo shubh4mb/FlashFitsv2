@@ -80,6 +80,7 @@ export const fetchFilteredProducts = async (filters: {
     subCategoryIds?: string[];
     selectedColors?: string[];
     selectedStores?: string[];
+    selectedSizes?: string[];
     sortBy?: string;
     collectionId?: string;
     lat?: number;
@@ -91,6 +92,18 @@ export const fetchFilteredProducts = async (filters: {
     } catch (error) {
     // Auth errors are ignored gracefully
         throw error;
+    }
+};
+
+/**
+ * Fetch available sizes across active inventory
+ */
+export const fetchAvailableSizes = async (): Promise<string[]> => {
+    try {
+        const res = await api.get('user/products/sizes');
+        return res.data?.sizes || [];
+    } catch (error) {
+        return [];
     }
 };
 
