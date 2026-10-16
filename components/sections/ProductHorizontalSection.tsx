@@ -103,7 +103,7 @@ const ProductHorizontalSection: React.FC<ProductHorizontalSectionProps> = ({
       isOnline={item.isOnline !== false}
       onPress={() => {
         router.push({
-          pathname: `/(app)/product/${item._id || item.id}` as any,
+          pathname: '/(app)/product/[id]' as any,
           params: { 
             id: item._id || item.id, 
             fromExplore: 'false',

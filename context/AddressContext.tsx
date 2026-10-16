@@ -7,6 +7,7 @@ import { useAuth } from "./AuthContext";
 import { Alert, Linking, Platform, AppState } from "react-native";
 
 const SELECTED_ADDRESS_KEY = 'selectedAddress';
+const MANUAL_LOCATION_KEY = 'manualLocation';
 
 interface AddressContextType {
     selectedAddress: Address | null;
@@ -17,13 +18,16 @@ interface AddressContextType {
     // Location States
     userLocation: { latitude: number; longitude: number } | null;
     locationAddress: string | null;
+    isManualLocation: boolean;
+    setManualLocation: (coords: { latitude: number; longitude: number }, addressText: string) => Promise<void>;
+    clearManualLocation: () => Promise<void>;
     deliveryAvailable: boolean | null;
     tbAvailable: boolean | null;
     tbOffline: boolean | null;
     locationPermission: Location.PermissionStatus | 'undetermined';
     locationLoading: boolean;
     isLocationOff: boolean;
-    detectLocation: (showModalOnDecision?: boolean) => Promise<void>;
+    detectLocation: (showModalOnDecision?: boolean, requestPermissionIfUndetermined?: boolean) => Promise<void>;
     requestInitialLocation: () => Promise<void>;
     enableLocation: () => Promise<boolean>;
     refreshAddresses: () => Promise<Address[]>;
@@ -41,6 +45,9 @@ const AddressContext = createContext<AddressContextType>({
     setAddresses: () => { },
     userLocation: null,
     locationAddress: null,
+    isManualLocation: false,
+    setManualLocation: async () => { },
+    clearManualLocation: async () => { },
     deliveryAvailable: null,
     tbAvailable: null,
     tbOffline: null,
@@ -80,6 +87,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
     // States
     const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
     const [locationAddress, setLocationAddress] = useState<string | null>(null);
+    const [isManualLocation, setIsManualLocation] = useState(false);
     const [deliveryAvailable, setDeliveryAvailable] = useState<boolean | null>(null);
     const [tbAvailable, setTbAvailable] = useState<boolean | null>(null);
     const [tbOffline, setTbOffline] = useState<boolean | null>(null);
@@ -92,6 +100,30 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
 
     const openAddressModal = useCallback(() => setIsAddressModalVisible(true), []);
     const closeAddressModal = useCallback(() => setIsAddressModalVisible(false), []);
+
+    const clearManualLocation = useCallback(async () => {
+        try {
+            setIsManualLocation(false);
+            await SecureStore.deleteItemAsync(MANUAL_LOCATION_KEY);
+        } catch (e) {
+            console.error('[AddressContext] Failed to clear manual location:', e);
+        }
+    }, []);
+
+    const setManualLocation = useCallback(async (coords: { latitude: number; longitude: number }, addressText: string) => {
+        try {
+            setUserLocation(coords);
+            setLocationAddress(addressText);
+            setIsManualLocation(true);
+            setIsLocationOff(false);
+            setSelectedAddressState(null);
+
+            await SecureStore.setItemAsync(MANUAL_LOCATION_KEY, JSON.stringify({ coords, addressText }));
+            await SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY);
+        } catch (e) {
+            console.error('[AddressContext] Failed to save manual location:', e);
+        }
+    }, []);
 
     const refreshAddresses = useCallback(async (): Promise<Address[]> => {
         if (!isAuthenticated) return [];
@@ -111,17 +143,18 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             setSelectedAddressState(address);
             if (address) {
                 await SecureStore.setItemAsync(SELECTED_ADDRESS_KEY, JSON.stringify(address));
+                await clearManualLocation();
             } else {
                 await SecureStore.deleteItemAsync(SELECTED_ADDRESS_KEY);
             }
         } catch (error) {
             console.error('Failed to save address to SecureStore:', error);
         }
-    }, []);
+    }, [clearManualLocation]);
 
     const hasPromptedLocationRef = useRef(false);
 
-    const detectLocation = useCallback(async (showModalOnDecision = false) => {
+    const detectLocation = useCallback(async (showModalOnDecision = false, requestPermissionIfUndetermined = false) => {
         try {
             setLocationLoading(true);
 
@@ -135,14 +168,23 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setIsLocationOff(true);
                 setLocationLoading(false);
                 await userAddressesPromise;
-                if (showModalOnDecision) {
+                // Only show modal if user explicitly triggered an address selection action (or authenticated user)
+                if (showModalOnDecision && isAuthenticated) {
                     setIsAddressModalVisible(true);
                 }
                 return;
             }
 
-            // 2. Request Foreground Permission
-            const { status } = await Location.requestForegroundPermissionsAsync();
+            // 2. Check permission status first without blindly requesting
+            const currentPerm = await Location.getForegroundPermissionsAsync();
+            let status = currentPerm.status;
+
+            if (status !== 'granted') {
+                if (requestPermissionIfUndetermined && currentPerm.canAskAgain) {
+                    const req = await Location.requestForegroundPermissionsAsync();
+                    status = req.status;
+                }
+            }
             setLocationPermission(status);
             
             if (status !== 'granted') {
@@ -150,7 +192,8 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setIsLocationOff(true);
                 setLocationLoading(false);
                 await userAddressesPromise;
-                if (showModalOnDecision) {
+                // Never force-pop address modal for guests who denied permission or are browsing
+                if (showModalOnDecision && isAuthenticated) {
                     setIsAddressModalVisible(true);
                 }
                 return;
@@ -182,7 +225,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setIsLocationOff(true);
                 setLocationLoading(false);
                 await userAddressesPromise;
-                if (showModalOnDecision) {
+                if (showModalOnDecision && isAuthenticated) {
                     setIsAddressModalVisible(true);
                 }
                 return;
@@ -243,15 +286,15 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 setLocationAddress("Current Location");
             }
 
-            // If user is guest and showModalOnDecision is true, open modal to show "Use current location" + "Login to get saved address"
-            if (!isAuthenticated && showModalOnDecision) {
+            // If user is authenticated without a saved address and showModalOnDecision is true, show modal
+            if (isAuthenticated && showModalOnDecision) {
                 setIsAddressModalVisible(true);
             }
 
         } catch (error) {
             console.error('Location detection error:', error);
             setIsLocationOff(true);
-            if (showModalOnDecision) {
+            if (showModalOnDecision && isAuthenticated) {
                 setIsAddressModalVisible(true);
             }
         } finally {
@@ -262,11 +305,28 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
     const requestInitialLocation = useCallback(async () => {
         if (hasPromptedLocationRef.current) return;
         hasPromptedLocationRef.current = true;
-        if (selectedAddress) {
-            await detectLocation(false);
+        
+        // If a saved address or manual location is already active, don't auto-request GPS
+        const savedManual = await SecureStore.getItemAsync(MANUAL_LOCATION_KEY).catch(() => null);
+        if (savedManual || selectedAddress) {
             return;
         }
-        await detectLocation(true);
+
+        try {
+            const currentPerm = await Location.getForegroundPermissionsAsync();
+            if (currentPerm.status === 'granted') {
+                // Silently fetch GPS since user previously granted permission
+                await detectLocation(false, false);
+            } else {
+                // Never prompt system permissions unprompted on startup/skip
+                setLocationPermission(currentPerm.status);
+                setIsLocationOff(true);
+                setLocationLoading(false);
+            }
+        } catch (e) {
+            console.warn('[AddressContext] requestInitialLocation check error:', e);
+            setLocationLoading(false);
+        }
     }, [detectLocation, selectedAddress]);
 
     const enableLocation = useCallback(async (): Promise<boolean> => {
@@ -349,7 +409,8 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 return false;
             }
 
-            // 3. Permission and services are active: detect coordinates
+            // 3. Permission and services are active: clear manual location & detect coordinates
+            await clearManualLocation();
             setIsLocationOff(false);
             await detectLocation();
             
@@ -362,13 +423,13 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             setLocationLoading(false);
             return false;
         }
-    }, [detectLocation, setSelectedAddress, closeAddressModal]);
+    }, [detectLocation, setSelectedAddress, closeAddressModal, clearManualLocation]);
     
     // Handle Logout / Auth State Changes (Only after initial mount)
     useEffect(() => {
         if (!initialMounted.current) return;
         if (!isAuthenticated) {
-            // Logout case: clear user account addresses, but keep device location for guest browsing
+            // Logout case: clear user account addresses, but keep device/manual location for guest browsing
             setSelectedAddressState(null);
             setAddresses([]);
             setIsAddressModalVisible(false);
@@ -379,7 +440,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         } else {
             // Only fire if user logged in AFTER initial mount has already run
             if (!selectedAddress) {
-                detectLocation(true);
+                detectLocation(true, false);
             } else {
                 refreshAddresses();
             }
@@ -396,6 +457,21 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                         setSelectedAddressState(JSON.parse(saved));
                     } catch (e) {
                         console.error('Failed to parse saved address:', e);
+                    }
+                } else {
+                    const savedManual = await SecureStore.getItemAsync(MANUAL_LOCATION_KEY);
+                    if (savedManual) {
+                        try {
+                            const parsed = JSON.parse(savedManual);
+                            if (parsed?.coords) {
+                                setUserLocation(parsed.coords);
+                                setLocationAddress(parsed.addressText || 'Selected Location');
+                                setIsManualLocation(true);
+                                setIsLocationOff(false);
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse saved manual location:', e);
+                        }
                     }
                 }
             } catch (e) {
@@ -471,6 +547,9 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         setAddresses,
         userLocation,
         locationAddress,
+        isManualLocation,
+        setManualLocation,
+        clearManualLocation,
         deliveryAvailable,
         tbAvailable,
         tbOffline,
@@ -490,6 +569,9 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         addresses,
         userLocation,
         locationAddress,
+        isManualLocation,
+        setManualLocation,
+        clearManualLocation,
         deliveryAvailable,
         tbAvailable,
         tbOffline,

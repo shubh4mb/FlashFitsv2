@@ -487,9 +487,9 @@ export default function MainHeader({
                                     ? `${capitalize(selectedAddress.addressType)} - ${selectedAddress.addressLine1}`
                                     : locationLoading
                                         ? 'Fetching your location...'
-                                        : isLocationOff || locationPermission !== 'granted'
+                                        : (locationAddress || (isLocationOff || locationPermission !== 'granted'
                                             ? 'Select delivery location'
-                                            : (locationAddress || 'Tap to select delivery location')}
+                                            : 'Tap to select delivery location'))}
                             </Text>
                         </View>
                         <Ionicons name="chevron-down" size={16} color={theme.text} style={{ marginLeft: 6 }} pointerEvents="none" />
@@ -628,13 +628,6 @@ export default function MainHeader({
                             <Text style={styles.staticSearchText}> at your Home! </Text>
 
                         </View>
-                        {hasCampaign && activeCampaign?.badgeText ? (
-                            <View style={[styles.campaignSearchBadge, { backgroundColor: campaignTheme?.bgGradientEnd || '#FEF3C7' }]}>
-                                <Text style={[styles.campaignSearchBadgeText, { color: campaignTheme?.textColor || '#78350F' }]}>
-                                    {activeCampaign.badgeText}
-                                </Text>
-                            </View>
-                        ) : null}
                     </TouchableOpacity>
 
                     {/* ── Compact & Professional Gender Switcher ── */}

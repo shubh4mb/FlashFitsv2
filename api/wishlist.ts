@@ -40,7 +40,17 @@ export const getMyWishlistIds = async () => {
         const res = await api.get('user/wishlist/ids');
         return res.data;
     } catch (error) {
-    // Auth errors are ignored gracefully
+        // Auth errors are ignored gracefully
         throw error;
     }
 };
+
+export const syncWishlistApi = async (items: { productId: string; variantId: string }[]) => {
+    try {
+        const res = await api.post('user/wishlist/sync', { items });
+        return res.data;
+    } catch (error) {
+        throw error;
+    }
+};
+

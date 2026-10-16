@@ -21,7 +21,7 @@ const AddressSelectionModal = forwardRef((props: AddressSelectionModalProps, ref
 
     const handleAddNewAddress = () => {
         ref.current?.close();
-        router.push('/(app)/select-location');
+        router.push({ pathname: '/(app)/select-location', params: { mode: 'add_address' } } as any);
     };
 
     const renderAddressItem = ({ item }: { item: Address }) => {

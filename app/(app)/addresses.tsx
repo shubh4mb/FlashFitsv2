@@ -221,7 +221,7 @@ const AddressesScreen = () => {
               });
               return;
             }
-            router.push('/(app)/select-location' as any);
+            router.push({ pathname: '/(app)/select-location', params: { mode: 'add_address' } } as any);
           }}
         >
           <Ionicons name="add" size={24} color="#fff" />

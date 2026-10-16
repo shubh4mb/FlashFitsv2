@@ -1,14 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   addToWishlist, 
   removeFromWishlist, 
   getMyWishlistIds, 
-  getMyWishlist 
+  getMyWishlist,
+  syncWishlistApi
 } from '../api/wishlist';
 import { useAuth } from './AuthContext';
-import { useAlert } from './AlertContext';
-import { useRouter } from 'expo-router';
+
+const GUEST_WISHLIST_KEY = '@flashfits_guest_wishlist';
 
 interface WishlistItem {
   productId: string;
@@ -29,13 +31,30 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 export const WishlistProvider = ({ children }: { children: ReactNode }) => {
   const [wishlistIds, setWishlistIds] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const { isAuthenticated, setReturnUrl } = useAuth();
-  const showAlert = useAlert();
-  const router = useRouter();
+  const { isAuthenticated } = useAuth();
+
+  const loadGuestWishlist = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(GUEST_WISHLIST_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setWishlistIds(parsed);
+          return;
+        }
+      }
+      setWishlistIds([]);
+    } catch (e) {
+      console.warn('Failed to load guest wishlist:', e);
+      setWishlistIds([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const fetchIds = useCallback(async () => {
     if (!isAuthenticated) {
-      setLoading(false);
+      await loadGuestWishlist();
       return;
     }
     try {
@@ -56,16 +75,50 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadGuestWishlist]);
 
+  // Sync Guest Wishlist on Login, or fetch on mount / auth change
   useEffect(() => {
-    if (!isAuthenticated) {
-      setWishlistIds([]);
-      setLoading(false);
+    if (isAuthenticated) {
+      const syncGuestWishlist = async () => {
+        try {
+          const stored = await AsyncStorage.getItem(GUEST_WISHLIST_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const itemsToSync = parsed.map(item => ({
+                productId: String(item.productId),
+                variantId: String(item.variantId)
+              })).filter(i => i.productId && i.variantId);
+
+              if (itemsToSync.length > 0) {
+                try {
+                  await syncWishlistApi(itemsToSync);
+                } catch (err) {
+                  // Fallback: sync one by one if batch sync endpoint fails
+                  for (const itm of itemsToSync) {
+                    try {
+                      await addToWishlist(itm.productId, itm.variantId);
+                    } catch (e) {
+                      // Ignore duplicate / individual errors
+                    }
+                  }
+                }
+              }
+              await AsyncStorage.removeItem(GUEST_WISHLIST_KEY);
+            }
+          }
+        } catch (e) {
+          console.error('Error syncing guest wishlist on login:', e);
+        } finally {
+          fetchIds();
+        }
+      };
+      syncGuestWishlist();
     } else {
-      fetchIds();
+      loadGuestWishlist();
     }
-  }, [isAuthenticated, fetchIds]);
+  }, [isAuthenticated, fetchIds, loadGuestWishlist]);
 
   // Fast O(1) lookup set for ProductCards
   const wishlistKeySet = useMemo(() => {
@@ -94,28 +147,6 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
     // 1. Haptic Feedback immediately
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    if (!isAuthenticated) {
-      const returnUrl = `/(app)/product/${productId}`;
-      showAlert({
-        title: 'Sign In Required',
-        message: 'Please sign in or create an account to save items to your wishlist.',
-        buttons: [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Sign In',
-            onPress: () => {
-              setReturnUrl(returnUrl);
-              router.push({
-                pathname: '/(auth)',
-                params: { returnUrl },
-              });
-            },
-          },
-        ],
-      });
-      return;
-    }
-
     const pId = String(productId);
     const vId = String(variantId);
 
@@ -126,7 +157,24 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
 
     const wasInWishlist = !!existingItem;
 
-    // 2. Optimistic Update (always remove existing entries for this productId to avoid duplicates)
+    // 2. Guest User Flow: Save to AsyncStorage
+    if (!isAuthenticated) {
+      let updatedList: WishlistItem[];
+      if (wasInWishlist) {
+        updatedList = wishlistIds.filter(item => String(item.productId) !== pId);
+      } else {
+        updatedList = [...wishlistIds.filter(item => String(item.productId) !== pId), { productId: pId, variantId: vId }];
+      }
+      setWishlistIds(updatedList);
+      try {
+        await AsyncStorage.setItem(GUEST_WISHLIST_KEY, JSON.stringify(updatedList));
+      } catch (err) {
+        console.error('Failed to save guest wishlist item:', err);
+      }
+      return;
+    }
+
+    // 3. Authenticated User Flow: Optimistic Update + API Call
     if (wasInWishlist) {
       setWishlistIds(prev => prev.filter(item => String(item.productId) !== pId));
     } else {
@@ -152,7 +200,7 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error: any) {
       console.error(`Wishlist toggle failed for Product: ${productId}, Variant: ${variantId}`, error);
-      // 3. Revert on error
+      // Revert on error
       if (wasInWishlist) {
         setWishlistIds(prev => [...prev.filter(item => String(item.productId) !== pId), existingItem!]);
       } else {
@@ -160,7 +208,8 @@ export const WishlistProvider = ({ children }: { children: ReactNode }) => {
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
-  }, [wishlistIds, isAuthenticated, showAlert, router]);
+  }, [wishlistIds, isAuthenticated]);
+
 
   const contextValue = useMemo(() => ({
     wishlistIds,

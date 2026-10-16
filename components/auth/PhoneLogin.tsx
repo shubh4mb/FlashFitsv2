@@ -31,6 +31,7 @@ import {
 } from "../../api/auth";
 import logo from "../../assets/images/logo/logo.png";
 import { useAuth } from "../../context/AuthContext";
+import { useAddress } from "../../context/AddressContext";
 import { BrandColors } from "../../constants/theme";
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import { GOOGLE_AUTH_CONFIG } from "../../config/auth";
@@ -169,10 +170,14 @@ interface PhoneLoginProps {
 export default function PhoneLogin({ returnUrl }: PhoneLoginProps = {}) {
   const router = useRouter();
   const { signIn, returnUrl: contextReturnUrl, setReturnUrl } = useAuth();
+  const { openAddressModal, selectedAddress, userLocation } = useAddress();
   const effectiveReturnUrl = returnUrl || contextReturnUrl;
   const insets = useSafeAreaInsets();
 
   const handleExitAuth = () => {
+    // If user has not selected an address and has no location yet, present the location modal after navigation
+    const shouldPromptLocation = !selectedAddress && !userLocation;
+
     if (effectiveReturnUrl) {
       setReturnUrl(null);
       if (effectiveReturnUrl.includes('?')) {
@@ -190,6 +195,12 @@ export default function PhoneLogin({ returnUrl }: PhoneLoginProps = {}) {
       router.back();
     } else {
       router.replace('/(app)/(tabs)');
+    }
+
+    if (shouldPromptLocation) {
+      setTimeout(() => {
+        openAddressModal();
+      }, 450);
     }
   };
 

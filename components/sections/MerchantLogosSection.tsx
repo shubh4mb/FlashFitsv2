@@ -79,7 +79,7 @@ export default function MerchantLogosSection({
   const { userLocation, selectedAddress, locationPermission } = useAddress();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
-  const hasLocation = Boolean(selectedAddress || (userLocation && locationPermission === 'granted'));
+  const hasLocation = Boolean(selectedAddress || userLocation);
 
   const [merchants, setMerchants] = useState<Merchant[]>(initialMerchants || []);
   const [loading, setLoading] = useState(!initialMerchants);

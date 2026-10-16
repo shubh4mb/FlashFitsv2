@@ -52,7 +52,7 @@ export default function MerchantDetailScreen() {
 
   const { selectedGender, setSelectedGender } = useGender();
   const { selectedAddress, userLocation, locationPermission } = useAddress();
-  const hasLocation = Boolean(selectedAddress || (userLocation && locationPermission === 'granted'));
+  const hasLocation = Boolean(selectedAddress || userLocation);
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
 
   const [loading, setLoading] = useState(true);

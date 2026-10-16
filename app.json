@@ -2,7 +2,7 @@
   "expo": {
     "name": "FlashFits",
     "slug": "FlashFits",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flashfits",
@@ -33,7 +33,7 @@
       }
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#3CDCF4",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -118,7 +118,6 @@
       "reactCompiler": false
     },
     "extra": {
-      // "BACKEND_URL": "http://192.168.29.230:5000",
       "BACKEND_URL": "https://api.theflashfits.com",
       "CARTO_BASEMAP_KEY": "cb1_4fv4_1_1edec64bef590f4afb83cafc",
       "router": {},

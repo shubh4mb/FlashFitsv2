@@ -8,6 +8,7 @@ import { useGender } from '@/context/GenderContext';
 import { GenderThemes, BrandColors } from '@/constants/theme';
 import { joinOrderRoom, listenOrderUpdates, removeOrderListeners } from '@/sockets/order.socket';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '@/context/AuthContext';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -117,6 +118,7 @@ export default function ActiveOrderBanner() {
   const router = useRouter();
   const pathname = usePathname();
   const { selectedGender } = useGender();
+  const { isAuthenticated } = useAuth();
   const theme = GenderThemes[selectedGender] || GenderThemes.Men;
   const insets = useSafeAreaInsets();
 
@@ -130,6 +132,10 @@ export default function ActiveOrderBanner() {
   };
 
   const fetchOrders = useCallback(async () => {
+    if (!isAuthenticated) {
+      setActiveOrders([]);
+      return;
+    }
     try {
       const ordersRes: any = await getAllOrders();
       const orders = Array.isArray(ordersRes) ? ordersRes : ordersRes?.orders || [];
@@ -145,7 +151,7 @@ export default function ActiveOrderBanner() {
     } catch (err) {
       console.log('Error fetching active orders for banner', err);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   // Re-fetch whenever user navigates between screens or returns from a child screen
   useEffect(() => {
@@ -166,6 +172,8 @@ export default function ActiveOrderBanner() {
 
   // Primary active lifecycle: polling & real-time socket events with instant optimistic drop
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     fetchOrders();
     const interval = setInterval(fetchOrders, 15000);
 
@@ -209,7 +217,7 @@ export default function ActiveOrderBanner() {
         unsubscribe();
       }
     };
-  }, [fetchOrders]);
+  }, [fetchOrders, isAuthenticated]);
 
   const toggleExpanded = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);

@@ -238,7 +238,7 @@ export default function MerchantMoreProducts({
             isOnline={isOnline !== false && item.isOnline !== false}
             onPress={() => {
               router.push({
-                pathname: `/(app)/product/${item._id || item.id}` as any,
+                pathname: '/(app)/product/[id]' as any,
                 params: {
                   id: item._id || item.id,
                   fromStore: 'true',

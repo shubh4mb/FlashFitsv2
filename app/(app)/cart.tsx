@@ -972,7 +972,7 @@ export default function CartScreen() {
                           </View>
                         )}
 
-                        {/* Delivery Address Header Card */}
+                        {/* Delivery Address & Live Delivery Estimate Header Card */}
                         <TouchableOpacity
                           style={[
                             styles.addressHeaderCard,
@@ -984,21 +984,31 @@ export default function CartScreen() {
                           <View style={styles.addressHeaderLeft}>
                             <View style={[
                               styles.addressIconCircle,
-                              { backgroundColor: selectedAddress ? '#F1F5F9' : '#FEF3C7' }
+                              { backgroundColor: selectedAddress ? '#DCFCE7' : '#FEF3C7' }
                             ]}>
                               <Ionicons
-                                name="location"
+                                name={selectedAddress ? "flash" : "location"}
                                 size={18}
-                                color={selectedAddress ? '#0F172A' : '#D97706'}
+                                color={selectedAddress ? '#10B981' : '#D97706'}
                               />
                             </View>
                             <View style={{ flex: 1 }}>
-                              <Text style={[
-                                styles.addressSubHeader,
-                                !selectedAddress && { color: '#B45309' }
-                              ]}>
-                                {selectedAddress ? 'Delivering Try & Buy to' : 'Delivery Address'}
-                              </Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <Text style={[
+                                  styles.addressSubHeader,
+                                  selectedAddress && { color: '#166534', fontWeight: '700' },
+                                  !selectedAddress && { color: '#B45309' }
+                                ]}>
+                                  {selectedAddress
+                                    ? `Delivery in ~${deliveryEstimate.estimatedTime} mins`
+                                    : 'Delivery Address'}
+                                </Text>
+                                {selectedAddress && deliveryEstimate.distanceText && (
+                                  <View style={styles.distanceBadge}>
+                                    <Text style={styles.distanceBadgeText}>{deliveryEstimate.distanceText} away</Text>
+                                  </View>
+                                )}
+                              </View>
                               <Text
                                 style={[
                                   styles.addressMainText,
@@ -1031,50 +1041,6 @@ export default function CartScreen() {
                             />
                           </View>
                         </TouchableOpacity>
-
-                        {/* Estimated Delivery Time Card (Based on Distance & Address) */}
-                        {!selectedAddress ? (
-                          <TouchableOpacity
-                            style={styles.deliveryEstimateBannerPrompt}
-                            activeOpacity={0.8}
-                            onPress={() => setModalVisible(true)}
-                          >
-                            <View style={styles.deliveryEstimateIconWrapAmber}>
-                              <Ionicons name="time-outline" size={18} color="#D97706" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.deliveryEstimateTitleAmber}>Estimated Delivery Time</Text>
-                              <Text style={styles.deliveryEstimateSubAmber}>
-                                Select address to get estimated delivery time
-                              </Text>
-                            </View>
-                            <View style={styles.deliveryEstimateSelectBtn}>
-                              <Text style={styles.deliveryEstimateSelectBtnText}>Select</Text>
-                              <Ionicons name="chevron-forward" size={12} color="#B45309" />
-                            </View>
-                          </TouchableOpacity>
-                        ) : (
-                          <View style={styles.deliveryEstimateBanner}>
-                            <View style={styles.deliveryEstimateIconWrapGreen}>
-                              <Ionicons name="flash" size={16} color="#10B981" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                <Text style={styles.deliveryEstimateTitle}>
-                                  Delivery in ~{deliveryEstimate.estimatedTime} mins
-                                </Text>
-                                {deliveryEstimate.distanceText && (
-                                  <View style={styles.distanceBadge}>
-                                    <Text style={styles.distanceBadgeText}>{deliveryEstimate.distanceText} away</Text>
-                                  </View>
-                                )}
-                              </View>
-                              <Text style={styles.deliveryEstimateSub}>
-                                Live estimate based on distance from store • Try before paying
-                              </Text>
-                            </View>
-                          </View>
-                        )}
 
                         {/* Multi-Store Slide Navigation Quick Bar */}
                         {merchantCarts.length > 1 && (
@@ -1624,7 +1590,27 @@ export default function CartScreen() {
                 </View>
               )}
 
-              {!selectedAddress ? (
+              {!isAuthenticated ? (
+                <TouchableOpacity
+                  style={[
+                    styles.checkoutBtn,
+                    { backgroundColor: theme.primary, flex: 1, justifyContent: 'center' }
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    setReturnUrl('/(app)/cart');
+                    router.push({
+                      pathname: '/(auth)',
+                      params: { returnUrl: '/(app)/cart' },
+                    });
+                  }}
+                >
+                  <Text style={[styles.checkoutBtnText, { textAlign: 'center', fontFamily: Typography.fontFamily.bold }]}>
+                    Login to Place Order
+                  </Text>
+                  <Feather name="arrow-right" size={20} color="#fff" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              ) : !selectedAddress ? (
                 <TouchableOpacity
                   style={[
                     styles.checkoutBtn,
@@ -1701,7 +1687,11 @@ export default function CartScreen() {
         </View>
       )}
 
-      <AddressSelectorModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+      <AddressSelectorModal 
+        visible={modalVisible} 
+        onClose={() => setModalVisible(false)} 
+        requireAddressOnly={true}
+      />
 
       <RazorpayWebView
         visible={showRazorpay}

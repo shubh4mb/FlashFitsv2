@@ -151,6 +151,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
 
     // Exit animation & trigger onFinish
     const exitTimer = setTimeout(() => {
+      setIsExiting(true);
       mainExitOpacity.value = withTiming(0, { duration: 500 }, (finished) => {
         if (finished) {
           runOnJS(handleFinish)();
@@ -194,8 +195,13 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
     opacity: mainExitOpacity.value,
   }));
 
+  const [isExiting, setIsExiting] = React.useState(false);
+
   return (
-    <Animated.View style={[styles.fullScreen, mainWrapperStyle]}>
+    <Animated.View
+      pointerEvents={isExiting ? 'none' : 'auto'}
+      style={[styles.fullScreen, mainWrapperStyle]}
+    >
       {/* Reference Image Signature Palette: Cyan, Sky Luminous, Electric Glow, & Deep Ocean */}
       {/* Layer 1: Primary Diagonal Fluid Flow matching the image background */}
       <LinearGradient

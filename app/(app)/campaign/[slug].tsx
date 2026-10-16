@@ -152,9 +152,11 @@ export default function CampaignScreen() {
   const bannerUrl = campaign?.banner?.imageUrl || campaign?.heroBanner?.imageUrl;
 
   const subCurations = useMemo(() => {
-    const list = [{ id: 'all', label: 'All Fits' }];
+    const list: { id: string; label: string; [key: string]: any }[] = [{ id: 'all', label: 'All Fits' }];
     if (campaign?.subCurations && Array.isArray(campaign.subCurations)) {
-      list.push(...campaign.subCurations);
+      // Exclude any subCuration that already has id === 'all' to avoid duplicates
+      const filtered = campaign.subCurations.filter((s: any) => s && s.id !== 'all');
+      list.push(...filtered);
     }
     return list;
   }, [campaign?.subCurations]);
@@ -292,11 +294,11 @@ export default function CampaignScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.subTabsContainer}
             >
-              {subCurations.map((tab) => {
+              {subCurations.map((tab, idx) => {
                 const isSelected = activeSubTab === tab.id;
                 return (
                   <TouchableOpacity
-                    key={tab.id}
+                    key={`${tab.id || 'tab'}-${idx}`}
                     onPress={() => handleSubTabChange(tab.id)}
                     style={[
                       styles.subTabPill,
@@ -376,7 +378,7 @@ export default function CampaignScreen() {
                     isOnline={item.isOnline !== false}
                     onPress={() => {
                       router.push({
-                        pathname: `/(app)/product/${item._id || item.id}` as any,
+                        pathname: '/(app)/product/[id]' as any,
                         params: { 
                           id: item._id || item.id, 
                           fromExplore: (item.isInstantBuyable || item.isNearby) ? 'false' : 'true',

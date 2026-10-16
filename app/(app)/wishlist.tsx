@@ -1,5 +1,5 @@
 import { getMyWishlist } from '@/api/wishlist';
-import { fetchRecommendedProductsData, fetchTrendingProductsData } from '@/api/products';
+import { fetchRecommendedProductsData, fetchTrendingProductsData, productDetailPage } from '@/api/products';
 import ProductCard from '@/components/common/ProductCard';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
@@ -68,15 +68,36 @@ export default function StandaloneWishlistScreen() {
 
   // ── Fetch Full Wishlist ──
   const fetchFullWishlist = async () => {
-    if (!isAuthenticated) {
-      setWishlistItems([]);
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
     try {
       const lat = selectedAddress?.location?.coordinates?.[1] ?? userLocation?.latitude;
       const lng = selectedAddress?.location?.coordinates?.[0] ?? userLocation?.longitude;
+
+      if (!isAuthenticated) {
+        if (!wishlistIds || wishlistIds.length === 0) {
+          setWishlistItems([]);
+          return;
+        }
+        // Fetch product details for guest items in parallel
+        const fetchedItems = await Promise.all(
+          wishlistIds.map(async (item) => {
+            try {
+              const res = await productDetailPage(String(item.productId), lat, lng);
+              const p = res?.data || res;
+              if (!p) return null;
+              return {
+                ...p,
+                variantId: item.variantId,
+                wishlistItemId: item.productId,
+              };
+            } catch (err) {
+              return null;
+            }
+          })
+        );
+        setWishlistItems(fetchedItems.filter(Boolean));
+        return;
+      }
+
       const response = await getMyWishlist(lat, lng);
       const items = response?.wishlist || [];
 
@@ -215,12 +236,12 @@ export default function StandaloneWishlistScreen() {
                 <Ionicons name="heart-outline" size={54} color={theme.primary} />
               </View>
               <ThemedText type="subtitle" style={styles.emptyTitle}>
-                {isAuthenticated ? 'Your wishlist is empty' : 'Sign in to save favorites'}
+                Your wishlist is empty
               </ThemedText>
               <ThemedText style={styles.emptyText}>
                 {isAuthenticated
                   ? 'Explore suggested styles below and tap the heart icon to save your favorite fits!'
-                  : 'Explore suggested styles below and sign in to keep your favorites synced across devices.'}
+                  : 'Explore suggested styles below and tap the heart icon to save items. Sign in anytime to sync across devices.'}
               </ThemedText>
             </View>
           ) : (

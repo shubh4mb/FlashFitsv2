@@ -564,7 +564,7 @@ export default function CheckoutScreen() {
           {!chosenAddress && (
             <TouchableOpacity
               style={[styles.addAddressMainBtn, { backgroundColor: theme.primary }]}
-              onPress={() => router.push('/select-location' as any)}
+              onPress={() => router.push({ pathname: '/(app)/select-location', params: { mode: 'add_address' } } as any)}
             >
               <Ionicons name="add" size={20} color="#fff" />
               <Text style={styles.addAddressMainText}>Add Delivery Address</Text>
@@ -960,6 +960,7 @@ export default function CheckoutScreen() {
       <AddressSelectorModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
+        requireAddressOnly={true}
       />
 
       <RazorpayWebView

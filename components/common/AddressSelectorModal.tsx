@@ -25,9 +25,10 @@ import { useAlert } from '@/context/AlertContext';
 interface AddressSelectorModalProps {
   visible?: boolean;
   onClose?: () => void;
+  requireAddressOnly?: boolean;
 }
 
-const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) => {
+const AddressSelectorModal = ({ visible, onClose, requireAddressOnly = false }: AddressSelectorModalProps) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { selectedGender } = useGender();
@@ -42,6 +43,7 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
     refreshAddresses,
     userLocation,
     locationAddress,
+    isManualLocation,
     locationLoading,
     locationPermission,
     isLocationOff,
@@ -138,11 +140,15 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
     }
     handleClose();
     setTimeout(() => {
-      router.push('/(app)/select-location' as any);
+      router.push({
+        pathname: '/(app)/select-location',
+        params: { mode: 'add_address' }
+      } as any);
     }, 300);
   };
 
-  const isCurrentLocationSelected = !selectedAddress && !!userLocation && !isLocationOff;
+  const isCurrentLocationSelected = !selectedAddress && !!userLocation && !isLocationOff && !isManualLocation;
+  const isManualLocationSelected = !selectedAddress && !!userLocation && isManualLocation;
 
   const renderAddressItem = ({ item }: { item: Address }) => {
     const isSelected = selectedAddress?._id === item._id;
@@ -188,22 +194,35 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
   };
 
   return (
-    <Modal visible={isVisible} transparent animationType="slide" onRequestClose={handleClose}>
-      <TouchableWithoutFeedback onPress={handleClose}>
-        <View style={styles.overlay}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-              {/* Handle Bar */}
-              <View style={styles.handleBar} />
+    <Modal
+      visible={isVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={handleClose}
+      statusBarTranslucent
+    >
+      <View style={styles.overlay}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={handleClose}
+        />
+        <View style={[styles.bottomSheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+          {/* Handle Bar */}
+          <View style={styles.handleBar} />
 
-              {/* Modal Header */}
-              <View style={styles.header}>
-                <View>
-                  <Text style={styles.headerTitle}>Select Delivery Location</Text>
+          {/* Modal Header */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.headerTitle}>
+                {requireAddressOnly ? 'Select Delivery Address' : 'Select Delivery Location'}
+              </Text>
                   <Text style={styles.headerSubtitle}>
-                    {isLocationOff 
-                      ? 'Location is off. Choose an address or enable GPS.'
-                      : 'Choose your delivery location'}
+                    {requireAddressOnly
+                      ? 'Choose a saved address for delivery'
+                      : isLocationOff 
+                        ? 'Location is off. Choose an address or enable GPS.'
+                        : 'Choose your delivery location'}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -211,64 +230,127 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
                 </TouchableOpacity>
               </View>
 
-              {/* ── Option 1: Current Location Card with Enable Button ── */}
-              <TouchableOpacity
-                style={[
-                  styles.currentLocationCard,
-                  isCurrentLocationSelected && { borderColor: theme.primary, backgroundColor: theme.primary + '08' },
-                  isLocationOff && styles.currentLocationCardOff,
-                ]}
-                activeOpacity={0.8}
-                onPress={handleSelectCurrentLocation}
-              >
-                <View style={styles.currentLocationContent}>
-                  <View style={[
-                    styles.currentLocationIconBox, 
-                    { backgroundColor: isLocationOff ? '#FEE2E2' : theme.primary + '15' }
-                  ]}>
-                    <Ionicons 
-                      name={isLocationOff ? "location-outline" : "navigate"} 
-                      size={20} 
-                      color={isLocationOff ? '#EF4444' : theme.primary} 
-                    />
-                  </View>
-                  <View style={styles.currentLocationTextWrapper}>
-                    <Text style={[styles.currentLocationTitle, { color: theme.primary }]}>
-                      Use my current location
-                    </Text>
-                    <Text style={styles.currentLocationDesc} numberOfLines={1}>
-                      {locationLoading || enablingLocation
-                        ? 'Detecting your location...'
-                        : isLocationOff || locationPermission !== 'granted'
-                          ? 'Location is turned off on your device'
-                          : locationAddress || 'Current device location'}
-                    </Text>
-                  </View>
-                </View>
+              {/* ── Why we need location message ── */}
+              <View style={styles.rationaleCard}>
+                <Ionicons name="information-circle-outline" size={16} color="#64748B" style={{ marginRight: 8, marginTop: 1 }} />
+                <Text style={styles.rationaleText}>
+                  We use your location to show available fashion items and deliver within 30 minutes in your area.
+                </Text>
+              </View>
 
-                {/* Enable Button if location is off / not granted */}
-                {(isLocationOff || locationPermission !== 'granted' || !userLocation) ? (
-                  <TouchableOpacity
-                    style={[styles.enableButton, { backgroundColor: theme.primary }]}
-                    activeOpacity={0.8}
-                    onPress={handleEnableLocation}
-                    disabled={enablingLocation || locationLoading}
-                  >
-                    {enablingLocation || locationLoading ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <>
-                        <Ionicons name="flash-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                        <Text style={styles.enableButtonText}>Enable</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                ) : (
-                  <View style={[styles.selectionCircle, isCurrentLocationSelected && { borderColor: theme.primary }]}>
-                    {isCurrentLocationSelected && <View style={[styles.selectionDot, { backgroundColor: theme.primary }]} />}
+              {/* ── Option 1: Current Location Card with Enable Button (Only when not address-only) ── */}
+              {!requireAddressOnly && (
+                <TouchableOpacity
+                  style={[
+                    styles.currentLocationCard,
+                    isCurrentLocationSelected && { borderColor: theme.primary, backgroundColor: theme.primary + '08' },
+                    isLocationOff && styles.currentLocationCardOff,
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={handleSelectCurrentLocation}
+                >
+                  <View style={styles.currentLocationContent}>
+                    <View style={[
+                      styles.currentLocationIconBox, 
+                      { backgroundColor: isLocationOff ? '#FEE2E2' : theme.primary + '15' }
+                    ]}>
+                      <Ionicons 
+                        name={isLocationOff ? "location-outline" : "navigate"} 
+                        size={20} 
+                        color={isLocationOff ? '#EF4444' : theme.primary} 
+                      />
+                    </View>
+                    <View style={styles.currentLocationTextWrapper}>
+                      <Text style={[styles.currentLocationTitle, { color: theme.primary }]}>
+                        Use my current location
+                      </Text>
+                      <Text style={styles.currentLocationDesc} numberOfLines={1}>
+                        {locationLoading || enablingLocation
+                          ? 'Detecting your location...'
+                          : isLocationOff || locationPermission !== 'granted'
+                            ? 'Location is turned off on your device'
+                            : locationAddress || 'Current device location'}
+                      </Text>
+                    </View>
                   </View>
-                )}
-              </TouchableOpacity>
+
+                  {/* Enable Button if location is off / not granted */}
+                  {(isLocationOff || locationPermission !== 'granted' || !userLocation) ? (
+                    <TouchableOpacity
+                      style={[styles.enableButton, { backgroundColor: theme.primary }]}
+                      activeOpacity={0.8}
+                      onPress={handleEnableLocation}
+                      disabled={enablingLocation || locationLoading}
+                    >
+                      {enablingLocation || locationLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Ionicons name="flash-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                          <Text style={styles.enableButtonText}>Enable</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={[styles.selectionCircle, isCurrentLocationSelected && { borderColor: theme.primary }]}>
+                      {isCurrentLocationSelected && <View style={[styles.selectionDot, { backgroundColor: theme.primary }]} />}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {/* ── Option 1B: Select / Enter Location on Map (Manual entry for everyone) ── */}
+              {!requireAddressOnly && (
+                <TouchableOpacity
+                  style={[
+                    styles.currentLocationCard,
+                    isManualLocationSelected && { borderColor: theme.primary, backgroundColor: theme.primary + '08' },
+                    { marginTop: 10 }
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    handleClose();
+                    setTimeout(() => {
+                      router.push({
+                        pathname: '/(app)/select-location',
+                        params: { mode: 'delivery_location' }
+                      } as any);
+                    }, 250);
+                  }}
+                >
+                  <View style={styles.currentLocationContent}>
+                    <View style={[
+                      styles.currentLocationIconBox, 
+                      { backgroundColor: isManualLocationSelected ? theme.primary + '15' : '#F1F5F9' }
+                    ]}>
+                      <Ionicons 
+                        name="map-outline" 
+                        size={20} 
+                        color={isManualLocationSelected ? theme.primary : '#0F172A'} 
+                      />
+                    </View>
+                    <View style={styles.currentLocationTextWrapper}>
+                      <Text style={[styles.currentLocationTitle, isManualLocationSelected && { color: theme.primary }]}>
+                        {isManualLocationSelected ? 'Manual Delivery Location' : 'Select Location on Map'}
+                      </Text>
+                      <Text style={styles.currentLocationDesc} numberOfLines={1}>
+                        {isManualLocationSelected && locationAddress
+                          ? locationAddress
+                          : 'Search area or pinpoint on map'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {isManualLocationSelected ? (
+                    <View style={[styles.selectionCircle, { borderColor: theme.primary }]}>
+                      <View style={[styles.selectionDot, { backgroundColor: theme.primary }]} />
+                    </View>
+                  ) : (
+                    <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                  )}
+                </TouchableOpacity>
+              )}
 
               {/* ── Option 2: Saved Addresses or Guest Login Prompt ── */}
               <View style={styles.listContainer}>
@@ -279,26 +361,51 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
                 </View>
 
                 {!isAuthenticated ? (
-                  <View style={styles.guestLoginCard}>
-                    <View style={styles.guestLoginContent}>
-                      <View style={[styles.guestLoginIconBox, { backgroundColor: theme.primary + '12' }]}>
-                        <Ionicons name="bookmark-outline" size={20} color={theme.primary} />
+                  <View style={{ gap: 8 }}>
+                    <View style={styles.guestLoginCard}>
+                      <View style={styles.guestLoginContent}>
+                        <View style={[styles.guestLoginIconBox, { backgroundColor: theme.primary + '12' }]}>
+                          <Ionicons name="bookmark-outline" size={20} color={theme.primary} />
+                        </View>
+                        <View style={styles.guestLoginTextWrapper}>
+                          <Text style={styles.guestLoginTitle}>Access Your Saved Places</Text>
+                          <Text style={styles.guestLoginSubtitle}>Login to get saved address</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.guestLoginBtn, { backgroundColor: theme.primary }]}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            handleClose();
+                            setReturnUrl('/(app)/addresses');
+                            router.push({ pathname: '/(auth)', params: { returnUrl: '/(app)/addresses' } });
+                          }}
+                        >
+                          <Text style={styles.guestLoginBtnText}>Login</Text>
+                        </TouchableOpacity>
                       </View>
-                      <View style={styles.guestLoginTextWrapper}>
-                        <Text style={styles.guestLoginTitle}>Access Your Saved Places</Text>
-                        <Text style={styles.guestLoginSubtitle}>Login to get saved address</Text>
+                    </View>
+
+                    <View style={styles.guestLoginCard}>
+                      <View style={styles.guestLoginContent}>
+                        <View style={[styles.guestLoginIconBox, { backgroundColor: '#10B98115' }]}>
+                          <Ionicons name="add-circle-outline" size={20} color="#10B981" />
+                        </View>
+                        <View style={styles.guestLoginTextWrapper}>
+                          <Text style={styles.guestLoginTitle}>Add New Address</Text>
+                          <Text style={styles.guestLoginSubtitle}>Login to add address</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.guestLoginBtn, { backgroundColor: '#0F172A' }]}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            handleClose();
+                            setReturnUrl('/(app)/addresses');
+                            router.push({ pathname: '/(auth)', params: { returnUrl: '/(app)/addresses' } });
+                          }}
+                        >
+                          <Text style={styles.guestLoginBtnText}>Login</Text>
+                        </TouchableOpacity>
                       </View>
-                      <TouchableOpacity
-                        style={[styles.guestLoginBtn, { backgroundColor: theme.primary }]}
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          handleClose();
-                          setReturnUrl('/(app)/addresses');
-                          router.push({ pathname: '/(auth)', params: { returnUrl: '/(app)/addresses' } });
-                        }}
-                      >
-                        <Text style={styles.guestLoginBtnText}>Login</Text>
-                      </TouchableOpacity>
                     </View>
                   </View>
                 ) : loading ? (
@@ -374,9 +481,7 @@ const AddressSelectorModal = ({ visible, onClose }: AddressSelectorModalProps) =
                 </View>
               )}
             </View>
-          </TouchableWithoutFeedback>
         </View>
-      </TouchableWithoutFeedback>
     </Modal>
   );
 };
@@ -720,6 +825,24 @@ const styles = StyleSheet.create({
   },
   stackedBtnContainer: {
     width: '100%',
+  },
+  rationaleCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 12,
+  },
+  rationaleText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
+    color: '#64748B',
+    lineHeight: 16,
   },
 });
 
