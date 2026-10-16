@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 
 import { useAlert, useToast } from '@/context/AlertContext';
 import { useAuth } from '@/context/AuthContext';
@@ -22,6 +22,7 @@ import { useCourierCart } from '@/context/CourierCartContext';
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Dimensions,
   FlatList,
   Modal,
@@ -373,6 +374,24 @@ const ProductDetailPage = () => {
     }
   };
 
+  const handleBack = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(app)/(tabs)');
+    }
+  }, [router]);
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleBack]);
+
   const isNearby = product?.isNearby || false;
   const isMerchantOffline = product?.isOnline === false || product?.merchantId?.isOnline === false || product?.fulfillmentOptions?.directStore?.isOnline === false;
   const isOnline = !isMerchantOffline;
@@ -708,7 +727,7 @@ const ProductDetailPage = () => {
       <View style={styles.errorContainer}>
         <Ionicons name="alert-circle-outline" size={44} color="#CBD5E1" />
         <Text style={styles.errorText}>Product not found</Text>
-        <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.primary }]} onPress={() => router.back()}>
+        <TouchableOpacity style={[styles.backButton, { backgroundColor: theme.primary }]} onPress={handleBack}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -732,7 +751,7 @@ const ProductDetailPage = () => {
 
       {/* Floating Static Header */}
       <View style={[styles.staticHeader, { paddingTop: insets.top + 6 }]}>
-        <TouchableOpacity style={styles.staticIcon} onPress={() => router.back()} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.staticIcon} onPress={handleBack} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
