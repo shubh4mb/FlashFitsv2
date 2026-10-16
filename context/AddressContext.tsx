@@ -4,7 +4,7 @@ import { Address, getAddresses } from "../api/address";
 import * as Location from 'expo-location';
 import { checkDeliveryAvailability } from "../api/auth";
 import { useAuth } from "./AuthContext";
-import { Alert, Linking, Platform, AppState } from "react-native";
+import { Platform, AppState } from "react-native";
 
 const SELECTED_ADDRESS_KEY = 'selectedAddress';
 const MANUAL_LOCATION_KEY = 'manualLocation';
@@ -29,7 +29,7 @@ interface AddressContextType {
     isLocationOff: boolean;
     detectLocation: (showModalOnDecision?: boolean, requestPermissionIfUndetermined?: boolean) => Promise<void>;
     requestInitialLocation: () => Promise<void>;
-    enableLocation: () => Promise<boolean>;
+    enableLocation: () => Promise<EnableLocationResult>;
     refreshAddresses: () => Promise<Address[]>;
 
     // Address / Location Modal State
@@ -56,7 +56,7 @@ const AddressContext = createContext<AddressContextType>({
     isLocationOff: false,
     detectLocation: async () => { },
     requestInitialLocation: async () => { },
-    enableLocation: async () => false,
+    enableLocation: async () => ({ success: false, failureReason: 'no-context' as const }),
     refreshAddresses: async () => [],
     isAddressModalVisible: false,
     openAddressModal: () => { },
@@ -64,6 +64,12 @@ const AddressContext = createContext<AddressContextType>({
 });
 
 export const DEFAULT_FALLBACK_COORDS = { latitude: 10.0072, longitude: 76.2891 };
+
+export type EnableLocationFailureReason = 'services-disabled' | 'permission-denied' | 'error' | 'no-context';
+export interface EnableLocationResult {
+    success: boolean;
+    failureReason?: EnableLocationFailureReason;
+}
 
 export const distanceInMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const toRad = (x: number) => (x * Math.PI) / 180;
@@ -329,7 +335,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [detectLocation, selectedAddress]);
 
-    const enableLocation = useCallback(async (): Promise<boolean> => {
+    const enableLocation = useCallback(async (): Promise<EnableLocationResult> => {
         try {
             setLocationLoading(true);
 
@@ -350,40 +356,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
                 // If still disabled after prompt attempt (or on iOS):
                 if (!servicesEnabled) {
                     setLocationLoading(false);
-
-                    if (Platform.OS === 'android') {
-                        Alert.alert(
-                            "Location Services Disabled",
-                            "Please turn on location in your device settings to detect nearby stores and available items.",
-                            [
-                                { text: "Cancel", style: "cancel" },
-                                { 
-                                    text: "Open Location Settings", 
-                                    onPress: () => {
-                                        Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => {
-                                            Linking.openSettings().catch(() => {});
-                                        });
-                                    }
-                                }
-                            ]
-                        );
-                    } else {
-                        // iOS: Guide user clearly since iOS routes through Settings
-                        Alert.alert(
-                            "Location Services Disabled",
-                            "Please enable Location Services in your phone's Settings > Privacy & Security > Location Services.",
-                            [
-                                { text: "Cancel", style: "cancel" },
-                                { 
-                                    text: "Open Settings", 
-                                    onPress: () => {
-                                        Linking.openSettings().catch(() => {});
-                                    }
-                                }
-                            ]
-                        );
-                    }
-                    return false;
+                    return { success: false, failureReason: 'services-disabled' };
                 }
             }
 
@@ -393,20 +366,7 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
 
             if (status !== 'granted') {
                 setLocationLoading(false);
-                Alert.alert(
-                    "Location Permission Required",
-                    "FlashFits needs location permission to show nearby partner stores and 30-minute Try at Home in your area.",
-                    [
-                        { text: "Cancel", style: "cancel" },
-                        { 
-                            text: "Open Settings", 
-                            onPress: () => {
-                                Linking.openSettings().catch(() => {});
-                            }
-                        }
-                    ]
-                );
-                return false;
+                return { success: false, failureReason: 'permission-denied' };
             }
 
             // 3. Permission and services are active: clear manual location & detect coordinates
@@ -417,11 +377,11 @@ export const AddressProvider = ({ children }: { children: ReactNode }) => {
             // Switch to current location by clearing selectedAddress if user specifically pressed Enable Location
             await setSelectedAddress(null);
             closeAddressModal();
-            return true;
+            return { success: true };
         } catch (err) {
             console.error('enableLocation error:', err);
             setLocationLoading(false);
-            return false;
+            return { success: false, failureReason: 'error' };
         }
     }, [detectLocation, setSelectedAddress, closeAddressModal, clearManualLocation]);
     

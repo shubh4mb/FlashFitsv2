@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   Modal,
   Platform,
   StyleSheet,
@@ -95,11 +96,59 @@ const AddressSelectorModal = ({ visible, onClose, requireAddressOnly = false }: 
 
   const handleEnableLocation = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // CRITICAL: Close the modal FIRST to prevent iOS modal stacking freeze
+    // On iOS, showing Alert.alert() on top of a RN <Modal> corrupts the touch responder chain
+    handleClose();
+    
     try {
       setEnablingLocation(true);
-      const success = await enableLocation();
-      if (success) {
-        handleClose();
+      
+      // Small delay to let the modal dismiss animation complete on iOS
+      await new Promise(resolve => setTimeout(resolve, Platform.OS === 'ios' ? 400 : 150));
+      
+      const result = await enableLocation();
+      
+      if (!result.success) {
+        // Show failure message using in-app alert (safe on iOS, no modal stacking)
+        if (result.failureReason === 'services-disabled') {
+          showAlert({
+            title: 'Location Services Disabled',
+            message: Platform.OS === 'ios'
+              ? "Please enable Location Services in your phone's Settings > Privacy & Security > Location Services."
+              : 'Please turn on location in your device settings to detect nearby stores and available items.',
+            buttons: [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Settings',
+                onPress: () => {
+                  if (Platform.OS === 'android') {
+                    Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => {
+                      Linking.openSettings().catch(() => {});
+                    });
+                  } else {
+                    Linking.openSettings().catch(() => {});
+                  }
+                },
+              },
+            ],
+          });
+        } else if (result.failureReason === 'permission-denied') {
+          showAlert({
+            title: 'Location Permission Required',
+            message: 'FlashFits needs location permission to show nearby partner stores and 30-minute Try at Home in your area.',
+            buttons: [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Settings',
+                onPress: () => {
+                  Linking.openSettings().catch(() => {});
+                },
+              },
+            ],
+          });
+        }
+        // For 'error' or unknown reasons, silently fail — user can retry
       }
     } catch (err) {
       console.error('Failed to enable location:', err);
