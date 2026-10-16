@@ -351,10 +351,22 @@ const ProductDetailPage = () => {
   });
 
   const handleShare = async () => {
+    if (!product) return;
     try {
+      const productUrl = `https://www.theflashfits.com/product/${id}`;
+      const priceVal = product.discountPrice || product.price;
+      const priceText = priceVal ? ` (₹${priceVal})` : '';
+
+      const shareMessage = [
+        `Check out ${product.name}${priceText} on FlashFits! ⚡`,
+        `Try it on at home with 30-minute delivery:`,
+        productUrl,
+      ].join('\n\n');
+
       await Share.share({
-        message: `Check out this ${product.name} on FlashFits!`,
-        url: `https://flashfits.com/product/${id}`,
+        title: product.name,
+        message: shareMessage,
+        url: productUrl,
       });
     } catch (error) {
       console.error('Error sharing:', error);
