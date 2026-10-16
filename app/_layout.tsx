@@ -11,7 +11,7 @@ import { AppUpdateModal } from '@/components/modals/AppUpdateModal';
 import { useAppUpdate } from '@/hooks/useAppUpdate';
 import { RateAppModal } from '@/components/modals/RateAppModal';
 import { useRateApp } from '@/hooks/useRateApp';
-import { Stack } from 'expo-router';
+import { Stack, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
@@ -152,7 +152,13 @@ function AppUpdateGatekeeper() {
 }
 
 function RateAppGatekeeper() {
-  const { isRateModalVisible, closeRateModal, markAsRated } = useRateApp();
+  const segments = useSegments();
+  const isInApp = segments[0] === '(app)';
+  const { isRateModalVisible, closeRateModal, markAsRated } = useRateApp({ enabled: isInApp });
+
+  if (!isInApp) {
+    return null;
+  }
 
   return (
     <RateAppModal

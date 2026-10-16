@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -14,10 +14,20 @@ export const triggerRateAppPrompt = () => {
   DeviceEventEmitter.emit(EVENT_TRIGGER_RATE);
 };
 
-export function useRateApp() {
+export interface UseRateAppOptions {
+  enabled?: boolean;
+}
+
+export function useRateApp({ enabled = true }: UseRateAppOptions = {}) {
   const [isRateModalVisible, setIsRateModalVisible] = useState(false);
+  const hasEvaluatedThisSession = useRef(false);
 
   const checkRatingPrompt = useCallback(async () => {
+    if (!enabled || hasEvaluatedThisSession.current) {
+      return;
+    }
+    hasEvaluatedThisSession.current = true;
+
     try {
       const [completed, snoozedUntilStr, sessionCountStr] = await Promise.all([
         AsyncStorage.getItem(KEY_RATE_COMPLETED),
@@ -44,19 +54,21 @@ export function useRateApp() {
       const newSessionCount = currentSessions + 1;
       await AsyncStorage.setItem(KEY_SESSION_COUNT, newSessionCount.toString());
 
-      // If reached threshold, trigger prompt after a short delay so user has landed
+      // If reached threshold, trigger prompt after a delay so user is settled in the app
       if (newSessionCount >= SESSIONS_BEFORE_PROMPT) {
         setTimeout(() => {
           setIsRateModalVisible(true);
-        }, 2500);
+        }, 3500);
       }
     } catch (error) {
       console.warn('[useRateApp] Failed to check rating status:', error);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
-    checkRatingPrompt();
+    if (enabled) {
+      checkRatingPrompt();
+    }
 
     const sub = DeviceEventEmitter.addListener(EVENT_TRIGGER_RATE, () => {
       setIsRateModalVisible(true);
@@ -65,7 +77,7 @@ export function useRateApp() {
     return () => {
       sub.remove();
     };
-  }, [checkRatingPrompt]);
+  }, [enabled, checkRatingPrompt]);
 
   const openRateModal = useCallback(() => {
     setIsRateModalVisible(true);

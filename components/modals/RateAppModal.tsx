@@ -93,9 +93,6 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
     router.push('/(app)/help-center' as any);
   };
 
-  const isHighRating = selectedRating >= 4;
-  const isLowRating = selectedRating > 0 && selectedRating < 4;
-
   return (
     <Modal
       visible={visible}
@@ -118,28 +115,20 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
           {/* Top Emoji/Icon */}
           <View style={styles.iconCircle}>
             <Ionicons
-              name={isHighRating ? 'heart' : isLowRating ? 'chatbox-ellipses' : 'sparkles'}
-              size={34}
-              color={isHighRating ? '#EF4444' : isLowRating ? '#F59E0B' : BrandColors.cyanDeep}
+              name="star"
+              size={32}
+              color="#F59E0B"
             />
           </View>
 
           {/* Title */}
           <Text style={styles.titleText}>
-            {isHighRating
-              ? 'Thrilled to hear it!'
-              : isLowRating
-              ? 'Help Us Do Better'
-              : 'Enjoying FlashFits?'}
+            Enjoying FlashFits?
           </Text>
 
           {/* Subtitle / Description */}
           <Text style={styles.subtitleText}>
-            {isHighRating
-              ? `Your support means everything to us. Would you mind taking a moment to rate us on ${storeName}?`
-              : isLowRating
-              ? "We're sorry your experience wasn't 5-star worthy. Let us know how we can make it right for you."
-              : 'Tap a star below to rate your shopping and delivery experience.'}
+            {`Your rating on the ${storeName} helps shoppers discover lightning-fast fashion and supports our local stores.`}
           </Text>
 
           {/* 5 Star Rating Row */}
@@ -163,57 +152,37 @@ export const RateAppModal: React.FC<RateAppModalProps> = ({
             })}
           </View>
 
-          {/* Actions depending on rating */}
+          {/* Actions - Direct rating without gating */}
           <View style={styles.actionsContainer}>
-            {isLowRating ? (
-              <>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  style={styles.primaryButton}
-                  onPress={handleFeedbackPress}
-                >
-                  <Text style={styles.primaryButtonText}>Send Feedback</Text>
-                  <Ionicons name="chatbubble-outline" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
-                </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.primaryButton}
+              onPress={handleOpenStore}
+            >
+              <Text style={styles.primaryButtonText}>
+                {`Rate on ${storeName}`}
+              </Text>
+              <Ionicons name="open-outline" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
 
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={styles.secondaryButton}
-                  onPress={handleOpenStore}
-                >
-                  <Text style={styles.secondaryButtonText}>{`Rate on ${storeName}`}</Text>
-                </TouchableOpacity>
+            <View style={styles.secondaryRow}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.feedbackButton}
+                onPress={handleFeedbackPress}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={14} color="#64748B" style={{ marginRight: 4 }} />
+                <Text style={styles.feedbackButtonText}>Need help? Contact Support</Text>
+              </TouchableOpacity>
+            </View>
 
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={{ marginTop: 8, alignItems: 'center', paddingVertical: 4 }}
-                  onPress={onClose}
-                >
-                  <Text style={{ fontSize: 13, color: '#94A3B8' }}>Maybe Later</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  style={styles.primaryButton}
-                  onPress={handleOpenStore}
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {selectedRating >= 4 ? `Rate on ${storeName} ⭐` : `Rate on ${storeName}`}
-                  </Text>
-                  <Ionicons name="open-outline" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={styles.secondaryButton}
-                  onPress={onClose}
-                >
-                  <Text style={styles.secondaryButtonText}>Maybe Later</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.dismissButton}
+              onPress={onClose}
+            >
+              <Text style={styles.dismissButtonText}>Maybe Later</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -314,16 +283,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#FFFFFF',
   },
-  secondaryButton: {
+  secondaryRow: {
     width: '100%',
-    height: 38,
-    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 12,
   },
-  secondaryButtonText: {
+  feedbackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  feedbackButtonText: {
     fontFamily: Typography.fontFamily.medium,
-    fontSize: 14,
-    color: '#71717A',
+    fontSize: 13,
+    color: '#64748B',
+  },
+  dismissButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  dismissButtonText: {
+    fontFamily: Typography.fontFamily.regular,
+    fontSize: 13,
+    color: '#94A3B8',
   },
 });
