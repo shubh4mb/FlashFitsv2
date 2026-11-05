@@ -15,7 +15,9 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { listenRiderLocation, removeRiderLocationListener } from '@/sockets/order.socket';
 
-const CARTO_KEY = Constants.expoConfig?.extra?.CARTO_BASEMAP_KEY || process.env.EXPO_PUBLIC_CARTO_BASEMAP_KEY || 'cb1_4fv4_1_1edec64bef590f4afb83cafc';
+const getBackendBaseUrl = (): string => {
+  return (Constants.expoConfig?.extra?.BACKEND_URL || 'https://api.theflashfits.com').replace(/\/+$/, '');
+};
 
 interface LiveOrderMapProps {
   orderId?: string;
@@ -120,6 +122,7 @@ export default function LiveOrderMap({
   }, [deliveryRiderStatus]);
 
   // Leaflet HTML with smooth touch, high-performance gestures, and Carto Basemaps
+  const backendBaseUrl = getBackendBaseUrl();
   const leafletHTML = useMemo(() => {
     return `
     <!DOCTYPE html>
@@ -264,15 +267,15 @@ export default function LiveOrderMap({
               }
             });
 
-            // CartoDB Voyager tiles with CARTO API key
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}', {
+            // High performance CartoDB Voyager tiles proxied through Backend (keeps API key secure)
+            L.tileLayer('${backendBaseUrl}/api/map/tiles/{s}/voyager/{z}/{x}/{y}{r}.png', {
               maxZoom: 19,
               minZoom: 4,
               subdomains: 'abcd',
-              updateWhenZooming: false, // Prevents lag & flashing by scaling existing tiles during pinch
-              updateWhenIdle: true,     // Smoother panning
-              keepBuffer: 3,            // Keeps buffer of surrounding tiles loaded for frictionless drag
-              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+              updateWhenZooming: false,
+              updateWhenIdle: true,
+              keepBuffer: 3,
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
             }).addTo(map);
 
             // Store Marker
@@ -341,7 +344,7 @@ export default function LiveOrderMap({
       </body>
     </html>
     `;
-  }, [storeLat, storeLng, custLat, custLng, merchantName, riderName]);
+  }, [storeLat, storeLng, custLat, custLng, merchantName, riderName, backendBaseUrl]);
 
   const handleZoomIn = (isModal = false) => {
     const ref = isModal ? fullScreenWebviewRef : webviewRef;

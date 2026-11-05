@@ -316,9 +316,11 @@ const AddressSelectorModal = ({ visible, onClose, requireAddressOnly = false }: 
                       <Text style={styles.currentLocationDesc} numberOfLines={1}>
                         {locationLoading || enablingLocation
                           ? 'Detecting your location...'
-                          : isLocationOff || locationPermission !== 'granted'
+                          : isLocationOff
                             ? 'Location is turned off on your device'
-                            : locationAddress || 'Current device location'}
+                            : locationPermission !== 'granted'
+                              ? 'Tap Enable to allow location access'
+                              : locationAddress || 'Current device location'}
                       </Text>
                     </View>
                   </View>

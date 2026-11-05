@@ -2236,7 +2236,13 @@ export default function OrderTrackingScreen() {
               {isTracking && (
                 <>
                   <Text style={[styles.statusLabel, { color: theme.primary }]}>
-                    {order?.deliveryRiderStatus === 'at_delivery' ? 'ARRIVED' : status.replace(/_/g, ' ').toUpperCase()}
+                    {order?.deliveryRiderStatus === 'at_delivery'
+                      ? 'ARRIVED'
+                      : status === 'placed'
+                        ? 'ORDER PLACED'
+                        : status === 'accepted'
+                          ? 'ORDER CONFIRMED'
+                          : status.replace(/_/g, ' ').toUpperCase()}
                   </Text>
                   {order?.deliveryRiderStatus === 'at_delivery' ? (
                     <Text style={styles.eta}>
@@ -3793,13 +3799,6 @@ export default function OrderTrackingScreen() {
           </View>
         )}
 
-        {/* ─── Waiting State ─── */}
-        {status === 'placed' && (
-          <View style={styles.waitingCard}>
-            <ActivityIndicator size="small" color={theme.primary} />
-            <Text style={styles.waitingText}>Waiting for merchant to accept your order…</Text>
-          </View>
-        )}
 
         {/* ─── Package Info (collapsible) ─── */}
         {(isTracking || isTryPhase) && items.length > 0 && (

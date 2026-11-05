@@ -44,8 +44,6 @@ export default function HomeScreen() {
     tbAvailable,
     tbOffline,
     openAddressModal,
-    enableLocation,
-    requestInitialLocation,
   } = useAddress();
   const { setCampaignFromCollections } = useCampaign();
   const scrollY = React.useRef(new Animated.Value(0)).current;
@@ -100,9 +98,6 @@ export default function HomeScreen() {
     loadData();
   }, [loadData, refreshKey]);
 
-  useEffect(() => {
-    requestInitialLocation();
-  }, [requestInitialLocation]);
 
   // Derived state for readability
   const isServiceAvailable = tbAvailable !== false;

@@ -196,6 +196,12 @@ export default function ProfileScreen() {
             onPress: () => router.push('/(app)/about' as any),
         },
         {
+            title: 'Partner With Us',
+            subtitle: 'Sell on FlashFits & grow your boutique',
+            icon: 'storefront-outline' as const,
+            onPress: () => router.push('/(app)/partner-with-us' as any),
+        },
+        {
             title: 'Terms of Service',
             subtitle: 'Try & Buy protocol, return rules, service terms',
             icon: 'document-text-outline' as const,

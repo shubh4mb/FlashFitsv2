@@ -8,6 +8,14 @@
     "scheme": "flashfits",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "updates": {
+      "url": "https://u.expo.dev/5ffa6730-d676-4b63-a03d-df1db41ca12b",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "bundleIdentifier": "com.flashfits.app",
       "supportsTablet": false,
@@ -85,12 +93,13 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/favicon.png",
-          "imageWidth": 200,
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 260,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#00C2E8",
           "dark": {
-            "backgroundColor": "#000000"
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#00C2E8"
           }
         }
       ],
@@ -119,7 +128,7 @@
     },
     "extra": {
       "BACKEND_URL": "https://api.theflashfits.com",
-      "CARTO_BASEMAP_KEY": "cb1_4fv4_1_1edec64bef590f4afb83cafc",
+      // "BACKEND_URL": "http://192.168.29.230:5000",
       "router": {},
       "eas": {
         "projectId": "5ffa6730-d676-4b63-a03d-df1db41ca12b"

@@ -16,6 +16,7 @@ interface SwipeToBuyProps {
   disabled?: boolean;
   loading?: boolean;
   text?: string;
+  disabledText?: string;
   themeColor?: string;
   resetKey?: any;
 }
@@ -25,6 +26,7 @@ export default function SwipeToBuy({
   disabled = false,
   loading = false,
   text = 'Swipe to Place Try & Buy Order',
+  disabledText,
   themeColor = BrandColors.primary,
   resetKey,
 }: SwipeToBuyProps) {
@@ -118,7 +120,7 @@ export default function SwipeToBuy({
     extrapolate: 'clamp',
   });
 
-  const displayText = disabled ? 'Store Unavailable' : text;
+  const displayText = disabled ? (disabledText || text || 'Store Unavailable') : text;
   const hasDivider = displayText.includes('•');
   const textParts = hasDivider ? displayText.split('•') : [displayText];
 

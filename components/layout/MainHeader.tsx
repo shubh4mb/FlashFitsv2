@@ -81,12 +81,13 @@ export default function MainHeader({
         locationAddress,
         deliveryAvailable,
         locationLoading,
-        detectLocation,
         locationPermission,
         selectedAddress,
         tbAvailable,
         isLocationOff,
         openAddressModal,
+        isManualLocation,
+        userLocation,
     } = useAddress();
 
     const insets = useSafeAreaInsets();
@@ -98,6 +99,87 @@ export default function MainHeader({
     const { activeCampaign, hasCampaign, campaignTheme } = useCampaign();
     const genders: Gender[] = ['Men', 'Women', 'Kids'];
     const theme = GenderThemes[selectedGender] || GenderThemes.Men;
+
+    const headerLocationDisplay = useMemo(() => {
+        // Priority 1: Saved address selected
+        if (selectedAddress) {
+            const statusTitle = tbAvailable 
+                ? '30-Min Try at Home' 
+                : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery');
+            const typeStr = capitalize(selectedAddress.addressType || 'Address');
+            const lineStr = selectedAddress.addressLine1 || selectedAddress.area || 'Selected Address';
+            return {
+                title: statusTitle,
+                subtitle: `${typeStr} - ${lineStr}`,
+                showDot: true,
+                dotColor: deliveryAvailable !== false ? '#10B981' : '#F59E0B',
+            };
+        }
+
+        // Priority 2: Manual custom location pinned on map
+        if (isManualLocation && locationAddress) {
+            const statusTitle = tbAvailable 
+                ? '30-Min Try at Home' 
+                : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery');
+            return {
+                title: statusTitle,
+                subtitle: locationAddress,
+                showDot: true,
+                dotColor: deliveryAvailable !== false ? '#10B981' : '#F59E0B',
+            };
+        }
+
+        // Priority 3: GPS device location resolved with geocoded text
+        if (userLocation && locationAddress) {
+            const statusTitle = tbAvailable 
+                ? '30-Min Try at Home' 
+                : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery');
+            return {
+                title: statusTitle,
+                subtitle: locationAddress,
+                showDot: true,
+                dotColor: deliveryAvailable !== false ? '#10B981' : '#F59E0B',
+            };
+        }
+
+        // Priority 4: Initial boot locating (only if NO address or location known yet)
+        if (locationLoading) {
+            return {
+                title: 'FlashFits Delivery',
+                subtitle: 'Detecting location...',
+                showDot: false,
+                dotColor: '#94A3B8',
+            };
+        }
+
+        // Priority 5: Device Location is OFF
+        if (isLocationOff) {
+            return {
+                title: 'FlashFits Delivery',
+                subtitle: 'Tap to set delivery location',
+                showDot: true,
+                dotColor: '#F59E0B',
+            };
+        }
+
+        // Priority 6: Permission not granted
+        if (locationPermission !== 'granted') {
+            return {
+                title: 'FlashFits Delivery',
+                subtitle: 'Tap to set delivery location',
+                showDot: true,
+                dotColor: '#F59E0B',
+            };
+        }
+
+        // Priority 7: Clean default fallback
+        return {
+            title: 'FlashFits Delivery',
+            subtitle: 'Tap to set delivery location',
+            showDot: false,
+            dotColor: '#10B981',
+        };
+    }, [selectedAddress, isManualLocation, userLocation, locationAddress, locationLoading, isLocationOff, locationPermission, tbAvailable, deliveryAvailable]);
 
     const [categories, setCategories] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -467,29 +549,17 @@ export default function MainHeader({
                         <View style={styles.addressInfo} pointerEvents="none">
                             {/* Top row: Status */}
                             <View style={styles.statusRow} pointerEvents="none">
-                                {(!locationLoading && (deliveryAvailable !== null || selectedAddress)) ? (
-                                    <>
-                                        <View style={[styles.statusDot, { backgroundColor: deliveryAvailable ? '#10B981' : '#F59E0B' }]} pointerEvents="none" />
-                                        <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
-                                            {tbAvailable ? '30-Min Try at Home' : (deliveryAvailable === false ? 'Try & Buy Unavailable' : 'FlashFits Delivery')}
-                                        </Text>
-                                    </>
-                                ) : (
-                                    <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
-                                        {locationLoading ? 'Locating...' : 'FlashFits Delivery'}
-                                    </Text>
+                                {headerLocationDisplay.showDot && (
+                                    <View style={[styles.statusDot, { backgroundColor: headerLocationDisplay.dotColor }]} pointerEvents="none" />
                                 )}
+                                <Text style={[styles.addressText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
+                                    {headerLocationDisplay.title}
+                                </Text>
                             </View>
 
                             {/* Bottom row: Address */}
                             <Text style={[styles.subText, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
-                                {selectedAddress
-                                    ? `${capitalize(selectedAddress.addressType)} - ${selectedAddress.addressLine1}`
-                                    : locationLoading
-                                        ? 'Fetching your location...'
-                                        : (locationAddress || (isLocationOff || locationPermission !== 'granted'
-                                            ? 'Select delivery location'
-                                            : 'Tap to select delivery location'))}
+                                {headerLocationDisplay.subtitle}
                             </Text>
                         </View>
                         <Ionicons name="chevron-down" size={16} color={theme.text} style={{ marginLeft: 6 }} pointerEvents="none" />

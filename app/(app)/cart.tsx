@@ -1170,6 +1170,14 @@ export default function CartScreen() {
                           </View>
                         )}
 
+                        {/* Try & Buy Tip: Add multiple sizes */}
+                        <View style={styles.tryMultipleSizesBanner}>
+                          <Ionicons name="sparkles" size={13} color="#0284C7" />
+                          <Text style={styles.tryMultipleSizesText}>
+                            <Text style={styles.tryMultipleSizesBold}>Try & Buy Tip:</Text> Add multiple sizes to try at home and keep what fits best!
+                          </Text>
+                        </View>
+
                         {/* Items */}
                         <View style={styles.itemsContainer}>
                           {mc.items.map((item: any) => (
@@ -1492,6 +1500,14 @@ export default function CartScreen() {
                       <Text style={styles.standardSelectAddressBtnText}>Select</Text>
                     </TouchableOpacity>
                   )}
+                </View>
+
+                {/* Multiple Sizes Tip */}
+                <View style={styles.tryMultipleSizesBanner}>
+                  <Ionicons name="sparkles" size={13} color="#0284C7" />
+                  <Text style={styles.tryMultipleSizesText}>
+                    <Text style={styles.tryMultipleSizesBold}>Shopping Tip:</Text> You can add multiple sizes of an item to your bag!
+                  </Text>
                 </View>
 
                 <View style={styles.itemsContainer}>
@@ -2646,5 +2662,29 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 13,
     fontWeight: '600',
+  },
+  tryMultipleSizesBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    gap: 6,
+  },
+  tryMultipleSizesText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#0369A1',
+    lineHeight: 15,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  tryMultipleSizesBold: {
+    fontWeight: '700',
+    color: '#0C4A6E',
+    fontFamily: Typography.fontFamily.bold,
   },
 });

@@ -98,7 +98,18 @@ const calculateGuestMerchantCarts = (items: CartItem[], address?: any): Merchant
   });
 };
 
-interface CartItem {
+export interface AvailableSize {
+  variantId: string;
+  size: string;
+  stock: number;
+  price?: number;
+  mrp?: number;
+  color?: any;
+  image?: string;
+  isCurrentSize?: boolean;
+}
+
+export interface CartItem {
   _id: string; // The ID in the items array
   productId: any;
   variantId: string;
@@ -111,6 +122,9 @@ interface CartItem {
   mrp: number;
   merchantDelivery?: any;
   shopName?: string;
+  availableSizes?: AvailableSize[];
+  isOutOfStock?: boolean;
+  source?: string;
 }
 
 interface MerchantCartTotals {

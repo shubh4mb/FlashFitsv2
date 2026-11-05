@@ -12,6 +12,10 @@ const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours snooze for optional 
 export interface VersionPolicy {
   minVersion: string;
   latestVersion: string;
+  minVersionAndroid?: string;
+  latestVersionAndroid?: string;
+  minVersionIos?: string;
+  latestVersionIos?: string;
   storeUrl?: string;
   webUrl?: string;
   mandatoryTitle?: string;
@@ -28,7 +32,7 @@ export function useAppUpdate() {
   const [isChecking, setIsChecking] = useState<boolean>(false);
 
   // App version defined in app.json
-  const currentAppVersion = Constants.expoConfig?.version || '1.1.0';
+  const currentAppVersion = Constants.expoConfig?.version || '1.1.2';
 
   const checkVersion = useCallback(async () => {
     try {
@@ -43,10 +47,19 @@ export function useAppUpdate() {
       }
 
       setVersionPolicy(policy);
+
+      const targetMinVersion = Platform.OS === 'android'
+        ? (policy.minVersionAndroid || policy.minVersion)
+        : (policy.minVersionIos || policy.minVersion);
+
+      const targetLatestVersion = Platform.OS === 'android'
+        ? (policy.latestVersionAndroid || policy.latestVersion)
+        : (policy.latestVersionIos || policy.latestVersion);
+
       const status = getUpdateStatus(
         currentAppVersion,
-        policy.minVersion,
-        policy.latestVersion
+        targetMinVersion,
+        targetLatestVersion
       );
 
       if (status === 'MANDATORY') {

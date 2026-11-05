@@ -16,7 +16,18 @@ import { useAuth } from './AuthContext';
 
 const GUEST_COURIER_CART_KEY = '@flashfits_guest_courier_cart';
 
-interface CourierCartItem {
+export interface AvailableSize {
+  variantId: string;
+  size: string;
+  stock: number;
+  price?: number;
+  mrp?: number;
+  color?: any;
+  image?: string;
+  isCurrentSize?: boolean;
+}
+
+export interface CourierCartItem {
   _id: string;
   productId: any;
   variantId: string;
@@ -28,6 +39,8 @@ interface CourierCartItem {
   price: number;
   mrp: number;
   shopName?: string;
+  availableSizes?: AvailableSize[];
+  isOutOfStock?: boolean;
 }
 
 interface CourierCartData {

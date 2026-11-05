@@ -22,12 +22,17 @@ import { useAddress, DEFAULT_FALLBACK_COORDS } from "@/context/AddressContext";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/AlertContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 
 const screen = Dimensions.get("window");
 
 const QUICK_CITIES = [
     { name: "Kochi", lat: 10.0072, lng: 76.2891 },
 ];
+
+const getBackendBaseUrl = (): string => {
+  return (Constants.expoConfig?.extra?.BACKEND_URL || 'https://api.theflashfits.com').replace(/\/+$/, '');
+};
 
 // Constant static HTML to ensure the WebView NEVER reloads on React state updates
 const STATIC_MAP_HTML = `
@@ -81,9 +86,10 @@ const STATIC_MAP_HTML = `
           inertiaDeceleration: 3000,
         }).setView([lat, lng], 16);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        L.tileLayer('${getBackendBaseUrl()}/api/map/tiles/{s}/voyager/{z}/{x}/{y}{r}.png', {
           maxZoom: 19,
-          subdomains: ['a', 'b', 'c']
+          subdomains: 'abcd',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
         }).addTo(map);
 
         map.on('movestart', function() {
