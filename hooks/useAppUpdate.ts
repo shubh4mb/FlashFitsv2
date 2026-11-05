@@ -32,7 +32,7 @@ export function useAppUpdate() {
   const [isChecking, setIsChecking] = useState<boolean>(false);
 
   // App version defined in app.json
-  const currentAppVersion = Constants.expoConfig?.version || '1.1.2';
+  const currentAppVersion = Constants.expoConfig?.version || '1.1.3';
 
   const checkVersion = useCallback(async () => {
     try {

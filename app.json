@@ -2,7 +2,7 @@
   "expo": {
     "name": "FlashFits",
     "slug": "FlashFits",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flashfits",
@@ -41,7 +41,7 @@
       }
     },
     "android": {
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#3CDCF4",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
